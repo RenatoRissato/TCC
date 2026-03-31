@@ -1,0 +1,45 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* ─────────────────────────────────────────────────────────────────
+   SmartRoutes PWA · Global Reset & Base Styles
+   Primary: #FFC107 · Dark bg: #0F1117 · Font: Inter
+───────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  /* Deep charcoal canvas — visible behind the phone frame on desktop */
+  background: #0A0C10;
+  /* Allow the fixed-position desktop auth overlay to sit above everything */
+  overflow-x: hidden;
+}
+
+/* Mobile: lock body scroll so the phone frame handles its own scrolling */
+@media (max-width: 767px) {
+  body { overflow: hidden; }
+}
+
+/* Desktop/tablet: allow page scroll (auth split-screen is position:fixed) */
+@media (min-width: 768px) {
+  body { overflow: hidden; }
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
