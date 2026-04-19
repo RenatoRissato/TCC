@@ -1,0 +1,87 @@
+# Diretrizes de IA para o Projeto (Skills)
+
+Ao atuar como assistente neste ambiente, utilize a seguinte lógica de roteamento e os comandos abaixo baseando-se no contexto atual do projeto.
+
+---
+
+## 🧭 Diretriz de Decisão para a IA Integrada
+
+- **Concepção:** O usuário tem uma dúvida técnica, arquitetônica ou de stack? -> Recomende `/brainstorm`
+- **Fundação:** O usuário tem um projeto novo complexo, mas sem estrutura ou banco de dados definido? -> Recomende `/plan` seguido de `/orchestrate` (para plataformas completas).
+- **Geração Rápida:** O usuário quer gerar um aplicativo ou MVP simples e funcional do zero? -> Recomende `/create`
+- **Evolução:** O usuário quer adicionar um recurso novo a uma base de código existente? -> Recomende `/enhance`
+- **Estética/Conversão:** O foco principal do usuário é uma Landing Page ou interface visual de alto impacto? -> Recomende `/ui-ux-pro-max`
+- **Correção:** O usuário relata um erro de compilação, falha silenciosa ou bug visual? -> Recomende `/debug`
+- **Garantia:** O código está pronto mas falta confiabilidade? -> Recomende `/test`
+- **Lançamento:** O usuário deseja colocar o projeto no ar com segurança? -> Recomende `/deploy`
+
+---
+
+## 🧠 /brainstorm (O Consultor de Estratégia)
+**Visão Geral:** Este fluxo analisa opções arquitetônicas e decisões de base. É como sentar com um especialista Sênior: apresenta múltiplas abordagens detalhando prós, contras e níveis de esforço.
+**O Processo:**
+1. **Descreva seu desafio:** Informe o que deseja explorar.
+2. **Opções de revisão:** O agente apresentará mais de 3 abordagens técnicas com prós e contras.
+3. **Decisão:** Escolha uma opção para em seguida usar `/enhance` ou `/create`.
+
+## 📝 /plan (O Arquiteto de Papel)
+**Visão Geral:** Ativa o modo somente de planejamento para criar um roteiro técnico e estrutural detalhado (o mapa da obra). NENHUM CÓDIGO é escrito durante o planejamento.
+**O Processo:**
+1. **Descreva seu projeto:** Diga o que deseja construir.
+2. **Perguntas Socráticas:** O planejador faz perguntas para esclarecer dúvidas e fechar escopo.
+3. **Plano gerado:** Cria o arquivo `docs/PLAN-{slug}.md` com tarefas.
+
+## 🏗️ /create (O Mestre de Obras)
+**Visão Geral:** Assistente de criação de aplicativos do zero. Guia por um diálogo interativo, entende necessidades, planeja a arquitetura e orquestra em paralelo.
+**O Processo:**
+1. **Descreva seu aplicativo:** Diga o que deseja construir.
+2. **Revisão do Plano:** O agente elabora um plano. Você aprova para prosseguir.
+3. **Construção:** Backend, frontend e banco de dados são construídos.
+
+## 🚀 /enhance (O Reformador de Luxo)
+**Visão Geral:** Ferramenta para desenvolvimento iterativo. Foca em adicionar funcionalidades precisas através de um corte vertical completo (DB + Backend + Frontend + Testes), sem quebrar código.
+**O Processo:**
+1. **Planejamento de recursos:** Descreva requisitos detalhados.
+2. **Implementação de componentes:** Implementa todas as camadas necessárias.
+3. **Verificação de integração:** Executa verificações finais.
+
+## 🎨 /ui-ux-pro-max (O Designer de Elite)
+**Visão Geral:** Fluxo otimizado para desenvolvimento super rápido de landing pages com alta taxa de conversão, hierarquia semântica e interatividade premium (dark modes, glassmorphism, etc).
+**O Processo:**
+1. **Escolha o estilo:** Defina a estética desejada.
+2. **Execute o comando:** Forneça contexto e conteúdo.
+3. **A Construção:** Monta estrutura HTML5/SEO, componentes e microanimações.
+
+## 🐞 /debug (O Detetive Particular)
+**Visão Geral:** Impõe um protocolo científico de investigação. Impede palpites, exigindo evidências antes de alterar código.
+**O Processo:**
+1. **Descoberta:** Coleta logs e etapas de reprodução.
+2. **Hipótese:** Formula causas potenciais.
+3. **Verificação:** Testa hipóteses.
+4. **Resolução:** Aplica correção e adiciona testes de regressão.
+
+## 🧪 /test (O Inspetor de Qualidade)
+**Visão Geral:** Gerencia geração e relatórios de testes.
+**Comandos:**
+- `/test`: Roda a suíte inteira.
+- `/test [arquivo]`: Cria novos testes para o arquivo.
+- `/test coverage`: Relatório de cobertura.
+
+## 🖼️ /preview (O Controle Remoto)
+**Visão Geral:** Gerencia o servidor de desenvolvimento.
+**Comandos:** `/preview start`, `/preview stop`, `/preview status`.
+
+## 📊 /status (O Painel de Controle)
+**Visão Geral:** Relatório do projeto, stack, agentes e arquivos.
+**Comandos:** `/status` para painel imediato.
+
+## 👯 /orchestrate (O Maestro)
+**Visão Geral:** Atua como Gerente de Projetos para dividir tarefas em micro-tarefas coordenadas.
+**O Processo:**
+1. Resumo amplo.
+2. Fase 1: Planejamento.
+3. Fase 2: Execução em paralelo monitorada.
+
+## 🚢 /deploy (O Botão de Lançamento)
+**Visão Geral:** Audit & Release Conductor. Impede deploys vulneráveis.
+**O Processo:** `/deploy` para auditar e publicar. Use `check` ou `rollback` se necessário.
