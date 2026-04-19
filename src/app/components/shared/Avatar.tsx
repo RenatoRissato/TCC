@@ -1,20 +1,4 @@
-import { StudentStatus } from '../../data/mockData';
-
-const borderColors: Record<StudentStatus, string> = {
-  going:   '#198754',
-  absent:  '#ADB5BD',
-  pending: '#FD7E14',
-};
-const bgColors: Record<StudentStatus, string> = {
-  going:   '#E8F5E9',
-  absent:  '#F5F5F5',
-  pending: '#FFF3CD',
-};
-const textColors: Record<StudentStatus, string> = {
-  going:   '#198754',
-  absent:  '#868E96',
-  pending: '#C56A00',
-};
+import type { StudentStatus } from '../../types';
 
 interface AvatarProps {
   initials: string;
@@ -23,46 +7,23 @@ interface AvatarProps {
   badge?: string | number;
 }
 
+const STATUS_CLASS: Record<StudentStatus, string> = {
+  going:   'bg-going-soft border-success text-success',
+  absent:  'bg-[#F5F5F5] dark:bg-absent-soft border-[#ADB5BD] text-[#868E96] dark:text-ink-soft',
+  pending: 'bg-pending-soft border-warning text-[#C56A00] dark:text-warning',
+};
+
 export function Avatar({ initials, status = 'going', size = 48, badge }: AvatarProps) {
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div className="relative shrink-0">
       <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background: bgColors[status],
-          border: `2.5px solid ${borderColors[status]}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: size * 0.28,
-          fontWeight: 700,
-          color: textColors[status],
-          flexShrink: 0,
-        }}
+        className={`rounded-full border-[2.5px] flex items-center justify-center font-bold shrink-0 ${STATUS_CLASS[status]}`}
+        style={{ width: size, height: size, fontSize: size * 0.28 }}
       >
         {initials}
       </div>
       {badge !== undefined && (
-        <span
-          style={{
-            position: 'absolute',
-            bottom: -2,
-            right: -2,
-            width: 18,
-            height: 18,
-            background: '#212529',
-            color: '#fff',
-            fontSize: 10,
-            fontWeight: 700,
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '2px solid #fff',
-          }}
-        >
+        <span className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] bg-[#212529] text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
           {badge}
         </span>
       )}

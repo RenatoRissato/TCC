@@ -1,12 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-
-interface User {
-  name: string;
-  email: string;
-  phone: string;
-  plate: string;
-  vehicle: string;
-}
+import type { RegisterData, User } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -14,13 +7,6 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
-}
-
-interface RegisterData {
-  name: string;
-  email: string;
-  phone: string;
-  password: string;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
