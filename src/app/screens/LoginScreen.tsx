@@ -330,7 +330,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
   /* ── MOBILE layout ──────────────────────────────────────── */
   if (isMobile) {
     return (
-      <div style={{ width: '100%', maxWidth: 480, height: '100dvh', display: 'flex', flexDirection: 'column', background: '#0F1117', fontFamily: 'Inter, -apple-system, sans-serif', overflow: 'hidden', boxShadow: '0 0 80px rgba(0,0,0,0.5)', position: 'relative' }}>
+      <div style={{ width: '100%', maxWidth: 480, height: '100dvh', display: 'flex', flexDirection: 'column', background: '#0F1117', fontFamily: 'Inter, -apple-system, sans-serif', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
         <style>{`
           @keyframes auth-spin { to { transform: rotate(360deg); } }
           @keyframes auth-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
@@ -341,8 +341,8 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
         {/* Glow */}
         <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 300, height: 300, background: 'radial-gradient(circle, rgba(255,193,7,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {/* Hero */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 64, paddingBottom: 36, position: 'relative', zIndex: 1, flexShrink: 0 }}>
+        {/* Hero — agora parte do fluxo normal, rola junto com o conteúdo */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 64, paddingBottom: 36, position: 'relative', zIndex: 1 }}>
           <div style={{ width: 84, height: 84, background: 'linear-gradient(135deg, #FFC107 0%, #E6A800 100%)', borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 36px rgba(255,193,7,0.45)', marginBottom: 20 }}>
             <span style={{ fontSize: 40 }}>🚌</span>
           </div>
@@ -354,8 +354,8 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
           </p>
         </div>
 
-        {/* White card — bottom sheet */}
-        <div style={{ flex: 1, background: isDark ? '#1C2128' : '#fff', borderRadius: '28px 28px 0 0', padding: '32px 24px 36px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxShadow: '0 -12px 48px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
+        {/* Card — flexShrink:0 para não comprimir em telas pequenas */}
+        <div style={{ flexShrink: 0, background: isDark ? '#1C2128' : '#fff', borderRadius: '28px 28px 0 0', padding: '32px 24px 48px', boxShadow: '0 -12px 48px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: '0 0 4px' }}>
             Bem-vindo de volta! 👋
           </h2>

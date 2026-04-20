@@ -142,7 +142,7 @@ export function DashboardScreen() {
                 <div className="flex gap-2.5 mb-2.5">
                   {routeConfigs.slice(0, 2).map(rc => <RouteButton key={rc.type} {...rc} onClick={() => navigate('/routes')} />)}
                 </div>
-                <div className="mb-5">
+                <div className="flex mb-5">
                   <RouteButton {...routeConfigs[2]} onClick={() => navigate('/routes')} />
                 </div>
               </>
