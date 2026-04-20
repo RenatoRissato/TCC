@@ -7,7 +7,12 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useDailyList } from '../hooks/useDailyList';
-import { passengers, recentUpdates, routeConfigs } from '../data/mockData';
+import { getPassengers } from '../services/passengerService';
+import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
+
+const passengers = getPassengers();
+const recentUpdates = getRecentUpdates();
+const routeConfigs = getRouteConfigs();
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';

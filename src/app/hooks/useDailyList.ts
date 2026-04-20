@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { passengers as SEED, getSummary } from '../data/mockData';
+import { getPassengers, getSummary } from '../services/passengerService';
+
+const SEED = getPassengers();
 import type { Passenger, RouteType, Summary } from '../types';
 
 interface UseDailyListOptions {

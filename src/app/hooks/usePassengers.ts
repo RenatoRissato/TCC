@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { passengers as SEED, getSummary } from '../data/mockData';
+import { getPassengers, getSummary } from '../services/passengerService';
+
+const SEED = getPassengers();
 import type { Passenger, RouteType, StudentStatus } from '../types';
 
 export type PassengerFilter = 'all' | StudentStatus;
