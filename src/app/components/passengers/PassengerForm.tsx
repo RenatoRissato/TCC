@@ -104,7 +104,7 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
   const hasError = Object.keys(errors).length > 0;
 
   return (
-    <div className="flex flex-col max-h-[92dvh] font-sans">
+    <div className="flex flex-col flex-1 min-h-0 font-sans">
       <div className="shrink-0 px-5 pt-4 pb-4 border-b border-divider">
         <div className="flex items-center gap-3">
           <div
