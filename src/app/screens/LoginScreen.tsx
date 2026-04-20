@@ -282,7 +282,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
         }}
         onMouseEnter={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(255,193,7,0.55)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(255,193,7,0.4)'; }}>
-        {loading ? <><Spinner /> Entrando...</> : <>Entrar <ArrowRight size={18} strokeWidth={2.5} /></>}
+        {loading ? <><Spinner /><span>Entrando...</span></> : <><span>Entrar</span><ArrowRight size={18} strokeWidth={2.5} /></>}
       </button>
     </form>
   );
