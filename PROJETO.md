@@ -27,19 +27,22 @@ O produto é 100% **frontend**, sem backend real — todos os dados são mockado
 | **Shadcn/ui** | — | Biblioteca de componentes prontos e acessíveis |
 | **Radix UI** | vários | Primitivos de UI (accordions, modais, switches, tabs…) |
 | **Lucide React** | 0.487 | Ícones SVG em toda a interface |
-| **Motion** | 12 | Animações fluidas |
-| **MUI** | 7.3.5 | Material Design (instalado, usado pontualmente) |
 
 ### Funcionalidades Específicas
 | Biblioteca | Para quê serve |
 |---|---|
 | **Recharts** | Gráficos (donut e barras semanais) |
 | **React Hook Form** | Formulários |
-| **Sonner** | Toasts e notificações |
-| **Vaul** | Bottom sheets (drawer mobile) |
-| **date-fns** | Formatação de datas |
-| **canvas-confetti** | Efeito de confete nas celebrações |
-| **React DnD** | Drag-and-drop |
+| **Sonner** | Toasts/notificações (via wrapper Shadcn `ui/sonner.tsx`) |
+| **Vaul** | Bottom sheets/drawers (via wrapper Shadcn `ui/drawer.tsx`) |
+
+### Testes
+| Tecnologia | Versão | Papel |
+|---|---|---|
+| **Vitest** | ^4.1.4 | Test runner compatível com Vite |
+| **@testing-library/react** | ^16.3.2 | Renderização de componentes em testes |
+| **@testing-library/jest-dom** | ^6.9.1 | Matchers semânticos (toBeInTheDocument, etc.) |
+| **jsdom** | ^29.0.2 | DOM virtual para ambiente de testes |
 
 ---
 
@@ -53,11 +56,19 @@ src/
 │   ├── fonts.css            → Google Fonts: Inter
 │   ├── theme.css            → Tokens de cor (light/dark), radius, charts
 │   └── tailwind.css         → Config Tailwind v4
+├── test/
+│   ├── setup.ts             → Configura @testing-library/jest-dom globalmente
+│   ├── passengerService.test.ts → Testes unitários do serviço de passageiros
+│   └── StatusBadge.test.tsx → Testes de componente do StatusBadge
 └── app/
     ├── App.tsx              → Root: AuthProvider > ThemeProvider > AuthGate
     ├── routes.tsx           → Rotas protegidas (AppLayout + 4 telas)
     ├── types/index.ts       → Tipos centralizados (Passenger, User, etc.)
     ├── data/mockData.ts     → 12 passageiros + rotas + atualizações mockados
+    ├── services/            → Camada de acesso aos dados (encapsula mockData)
+    │   ├── passengerService.ts → getPassengers(), getSummary()
+    │   ├── dashboardService.ts → getRecentUpdates(), getRouteConfigs()
+    │   └── index.ts         → Re-exporta tudo de services/
     ├── context/             → Estado global (Auth, Theme, NavDrawer)
     ├── hooks/               → Lógica reutilizável (Passengers, WhatsApp, etc.)
     ├── screens/             → As 6 telas da aplicação
@@ -346,6 +357,152 @@ dist
 
 ---
 
+### Fase 5: Limpeza de Dependências — Removendo o Peso Morto
+
+O projeto acumulou bibliotecas que nunca chegaram a ser usadas de verdade. Antes de escalar, era necessário limpar esse peso.
+
+**Como foi feito:**
+Cada dependência suspeita foi verificada com busca de imports por toda a base de código (`src/**/*.ts` e `.tsx`). Só depois de confirmar ausência total de uso é que a remoção foi feita.
+
+**Dependências removidas do `package.json`:**
+
+| Biblioteca | Motivo da remoção |
+|---|---|
+| `@mui/material` + `@mui/icons-material` | Nenhum import encontrado em lugar algum |
+| `@emotion/react` + `@emotion/styled` | Eram peer deps do MUI — removidos junto |
+| `motion` | Nenhum import encontrado (animações feitas com CSS/Tailwind) |
+| `react-dnd` + `react-dnd-html5-backend` | Nenhum import encontrado (drag-and-drop nunca implementado) |
+| `canvas-confetti` | Nenhum import encontrado (efeito de confete nunca usado) |
+| `date-fns` | Nenhum import encontrado (datas formatadas com `Intl` nativo do JS) |
+| `@popperjs/core` + `react-popper` | Sem uso — eram resquícios de um setup antigo |
+| `react-slick` + `react-responsive-masonry` | Sem uso — carrossel e masonry nunca implementados |
+
+**Atenção especial — o que foi MANTIDO mesmo parecendo sem uso:**
+- `vaul` — é usado internamente pelo `src/components/ui/drawer.tsx` (wrapper Shadcn)
+- `sonner` — é usado internamente pelo `src/components/ui/sonner.tsx` (wrapper Shadcn)
+- `recharts` — é usado em `WeeklyBarChart.tsx`, `StatsSection.tsx` e `ui/chart.tsx`
+
+**Resultado:** 13 pacotes e suas sub-dependências removidos. Build verificado com `npm run build` — zero erros TypeScript, zero imports quebrados.
+
+---
+
+### Fase 6: Camada de Services — Preparando para o Backend Real
+
+O problema anterior: os componentes e hooks importavam dados diretamente de `mockData.ts`. Isso criava acoplamento forte — se um dia o backend real chegasse, seria necessário alterar dezenas de arquivos.
+
+**Solução:** criar uma camada `services/` que encapsula o acesso aos dados. Os consumidores falam com o serviço; o serviço fala com a fonte de dados. Só o serviço precisa mudar quando o backend chegar.
+
+**Arquivos criados:**
+
+`src/app/services/passengerService.ts`
+```ts
+import { passengers as MOCK_PASSENGERS, getSummary as computeSummary } from '../data/mockData';
+import type { Passenger, Summary } from '../types';
+
+export function getPassengers(): Passenger[] {
+  return MOCK_PASSENGERS;
+}
+
+export function getSummary(list: Passenger[] = MOCK_PASSENGERS): Summary {
+  return computeSummary(list);
+}
+```
+
+`src/app/services/dashboardService.ts`
+```ts
+import { recentUpdates as MOCK_UPDATES, routeConfigs as MOCK_ROUTES } from '../data/mockData';
+import type { WhatsAppUpdate, RouteConfig } from '../types';
+
+export function getRecentUpdates(): WhatsAppUpdate[] {
+  return MOCK_UPDATES;
+}
+
+export function getRouteConfigs(): RouteConfig[] {
+  return MOCK_ROUTES;
+}
+```
+
+`src/app/services/index.ts`
+```ts
+export * from './passengerService';
+export * from './dashboardService';
+```
+
+**Arquivos migrados** (trocaram `from '../data/mockData'` por `from '../services/...`'):
+- `src/app/hooks/usePassengers.ts`
+- `src/app/hooks/useDailyList.ts`
+- `src/app/components/SideNav.tsx`
+- `src/app/components/BottomNav.tsx`
+- `src/app/screens/DashboardScreen.tsx`
+- `src/app/screens/SettingsScreen.tsx`
+
+**Bug encontrado e corrigido durante a migração:**
+Em `SideNav.tsx`, a variável foi nomeada incorretamente como `_passengers` mas o restante do arquivo referenciava `passengers`. O TypeScript identificou o erro — corrigido renomeando para `passengers`.
+
+Em `SettingsScreen.tsx`, o import de `getPassengers` foi adicionado mas faltou declarar a variável dentro da função do componente. Corrigido adicionando `const passengers = getPassengers()` logo após os hooks.
+
+Build verificado novamente após todas as migrações — zero erros.
+
+---
+
+### Fase 7: Testes Automatizados — Vitest Configurado
+
+O projeto não tinha nenhum teste. A seção "O que NÃO existe" dizia exatamente isso. Hora de mudar.
+
+**Configuração do ambiente de testes:**
+
+`vite.config.ts` — bloco `test` adicionado:
+```ts
+export default defineConfig({
+  test: {
+    environment: 'jsdom',   // DOM virtual para componentes React
+    globals: true,          // describe/it/expect sem importar explicitamente
+    setupFiles: './src/test/setup.ts',
+  },
+  // ...
+})
+```
+
+`src/test/setup.ts` — carrega os matchers do jest-dom:
+```ts
+import '@testing-library/jest-dom';
+```
+
+**Scripts adicionados ao `package.json`:**
+```json
+"test": "vitest run",       // roda uma vez e sai (CI)
+"test:watch": "vitest"      // modo watch interativo (desenvolvimento)
+```
+
+**Testes escritos:**
+
+`src/test/passengerService.test.ts` — 3 testes unitários do serviço:
+```ts
+it('retorna lista com 12 passageiros')
+it('getSummary soma corretamente going + absent + pending = total')
+it('getSummary com lista vazia retorna zeros')
+```
+
+`src/test/StatusBadge.test.tsx` — 3 testes de componente React:
+```ts
+it('exibe "VAI" para status going')
+it('exibe "NÃO VAI" para status absent')
+it('exibe "PENDENTE" para status pending')
+```
+
+**Resultado final:**
+```
+ RUN  v4.1.4
+
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Duration  2.18s
+```
+
+6/6 testes passando. Build limpo. Projeto pronto para crescer com testes.
+
+---
+
 ## Dados Mock (o "banco de dados" atual)
 
 12 passageiros cadastrados:
@@ -368,7 +525,7 @@ dist
 - **Banco de dados** — nenhum dado persiste além do `localStorage` (apenas tema)
 - **WhatsApp real** — a integração com bot é simulada (sem Twilio, Meta API, etc.)
 - **Autenticação real** — qualquer email/senha funciona
-- **Testes** — sem testes unitários, de integração ou E2E
+- **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
 - **Deploy** — sem CI/CD configurado, sem service worker, sem manifest PWA completo
 - **Internacionalização** — strings hardcoded em PT-BR
 - **Notificações push reais** — apenas UI
