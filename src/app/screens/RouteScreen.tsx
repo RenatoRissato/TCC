@@ -169,6 +169,7 @@ export function RouteScreen() {
         onOpenChange={(open) => { if (!open) setDelTarget(null); }}
         title="Remover Passageiro"
         hideHandle
+        forceCenter
         maxWidth={340}
       >
         {delTarget && (

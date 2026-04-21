@@ -9,16 +9,19 @@ interface BottomSheetModalProps {
   description?: string;
   hideHandle?: boolean;
   maxWidth?: number;
+  forceCenter?: boolean;
   children: ReactNode;
 }
 
 export function BottomSheetModal({
   open, onOpenChange, title, description,
-  hideHandle, maxWidth = 560, children,
+  hideHandle, maxWidth = 560, forceCenter = false, children,
 }: BottomSheetModalProps) {
   const { isMd } = useBreakpoints();
 
-  const desktopStyle: React.CSSProperties = isMd ? {
+  const centered = isMd || forceCenter;
+
+  const desktopStyle: React.CSSProperties = centered ? {
     maxWidth,
     maxHeight: '90dvh',
     top: '50%',
@@ -38,7 +41,7 @@ export function BottomSheetModal({
         side="bottom"
         className={[
           'p-0 border-0 bg-panel text-ink',
-          isMd
+          centered
             ? 'shadow-[0_8px_48px_rgba(0,0,0,0.35)]'
             : 'rounded-t-[28px] shadow-[0_-12px_40px_rgba(0,0,0,0.25)] max-h-[92dvh] overflow-hidden flex flex-col',
           '[&>button]:hidden',
@@ -51,7 +54,7 @@ export function BottomSheetModal({
           <SheetTitle className="sr-only">Modal</SheetTitle>
         )}
         {description && <SheetDescription className="sr-only">{description}</SheetDescription>}
-        {!hideHandle && !isMd && (
+        {!hideHandle && !centered && (
           <div className="flex justify-center pt-3 pb-1 shrink-0">
             <span className="w-10 h-1 rounded-full bg-app-border" />
           </div>
