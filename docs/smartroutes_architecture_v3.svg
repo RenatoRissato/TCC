@@ -1,0 +1,184 @@
+<svg width="100%" viewBox="0 0 680 780" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Arquitetura SmartRoute v3</title>
+  <desc>Diagrama com dois fluxos: automático via cron job no horário configurado pelo motorista, e manual quando o motorista inicia a rota pelo PWA.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text { font-family: Arial, sans-serif; }
+      .sec  { font-size: 11px; fill: #888780; }
+      .ttl  { font-size: 13px; font-weight: 600; }
+      .sub  { font-size: 11px; }
+      .teal-box    { fill: #085041; stroke: #5DCAA5; stroke-width: 0.5; }
+      .teal-ttl    { fill: #9FE1CB; }
+      .teal-sub    { fill: #5DCAA5; }
+      .purple-box  { fill: #3C3489; stroke: #AFA9EC; stroke-width: 0.5; }
+      .purple-ttl  { fill: #CECBF6; }
+      .purple-sub  { fill: #AFA9EC; }
+      .green-box   { fill: #085041; stroke: #97C459; stroke-width: 0.5; }
+      .green-ttl   { fill: #C0DD97; }
+      .green-sub   { fill: #97C459; }
+      .coral-box   { fill: #712B13; stroke: #F0997B; stroke-width: 0.5; }
+      .coral-ttl   { fill: #F5C4B3; }
+      .coral-sub   { fill: #F0997B; }
+      .gray-box    { fill: #444441; stroke: #B4B2A9; stroke-width: 0.5; }
+      .gray-ttl    { fill: #D3D1C7; }
+      .gray-sub    { fill: #B4B2A9; }
+      .amber-box   { fill: #633806; stroke: #EF9F27; stroke-width: 0.5; }
+      .amber-ttl   { fill: #FAC775; }
+      .amber-sub   { fill: #EF9F27; }
+      .arr { fill: none; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <!-- USUÁRIOS -->
+  <text x="340" y="20" text-anchor="middle" class="sec">Usuários</text>
+
+  <rect x="50" y="30" width="130" height="54" rx="8" class="teal-box"/>
+  <text x="115" y="52" text-anchor="middle" dominant-baseline="central" class="ttl teal-ttl">Motorista</text>
+  <text x="115" y="70" text-anchor="middle" dominant-baseline="central" class="sub teal-sub">PWA mobile</text>
+
+  <rect x="500" y="30" width="140" height="54" rx="8" class="teal-box"/>
+  <text x="570" y="52" text-anchor="middle" dominant-baseline="central" class="ttl teal-ttl">Responsável</text>
+  <text x="570" y="70" text-anchor="middle" dominant-baseline="central" class="sub teal-sub">WhatsApp pessoal</text>
+
+  <!-- HOSPEDAGEM -->
+  <text x="340" y="120" text-anchor="middle" class="sec">Hospedagem</text>
+
+  <rect x="30" y="130" width="150" height="54" rx="8" class="purple-box"/>
+  <text x="105" y="152" text-anchor="middle" dominant-baseline="central" class="ttl purple-ttl">Vercel</text>
+  <text x="105" y="170" text-anchor="middle" dominant-baseline="central" class="sub purple-sub">Deploy do PWA</text>
+
+  <rect x="265" y="130" width="150" height="54" rx="8" class="green-box"/>
+  <text x="340" y="152" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Supabase</text>
+  <text x="340" y="170" text-anchor="middle" dominant-baseline="central" class="sub green-sub">DB + Auth + Functions</text>
+
+  <rect x="500" y="130" width="150" height="54" rx="8" class="coral-box"/>
+  <text x="575" y="152" text-anchor="middle" dominant-baseline="central" class="ttl coral-ttl">Railway</text>
+  <text x="575" y="170" text-anchor="middle" dominant-baseline="central" class="sub coral-sub">Evolution API 24/7</text>
+
+  <!-- SERVIÇOS -->
+  <text x="340" y="224" text-anchor="middle" class="sec">Camada de serviços</text>
+
+  <rect x="30" y="234" width="150" height="54" rx="8" class="purple-box"/>
+  <text x="105" y="256" text-anchor="middle" dominant-baseline="central" class="ttl purple-ttl">Frontend PWA</text>
+  <text x="105" y="274" text-anchor="middle" dominant-baseline="central" class="sub purple-sub">React + Shadcn</text>
+
+  <rect x="215" y="234" width="190" height="54" rx="8" class="green-box"/>
+  <text x="310" y="256" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Edge Functions</text>
+  <text x="310" y="274" text-anchor="middle" dominant-baseline="central" class="sub green-sub">Deno · segurança servidor</text>
+
+  <rect x="450" y="234" width="200" height="54" rx="8" class="coral-box"/>
+  <text x="550" y="256" text-anchor="middle" dominant-baseline="central" class="ttl coral-ttl">Evolution API</text>
+  <text x="550" y="274" text-anchor="middle" dominant-baseline="central" class="sub coral-sub">WhatsApp via Baileys</text>
+
+  <!-- DADOS -->
+  <text x="340" y="328" text-anchor="middle" class="sec">Dados e segurança</text>
+
+  <rect x="30" y="338" width="200" height="54" rx="8" class="green-box"/>
+  <text x="130" y="360" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">PostgreSQL</text>
+  <text x="130" y="378" text-anchor="middle" dominant-baseline="central" class="sub green-sub">Motoristas · Rotas · Viagens</text>
+
+  <rect x="255" y="338" width="170" height="54" rx="8" class="gray-box"/>
+  <text x="340" y="360" text-anchor="middle" dominant-baseline="central" class="ttl gray-ttl">RLS + Auth</text>
+  <text x="340" y="378" text-anchor="middle" dominant-baseline="central" class="sub gray-sub">Isolamento por motorista</text>
+
+  <rect x="450" y="338" width="200" height="54" rx="8" class="coral-box"/>
+  <text x="550" y="360" text-anchor="middle" dominant-baseline="central" class="ttl coral-ttl">PostgreSQL interno</text>
+  <text x="550" y="378" text-anchor="middle" dominant-baseline="central" class="sub coral-sub">Sessões · Fila WA</text>
+
+  <!-- FLUXO AUTOMÁTICO -->
+  <text x="340" y="432" text-anchor="middle" class="sec">Fluxo automático — cron job dispara no horário configurado</text>
+
+  <rect x="20" y="442" width="145" height="54" rx="8" class="amber-box"/>
+  <text x="92" y="460" text-anchor="middle" dominant-baseline="central" class="ttl amber-ttl">Configuração</text>
+  <text x="92" y="478" text-anchor="middle" dominant-baseline="central" class="sub amber-sub">Rota Manhã → 6h</text>
+
+  <rect x="185" y="442" width="145" height="54" rx="8" class="green-box"/>
+  <text x="257" y="460" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Cron job</text>
+  <text x="257" y="478" text-anchor="middle" dominant-baseline="central" class="sub green-sub">dispara às 6h / 10h / ...</text>
+
+  <rect x="350" y="442" width="145" height="54" rx="8" class="green-box"/>
+  <text x="422" y="460" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Edge Fn</text>
+  <text x="422" y="478" text-anchor="middle" dominant-baseline="central" class="sub green-sub">cria viagem + envia WA</text>
+
+  <rect x="515" y="442" width="145" height="54" rx="8" class="coral-box"/>
+  <text x="587" y="460" text-anchor="middle" dominant-baseline="central" class="ttl coral-ttl">Evolution API</text>
+  <text x="587" y="478" text-anchor="middle" dominant-baseline="central" class="sub coral-sub">mensagem lista WA</text>
+
+  <!-- FLUXO MANUAL -->
+  <text x="340" y="535" text-anchor="middle" class="sec">Fluxo manual — motorista inicia quando quiser</text>
+
+  <rect x="20" y="545" width="145" height="54" rx="8" class="teal-box"/>
+  <text x="92" y="563" text-anchor="middle" dominant-baseline="central" class="ttl teal-ttl">Motorista</text>
+  <text x="92" y="581" text-anchor="middle" dominant-baseline="central" class="sub teal-sub">aperta iniciar rota</text>
+
+  <rect x="185" y="545" width="145" height="54" rx="8" class="green-box"/>
+  <text x="257" y="563" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Edge Fn</text>
+  <text x="257" y="581" text-anchor="middle" dominant-baseline="central" class="sub green-sub">cria viagem + envia WA</text>
+
+  <rect x="350" y="545" width="145" height="54" rx="8" class="coral-box"/>
+  <text x="422" y="563" text-anchor="middle" dominant-baseline="central" class="ttl coral-ttl">Evolution API</text>
+  <text x="422" y="581" text-anchor="middle" dominant-baseline="central" class="sub coral-sub">mensagem lista WA</text>
+
+  <rect x="515" y="545" width="145" height="54" rx="8" class="teal-box"/>
+  <text x="587" y="563" text-anchor="middle" dominant-baseline="central" class="ttl teal-ttl">Responsável</text>
+  <text x="587" y="581" text-anchor="middle" dominant-baseline="central" class="sub teal-sub">responde 1, 2, 3 ou 4</text>
+
+  <!-- RETORNO -->
+  <text x="340" y="638" text-anchor="middle" class="sec">Retorno — atualização em tempo real</text>
+
+  <rect x="115" y="648" width="170" height="54" rx="8" class="green-box"/>
+  <text x="200" y="666" text-anchor="middle" dominant-baseline="central" class="ttl green-ttl">Webhook Evolution</text>
+  <text x="200" y="684" text-anchor="middle" dominant-baseline="central" class="sub green-sub">atualiza confirmacao</text>
+
+  <rect x="395" y="648" width="170" height="54" rx="8" class="purple-box"/>
+  <text x="480" y="666" text-anchor="middle" dominant-baseline="central" class="ttl purple-ttl">Supabase Realtime</text>
+  <text x="480" y="684" text-anchor="middle" dominant-baseline="central" class="sub purple-sub">PWA atualiza ao vivo</text>
+
+  <!-- SETAS ESTRUTURAIS -->
+  <line x1="115" y1="84" x2="105" y2="128" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="540" y1="84" x2="400" y2="128" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="105" y1="184" x2="105" y2="232" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="340" y1="184" x2="320" y2="232" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="575" y1="184" x2="560" y2="232" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="180" y1="261" x2="213" y2="261" class="arr" stroke="#1D9E75" marker-end="url(#arrow)"/>
+  <line x1="406" y1="261" x2="448" y2="261" class="arr" stroke="#993C1D" marker-end="url(#arrow)"/>
+  <line x1="130" y1="288" x2="130" y2="336" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="310" y1="288" x2="330" y2="336" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+  <line x1="550" y1="288" x2="550" y2="336" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+
+  <!-- SETAS FLUXO AUTOMÁTICO -->
+  <line x1="165" y1="469" x2="183" y2="469" class="arr" stroke="#BA7517" marker-end="url(#arrow)"/>
+  <line x1="330" y1="469" x2="348" y2="469" class="arr" stroke="#1D9E75" marker-end="url(#arrow)"/>
+  <line x1="495" y1="469" x2="513" y2="469" class="arr" stroke="#993C1D" marker-end="url(#arrow)"/>
+
+  <!-- SETAS FLUXO MANUAL -->
+  <line x1="165" y1="572" x2="183" y2="572" class="arr" stroke="#1D9E75" marker-end="url(#arrow)"/>
+  <line x1="330" y1="572" x2="348" y2="572" class="arr" stroke="#993C1D" marker-end="url(#arrow)"/>
+  <line x1="495" y1="572" x2="513" y2="572" class="arr" stroke="#888780" marker-end="url(#arrow)"/>
+
+  <!-- RESPONSÁVEL → WEBHOOK (ambos os fluxos convergem) -->
+  <path d="M587 496 L587 620 L200 620 L200 646" fill="none" stroke="#1D9E75" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M587 599 L587 620" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+
+  <!-- WEBHOOK → REALTIME -->
+  <line x1="285" y1="675" x2="393" y2="675" class="arr" stroke="#534AB7" marker-end="url(#arrow)"/>
+
+  <!-- REALTIME → MOTORISTA (loop fechado, tracejado) -->
+  <path d="M480 702 L480 740 L115 740 L115 86" fill="none" stroke="#534AB7" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+  <!-- LEGENDA -->
+  <rect x="20" y="758" width="10" height="10" rx="2" fill="#BA7517"/>
+  <text x="36" y="768" class="sec">Automação (horário)</text>
+  <rect x="155" y="758" width="10" height="10" rx="2" fill="#1D9E75"/>
+  <text x="171" y="768" class="sec">Fluxo seguro</text>
+  <rect x="265" y="758" width="10" height="10" rx="2" fill="#993C1D"/>
+  <text x="281" y="768" class="sec">Evolution API</text>
+  <rect x="375" y="758" width="10" height="10" rx="2" fill="#888780"/>
+  <text x="391" y="768" class="sec">Deploy / dependência</text>
+  <rect x="535" y="758" width="10" height="10" rx="2" fill="#534AB7"/>
+  <text x="551" y="768" class="sec">Realtime (loop)</text>
+
+</svg>
