@@ -313,6 +313,13 @@ O projeto passou por uma grande refatoração para separar responsabilidades:
 
 ### Fase 3: Correções de Bugs e UX
 
+**Tela preta ao iniciar a home (Google Translate quebrando o React):**
+- **Problema:** O Google Translate do navegador interceptava o conteúdo da aplicação e substituía os nós de texto diretamente no DOM. Isso corrompia a árvore de elementos gerenciada pelo React — botões ficavam vazios, textos sumiam e a tela aparecia preta/quebrada ao abrir a home
+- **Solução 1 — `index.html`:** Adicionado `lang="pt-BR"` e `translate="no"` na tag `<html>`, `<meta name="google" content="notranslate">` no `<head>`, e `class="notranslate"` no `<body>`. Isso instrui navegadores e bots a não traduzir a aplicação
+- **Solução 2 — `LoginScreen.tsx`:** Textos inline dentro de botões (`Entrando...`, `Entrar`) foram envolvidos em `<span>` — nós de texto soltos são os mais suscetíveis à corrupção pelo Translate
+- **Bônus:** Título da aba atualizado de `"Mobile Dashboard Design System"` para `"SmartRoutes"`
+- **Arquivos:** `index.html`, `src/app/screens/LoginScreen.tsx`
+
 **Dark Mode não funcionava:**
 - **Problema:** `ThemeContext` atualizava o estado React mas nunca aplicava a classe `.dark` no `<html>`
 - **Solução:** Adicionado `useEffect` que chama `document.documentElement.classList.toggle('dark', isDark)` + persistência em `localStorage`
@@ -345,7 +352,15 @@ O projeto passou por uma grande refatoração para separar responsabilidades:
 
 ### Fase 4: Documentação e Configuração
 
-**`.gitignore` atualizado:**
+**Atualização do Vite para 6.4.2:**
+- Vite e `@vitejs/plugin-react` foram atualizados para garantir compatibilidade com as versões mais recentes das dependências e corrigir alertas de deprecação no build
+- Somente `package.json` e `package-lock.json` foram alterados — sem impacto no código da aplicação
+
+**Criação do `.cursorrules` e `sobreprojeto.md`:**
+- `.cursorrules` — arquivo de contexto usado pelo Claude Code para entender as regras do projeto: stack, convenções de código, arquitetura, padrões de nomenclatura e comportamentos esperados. Funciona como um "briefing permanente" para o assistente
+- `sobreprojeto.md` — documento inicial descrevendo o produto, o problema que resolve e as decisões arquiteturais. Foi a semente do `PROJETO_historico.md`
+
+**`.gitignore` criado:**
 ```
 node_modules
 dist
@@ -354,6 +369,17 @@ dist
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 ```
+
+**Reorganização da pasta `docs/` — centralizando a documentação:**
+- `PROJETO.md` foi renomeado e movido para `docs/PROJETO_historico.md` (este arquivo)
+- `sobreprojeto.md` (raiz) foi movido para `docs/sobreprojeto.md`
+- Novos documentos técnicos criados na pasta `docs/`:
+  - `docs/banco.md` — modelagem do banco de dados para o backend futuro
+  - `docs/Edge_Functions.md` — estratégia de Edge Functions para a API
+  - `docs/evolution_api.md` — integração planejada com Evolution API (WhatsApp real)
+  - `docs/requisitos_resumido.md` — requisitos funcionais e não-funcionais resumidos
+  - `docs/diagrama_arquitetura.md` — diagrama textual da arquitetura do sistema
+  - `docs/smartroutes_architecture_v3.svg` — diagrama visual SVG da arquitetura
 
 ---
 
@@ -500,6 +526,17 @@ it('exibe "PENDENTE" para status pending')
 ```
 
 6/6 testes passando. Build limpo. Projeto pronto para crescer com testes.
+
+---
+
+### Fase 8: Correção do Pop-up de Exclusão no Mobile
+
+**Pop-up de confirmação de exclusão aparecia na parte inferior da tela no mobile:**
+- **Problema:** O modal de confirmação ("Remover Passageiro?") usava o componente `BottomSheetModal`, que no mobile sempre exibe o conteúdo vindo de baixo (bottom sheet). No desktop (≥768px) ele já centralizava automaticamente via `isMd`, mas no celular ficava colado na parte inferior da tela — visualmente errado para um diálogo pequeno de confirmação
+- **Causa raiz:** A lógica de centralização dentro de `BottomSheetModal` era exclusivamente baseada no breakpoint `isMd`. Não havia forma de forçar o modo centralizado independente do tamanho da tela
+- **Solução:** Adicionada prop `forceCenter?: boolean` ao `BottomSheetModal`. Quando `true`, o componente usa o estilo centralizado (`top: 50%, left: 50%, transform: translate(-50%, -50%)`) independente do breakpoint. A variável interna `isMd` foi substituída por `centered = isMd || forceCenter` em todos os pontos de decisão do componente
+- **Aplicação:** O modal de exclusão em `RouteScreen.tsx` passou a receber `forceCenter` — o modal de adicionar/editar passageiro (grande, scroll) continua como bottom sheet no mobile conforme o esperado
+- **Arquivos:** `src/app/components/shared/BottomSheetModal.tsx`, `src/app/screens/RouteScreen.tsx`
 
 ---
 
