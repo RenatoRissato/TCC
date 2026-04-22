@@ -1,41 +1,6 @@
-// ─── Types ────────────────────────────────────────────────────────
-export type StudentStatus = 'going' | 'absent' | 'pending';
-export type RouteType = 'morning' | 'afternoon' | 'night';
+import type { Passenger, RouteConfig, WhatsAppUpdate } from '../types';
 
-export interface Passenger {
-  id: number;
-  name: string;
-  initials: string;
-  address: string;
-  neighborhood: string;
-  phone: string;      // for WhatsApp
-  parentName: string;
-  status: StudentStatus;
-  responseTime?: string;
-  stopOrder: number;
-  routes: RouteType[];
-  grade: string;
-  avatar?: string;
-}
-
-export interface WhatsAppUpdate {
-  id: number;
-  name: string;
-  initials: string;
-  status: 'going' | 'absent';
-  message: string;
-  time: string;
-}
-
-export interface RouteConfig {
-  type: RouteType;
-  label: string;
-  time: string;
-  emoji: string;
-  passengerCount: number;
-  color: string;
-  darkBg: boolean;
-}
+export type { Passenger, RouteConfig, RouteType, StudentStatus, Summary, WhatsAppUpdate } from '../types';
 
 // ─── Passengers ──────────────────────────────────────────────────
 export const passengers: Passenger[] = [

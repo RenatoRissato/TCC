@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from 'react-router';
 import { Home, MapPin, MessageCircle, Settings } from 'lucide-react';
-import { passengers } from '../data/mockData';
+import { getPassengers } from '../services/passengerService';
+
+const passengers = getPassengers();
 import { useTheme } from '../context/ThemeContext';
 
 const PENDING = passengers.filter(p => p.status === 'pending').length;
