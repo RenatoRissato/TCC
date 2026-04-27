@@ -3,6 +3,12 @@ dist
 .env
 .env.local
 
+# Supabase — secrets locais das Edge Functions (NUNCA commitar)
+supabase/.env
+supabase/.env.local
+supabase/.temp/
+supabase/.branches/
+
 # Claude Code — arquivos temporários de sessão
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
