@@ -2,19 +2,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { Home, MapPin, MessageCircle, Settings, LogOut, SunMedium, Moon, ChevronRight, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getPassengers, getSummary } from '../services/passengerService';
-
-const passengers = getPassengers();
-
-const PENDING = passengers.filter(p => p.status === 'pending').length;
-const summary  = getSummary(passengers);
-
-const NAV_ITEMS = [
-  { path: '/home',     label: 'Início',      sub: 'Visão geral',          Icon: Home,          badge: 0 },
-  { path: '/routes',   label: 'Rotas',        sub: 'Lista de passageiros', Icon: MapPin,        badge: PENDING },
-  { path: '/whatsapp', label: 'WhatsApp',     sub: 'Integração & Bot',     Icon: MessageCircle, badge: 0 },
-  { path: '/settings', label: 'Config.',      sub: 'Perfil & dashboards',  Icon: Settings,      badge: 0 },
-] as const;
+import { usePassengers } from '../hooks/usePassengers';
 
 const SIDEBAR_BG   = '#0D1117';
 const BORDER_COLOR = 'rgba(255,255,255,0.07)';
@@ -24,6 +12,15 @@ export function SideNav({ onClose }: { onClose?: () => void } = {}) {
   const { pathname }        = useLocation();
   const { user, logout }    = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { counts } = usePassengers();
+  const summary = { going: counts.going, absent: counts.absent, pending: counts.pending };
+
+  const NAV_ITEMS = [
+    { path: '/home',     label: 'Início',      sub: 'Visão geral',          Icon: Home,          badge: 0 },
+    { path: '/routes',   label: 'Rotas',        sub: 'Lista de passageiros', Icon: MapPin,        badge: counts.pending },
+    { path: '/whatsapp', label: 'WhatsApp',     sub: 'Integração & Bot',     Icon: MessageCircle, badge: 0 },
+    { path: '/settings', label: 'Config.',      sub: 'Perfil & dashboards',  Icon: Settings,      badge: 0 },
+  ] as const;
 
   const isDrawer = Boolean(onClose);
 

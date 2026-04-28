@@ -5,6 +5,7 @@ import { SideNav } from './SideNav';
 import { useColors } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { NavDrawerContext } from '../context/NavDrawerContext';
+import { Toaster } from './ui/sonner';
 
 /**
  * Authenticated shell — fully responsive (Bootstrap 5 breakpoints):
@@ -131,6 +132,7 @@ export function AppLayout() {
         </div>
 
       </div>
+      <Toaster richColors position="top-right" />
     </NavDrawerContext.Provider>
   );
 }

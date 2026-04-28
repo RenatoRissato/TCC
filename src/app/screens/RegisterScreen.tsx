@@ -56,6 +56,85 @@ const COUNTRY_CODES = [
   { code: '+52',  flag: '🇲🇽', name: 'México' },
 ];
 
+/* Aplica máscara brasileira: (DD) XXXXX-XXXX  ou  (DD) XXXX-XXXX */
+function formatarTelefoneBR(input: string): string {
+  const dig = input.replace(/\D/g, '').slice(0, 11);
+  if (dig.length === 0) return '';
+  if (dig.length <= 2) return `(${dig}`;
+  if (dig.length <= 6) return `(${dig.slice(0, 2)}) ${dig.slice(2)}`;
+  if (dig.length <= 10) return `(${dig.slice(0, 2)}) ${dig.slice(2, 6)}-${dig.slice(6)}`;
+  return `(${dig.slice(0, 2)}) ${dig.slice(2, 7)}-${dig.slice(7)}`;
+}
+
+/* ─── InputField (top-level — não recriar a cada render!) ─────────── */
+interface InputFieldProps {
+  id: string;
+  type?: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
+  autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  rightEl?: React.ReactNode;
+  inputBg: string;
+  inputBdr: string;
+  textPri: string;
+  labelClr: string;
+}
+
+function InputField({
+  id, type = 'text', label, placeholder, value, onChange, error,
+  autoComplete, inputMode, rightEl, inputBg, inputBdr, textPri, labelClr,
+}: InputFieldProps) {
+  return (
+    <div style={{ marginBottom: error ? 6 : 16 }}>
+      <label htmlFor={id} style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
+        {label}
+      </label>
+      <div style={{ position: 'relative' }}>
+        <input
+          id={id} type={type} placeholder={placeholder} value={value}
+          onChange={onChange} autoComplete={autoComplete} inputMode={inputMode}
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: inputBg, border: `2px solid ${error ? '#DC3545' : inputBdr}`,
+            borderRadius: 14, padding: rightEl ? '14px 52px 14px 16px' : '14px 16px',
+            fontSize: 15, fontFamily: 'Inter, sans-serif', color: textPri,
+            outline: 'none', minHeight: 52, transition: 'border-color 0.2s, box-shadow 0.2s',
+          }}
+          onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
+          onBlur={e => { e.currentTarget.style.borderColor = error ? '#DC3545' : inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
+        />
+        {rightEl && (
+          <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }}>
+            {rightEl}
+          </div>
+        )}
+      </div>
+      {error && (
+        <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#DC3545', fontWeight: 600, margin: '6px 0 8px' }}>
+          <AlertCircle size={12} strokeWidth={2.5} /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function EyeBtn({ show, onClick, color }: { show: boolean; onClick: () => void; color: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0 }}
+      aria-label={show ? 'Ocultar' : 'Mostrar'}
+    >
+      {show ? <EyeOff size={20} color={color} strokeWidth={2} /> : <Eye size={20} color={color} strokeWidth={2} />}
+    </button>
+  );
+}
+
 function PhoneInput({ value, onChange, error, inputBg, inputBdr, textPri, textSec }: {
   value: string; onChange: (v: string) => void; error?: string;
   inputBg: string; inputBdr: string; textPri: string; textSec: string;
@@ -220,6 +299,48 @@ function RegisterBrandPanel({ onGoLogin }: { onGoLogin: () => void }) {
   );
 }
 
+/* ─── "Confirme seu e-mail" screen ────────────────────────────────── */
+function ConfirmEmailState({ email, isDark, isMobile, onGoLogin }: { email: string; isDark: boolean; isMobile: boolean; onGoLogin: () => void }) {
+  const textPri = isDark ? '#F8F9FA' : '#212529';
+  const textSec = isDark ? '#8A9BB0' : '#6C757D';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 40, gap: 22, textAlign: 'center' }}>
+      <div className="auth-slide-up" style={{ width: 96, height: 96, background: 'rgba(41,121,255,0.12)', border: '2px solid rgba(41,121,255,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 20px rgba(41,121,255,0.06)' }}>
+        <span style={{ fontSize: 44 }}>📧</span>
+      </div>
+      <div className="auth-slide-up" style={{ animationDelay: '0.08s' }}>
+        <h2 style={{ fontSize: 26, fontWeight: 800, color: isMobile ? '#fff' : textPri, margin: '0 0 8px' }}>Confirme seu e-mail</h2>
+        <p style={{ fontSize: 14, color: isMobile ? 'rgba(255,255,255,0.55)' : textSec, margin: 0, lineHeight: 1.6 }}>
+          Enviamos um link de confirmação para
+          <br />
+          <strong style={{ color: '#FFC107', wordBreak: 'break-all' }}>{email}</strong>
+        </p>
+      </div>
+      <div className="auth-slide-up" style={{ animationDelay: '0.16s', background: isDark ? 'rgba(255,193,7,0.08)' : 'rgba(255,193,7,0.1)', border: `1px solid rgba(255,193,7,0.25)`, borderRadius: 12, padding: '12px 14px', maxWidth: 360 }}>
+        <p style={{ fontSize: 12, color: isMobile ? 'rgba(255,255,255,0.7)' : textSec, margin: 0, lineHeight: 1.55 }}>
+          Abra o link recebido para ativar sua conta.
+          Depois, volte aqui e faça login para concluir o cadastro do seu perfil de motorista.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onGoLogin}
+        className="auth-slide-up"
+        style={{
+          animationDelay: '0.24s',
+          background: '#FFC107', color: '#212529',
+          border: 'none', borderRadius: 14, padding: '12px 28px',
+          fontSize: 14, fontWeight: 800, fontFamily: 'Inter, sans-serif',
+          cursor: 'pointer', minHeight: 48,
+          boxShadow: '0 4px 16px rgba(255,193,7,0.4)',
+        }}
+      >
+        Ir para o login
+      </button>
+    </div>
+  );
+}
+
 /* ─── Success screen ───────────────────────────────────────────────── */
 function SuccessState({ name, isDark, isMobile, onGoLogin }: { name: string; isDark: boolean; isMobile: boolean; onGoLogin: () => void }) {
   const textPri = isDark ? '#F8F9FA' : '#212529';
@@ -260,6 +381,8 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [success,     setSuccess]     = useState(false);
+  const [needsConfirmEmail, setNeedsConfirmEmail] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const set = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [field]: e.target.value }));
@@ -281,9 +404,21 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
-    const ok = await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
+    setSubmitError(null);
+    const result = await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
     setLoading(false);
-    if (ok) setSuccess(true);
+
+    if (!result.ok) {
+      setSubmitError(result.errorMessage ?? 'Não foi possível criar sua conta. Tente novamente.');
+      return;
+    }
+    if (result.needsEmailConfirmation) {
+      setNeedsConfirmEmail(true);
+      return;
+    }
+    // Sucesso com sessão imediata: o AuthGate já vai trocar pra app no próximo render.
+    // O setSuccess fica como fallback visual caso o re-render demore um frame.
+    setSuccess(true);
   };
 
   /* colour tokens */
@@ -303,51 +438,10 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     </div>
   );
 
-  /* ── Input row ── */
-  const InputField = ({ id, type = 'text', label, placeholder, value, onChange, error, autoComplete, inputMode, rightEl }: {
-    id: string; type?: string; label: string; placeholder: string;
-    value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    error?: string; autoComplete?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
-    rightEl?: React.ReactNode;
-  }) => (
-    <div style={{ marginBottom: error ? 6 : 16 }}>
-      <label htmlFor={id} style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
-        {label}
-      </label>
-      <div style={{ position: 'relative' }}>
-        <input id={id} type={type} placeholder={placeholder} value={value}
-          onChange={onChange} autoComplete={autoComplete} inputMode={inputMode}
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: inputBg, border: `2px solid ${error ? '#DC3545' : inputBdr}`,
-            borderRadius: 14, padding: rightEl ? '14px 52px 14px 16px' : '14px 16px',
-            fontSize: 15, fontFamily: 'Inter, sans-serif', color: textPri,
-            outline: 'none', minHeight: 52, transition: 'border-color 0.2s, box-shadow 0.2s',
-          }}
-          onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
-          onBlur={e => { e.currentTarget.style.borderColor = error ? '#DC3545' : inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
-        />
-        {rightEl && (
-          <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }}>
-            {rightEl}
-          </div>
-        )}
-      </div>
-      {error && (
-        <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#DC3545', fontWeight: 600, margin: '6px 0 8px' }}>
-          <AlertCircle size={12} strokeWidth={2.5} /> {error}
-        </p>
-      )}
-    </div>
-  );
-
-  const EyeBtn = ({ show, onClick }: { show: boolean; onClick: () => void }) => (
-    <button type="button" onClick={onClick}
-      style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0 }}
-      aria-label={show ? 'Ocultar' : 'Mostrar'}>
-      {show ? <EyeOff size={20} color={textSec} strokeWidth={2} /> : <Eye size={20} color={textSec} strokeWidth={2} />}
-    </button>
-  );
+  /* InputField/EyeBtn ficam definidos no top-level do arquivo — recriá-los
+     aqui dentro fazia o React desmontar/remontar o <input> a cada keypress,
+     o que tirava o foco depois da primeira letra. */
+  const tokens = { inputBg, inputBdr, textPri, labelClr };
 
   /* ── The form ── */
   const TheForm = (
@@ -355,21 +449,21 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
       {/* Personal section */}
       <SectionLabel>Dados Pessoais</SectionLabel>
 
-      <InputField id="reg-name" label="Nome Completo" placeholder="Ex: Carlos Andrade"
+      <InputField {...tokens} id="reg-name" label="Nome Completo" placeholder="Ex: Carlos Andrade"
         value={form.name} onChange={set('name')} error={errors.name} autoComplete="name" />
 
-      <InputField id="reg-email" type="email" label="E-mail" placeholder="seu@email.com"
+      <InputField {...tokens} id="reg-email" type="email" label="E-mail" placeholder="seu@email.com"
         value={form.email} onChange={set('email')} error={errors.email}
         autoComplete="email" inputMode="email" />
 
       {/* WhatsApp with country code */}
       <div style={{ marginBottom: errors.phone ? 6 : 16 }}>
         <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
-          Número WhatsApp <span style={{ fontSize: 11, fontWeight: 500, color: textSec }}>(inclua o código do país)</span>
+          Seu WhatsApp de contato <span style={{ fontSize: 11, fontWeight: 500, color: textSec }}>(com DDD)</span>
         </label>
         <PhoneInput
           value={form.phone}
-          onChange={v => { setForm(f => ({ ...f, phone: v })); setErrors(e => ({ ...e, phone: undefined })); }}
+          onChange={v => { setForm(f => ({ ...f, phone: formatarTelefoneBR(v) })); setErrors(e => ({ ...e, phone: undefined })); }}
           error={errors.phone}
           inputBg={inputBg} inputBdr={inputBdr} textPri={textPri} textSec={textSec}
         />
@@ -378,21 +472,26 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
             <AlertCircle size={12} strokeWidth={2.5} /> {errors.phone}
           </p>
         )}
-        <p style={{ fontSize: 12, color: textSec, margin: '6px 0 0', lineHeight: 1.5 }}>
-          📱 Este número receberá as respostas dos pais via bot WhatsApp.
-        </p>
+        <div style={{ background: 'rgba(37,211,102,0.08)', border: '1px solid rgba(37,211,102,0.25)', borderRadius: 12, padding: '10px 12px', marginTop: 8, display: 'flex', gap: 8 }}>
+          <span style={{ fontSize: 14, flexShrink: 0 }}>ℹ️</span>
+          <p style={{ fontSize: 11.5, color: textSec, margin: 0, lineHeight: 1.55 }}>
+            Este é o seu número pessoal — usado só para identificação no SmartRoutes.
+            <br />
+            <strong style={{ color: textPri }}>O WhatsApp da van</strong> que enviará mensagens aos responsáveis é conectado depois, escaneando um <strong style={{ color: textPri }}>QR Code</strong> na tela <em>WhatsApp</em>. Pode ser o mesmo número ou outro.
+          </p>
+        </div>
       </div>
 
       {/* Security section */}
       <SectionLabel>Segurança</SectionLabel>
 
-      <InputField id="reg-pw" type={showPwd ? 'text' : 'password'} label="Senha"
+      <InputField {...tokens} id="reg-pw" type={showPwd ? 'text' : 'password'} label="Senha"
         placeholder="Mínimo 6 caracteres" value={form.password} onChange={set('password')}
         error={errors.password} autoComplete="new-password"
-        rightEl={<EyeBtn show={showPwd} onClick={() => setShowPwd(v => !v)} />} />
+        rightEl={<EyeBtn show={showPwd} onClick={() => setShowPwd(v => !v)} color={textSec} />} />
       {form.password && <div style={{ marginTop: -10, marginBottom: 16 }}><StrengthBar password={form.password} /></div>}
 
-      <InputField id="reg-confirm" type={showConfirm ? 'text' : 'password'} label="Confirmar Senha"
+      <InputField {...tokens} id="reg-confirm" type={showConfirm ? 'text' : 'password'} label="Confirmar Senha"
         placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')}
         error={errors.confirm} autoComplete="new-password"
         rightEl={
@@ -400,7 +499,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
             {form.confirm && form.password === form.confirm && (
               <CheckCircle2 size={18} color="#198754" strokeWidth={2.5} />
             )}
-            <EyeBtn show={showConfirm} onClick={() => setShowConfirm(v => !v)} />
+            <EyeBtn show={showConfirm} onClick={() => setShowConfirm(v => !v)} color={textSec} />
           </div>
         } />
 
@@ -417,6 +516,14 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
           </button>.
         </p>
       </div>
+
+      {/* Submit error */}
+      {submitError && (
+        <div className="auth-slide-up" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: isDark ? 'rgba(220,53,69,0.15)' : '#FFF5F5', border: `1.5px solid ${isDark ? 'rgba(220,53,69,0.4)' : '#DC3545'}`, borderRadius: 14, padding: '13px 16px', marginBottom: 16 }}>
+          <AlertCircle size={18} color="#DC3545" strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 13, color: '#DC3545', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>{submitError}</p>
+        </div>
+      )}
 
       {/* Submit */}
       <button type="submit" disabled={loading}
@@ -456,7 +563,9 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
           .auth-slide-up { animation: auth-slide-up 0.35s cubic-bezier(0.22,1,0.36,1) both; }
         `}</style>
 
-        {success ? (
+        {needsConfirmEmail ? (
+          <ConfirmEmailState email={form.email} isDark={true} isMobile={true} onGoLogin={onGoLogin} />
+        ) : success ? (
           <SuccessState name={form.name} isDark={true} isMobile={true} onGoLogin={onGoLogin} />
         ) : (
           <>
@@ -552,7 +661,11 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
             boxSizing: 'border-box',
           }}
         >
-          {success ? (
+          {needsConfirmEmail ? (
+            <div style={{ background: cardBg, borderRadius: 28, padding: '60px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <ConfirmEmailState email={form.email} isDark={isDark} isMobile={false} onGoLogin={onGoLogin} />
+            </div>
+          ) : success ? (
             <div style={{ background: cardBg, borderRadius: 28, padding: '60px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <SuccessState name={form.name} isDark={isDark} isMobile={false} onGoLogin={onGoLogin} />
             </div>

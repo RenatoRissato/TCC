@@ -41,7 +41,7 @@ export function RouteScreen() {
   const openEdit = useCallback((p: Passenger) => { setEditing(p); setModal('edit'); }, []);
   const closeModal = () => { setModal(null); setEditing(null); };
 
-  const handleSave = useCallback((form: Parameters<typeof add>[0], id?: number) => {
+  const handleSave = useCallback((form: Parameters<typeof add>[0], id?: string) => {
     if (id !== undefined) edit(id, form); else add(form);
     closeModal();
   }, [add, edit]);

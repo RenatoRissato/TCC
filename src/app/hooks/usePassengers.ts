@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
-import { getPassengers, getSummary } from '../services/passengerService';
-
-const SEED = getPassengers();
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  listarPassageiros,
+  criarPassageiro,
+  atualizarPassageiro,
+  inativarPassageiro,
+  calcularSummary,
+} from '../services/passageiroService';
 import type { Passenger, RouteType, StudentStatus } from '../types';
 
 export type PassengerFilter = 'all' | StudentStatus;
@@ -15,6 +19,7 @@ export interface PassengerFormValues {
   phone: string;
   grade: string;
   routes: RouteType[];
+  rotaId?: string;
 }
 
 interface UsePassengersOptions {
@@ -25,15 +30,25 @@ interface UsePassengersOptions {
 
 const STATUS_ORDER: Record<StudentStatus, number> = { going: 0, pending: 1, absent: 2 };
 
-function initials(name: string) {
-  return name.trim().split(' ').filter(Boolean).map(n => n[0].toUpperCase()).slice(0, 2).join('');
-}
-
-let _nextId = SEED.length + 1;
-const nextId = () => ++_nextId;
-
 export function usePassengers({ search = '', filter = 'all', period = 'all' }: UsePassengersOptions = {}) {
-  const [list, setList] = useState<Passenger[]>(() => SEED.map(p => ({ ...p })));
+  const [list, setList] = useState<Passenger[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const recarregar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const dados = await listarPassageiros();
+      setList(dados);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { recarregar(); }, [recarregar]);
 
   const counts = useMemo(() => ({
     all: list.length,
@@ -58,37 +73,44 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
   }, [list, search, filter, period]);
 
   const periodSummary = useMemo(
-    () => getSummary(period === 'all' ? list : list.filter(p => p.routes.includes(period))),
+    () => calcularSummary(period === 'all' ? list : list.filter(p => p.routes.includes(period))),
     [list, period],
   );
 
-  const add = useCallback((form: PassengerFormValues) => {
-    setList(prev => [...prev, {
-      id: nextId(),
-      name: form.name,
-      initials: initials(form.name),
-      address: form.address,
-      neighborhood: form.neighborhood,
-      phone: form.phone,
-      parentName: form.parentName,
-      status: 'pending',
-      stopOrder: prev.length + 1,
-      routes: form.routes,
-      grade: form.grade,
-    }]);
-  }, []);
+  const add = useCallback(async (form: PassengerFormValues) => {
+    if (!form.rotaId) {
+      console.warn('add passageiro sem rotaId — selecione uma rota antes de salvar');
+      return;
+    }
+    await criarPassageiro({
+      rotaId: form.rotaId,
+      nomeCompleto: form.name,
+      telefoneResponsavel: form.phone,
+      enderecoEmbarque: form.address,
+      pontoReferencia: form.neighborhood || undefined,
+      observacoes: form.parentName || undefined,
+      turno: form.grade || undefined,
+    });
+    await recarregar();
+  }, [recarregar]);
 
-  const edit = useCallback((id: number, form: PassengerFormValues) => {
-    setList(prev => prev.map(p =>
-      p.id === id
-        ? { ...p, ...form, initials: initials(form.name) }
-        : p,
-    ));
-  }, []);
+  const edit = useCallback(async (id: string, form: PassengerFormValues) => {
+    await atualizarPassageiro(id, {
+      rotaId: form.rotaId,
+      nomeCompleto: form.name,
+      telefoneResponsavel: form.phone,
+      enderecoEmbarque: form.address,
+      pontoReferencia: form.neighborhood || undefined,
+      observacoes: form.parentName || undefined,
+      turno: form.grade || undefined,
+    });
+    await recarregar();
+  }, [recarregar]);
 
-  const remove = useCallback((id: number) => {
-    setList(prev => prev.filter(p => p.id !== id));
-  }, []);
+  const remove = useCallback(async (id: string) => {
+    await inativarPassageiro(id);
+    await recarregar();
+  }, [recarregar]);
 
-  return { list, filtered, counts, periodSummary, add, edit, remove };
+  return { list, filtered, counts, periodSummary, add, edit, remove, loading, error, recarregar };
 }

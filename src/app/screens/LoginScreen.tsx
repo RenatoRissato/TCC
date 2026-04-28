@@ -175,8 +175,8 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
     if (!email.trim())    { setError('Por favor, insira seu e-mail.'); return; }
     if (!password.trim()) { setError('Por favor, insira sua senha.'); return; }
     setLoading(true);
-    const ok = await login(email, password);
-    if (!ok) setError('Credenciais inválidas. Verifique e tente novamente.');
+    const result = await login(email, password);
+    if (!result.ok) setError(result.errorMessage ?? 'Não foi possível entrar. Tente novamente.');
     setLoading(false);
   };
 

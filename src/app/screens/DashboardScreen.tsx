@@ -7,13 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useDailyList } from '../hooks/useDailyList';
-import { getPassengers } from '../services/passengerService';
+import { usePassengers } from '../hooks/usePassengers';
+import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
-
-const passengers = getPassengers();
-const recentUpdates = getRecentUpdates();
-const routeConfigs = getRouteConfigs();
 import { useNavDrawer } from '../context/NavDrawerContext';
+import type { RouteConfig } from '../types';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
@@ -43,10 +41,28 @@ export function DashboardScreen() {
   const { openDrawer } = useNavDrawer();
   const [time, setTime] = useState(new Date());
   const { summary: s } = useDailyList();
+  const { list: passengers } = usePassengers();
+  const recentUpdates = getRecentUpdates();
+  const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
+  const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
+  const [rotaIniciandoId, setRotaIniciandoId] = useState<string | null>(null);
+
+  const handleIniciarViagem = async (rotaId: string) => {
+    setRotaIniciandoId(rotaId);
+    const r = await iniciarViagem(rotaId);
+    setRotaIniciandoId(null);
+    if (r) navigate(`/viagem/${r.viagem_id}`);
+  };
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 60_000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    getRouteConfigs().then(rc => { if (ativo) setRouteConfigs(rc); });
+    return () => { ativo = false; };
   }, []);
 
   const firstName = user?.name?.split(' ')[0] ?? 'Motorista';
@@ -140,16 +156,35 @@ export function DashboardScreen() {
 
             {isDesktop ? (
               <div className="flex gap-3.5 mb-6">
-                {routeConfigs.map(rc => <RouteButton key={rc.type} {...rc} onClick={() => navigate('/routes')} />)}
+                {routeConfigs.map(rc => <RouteButton
+                    key={rc.rotaId ?? rc.type}
+                    {...rc}
+                    onClick={() => navigate('/routes')}
+                    onIniciarViagem={handleIniciarViagem}
+                    iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
+                  />)}
               </div>
             ) : (
               <>
                 <div className="flex gap-2.5 mb-2.5">
-                  {routeConfigs.slice(0, 2).map(rc => <RouteButton key={rc.type} {...rc} onClick={() => navigate('/routes')} />)}
+                  {routeConfigs.slice(0, 2).map(rc => <RouteButton
+                    key={rc.rotaId ?? rc.type}
+                    {...rc}
+                    onClick={() => navigate('/routes')}
+                    onIniciarViagem={handleIniciarViagem}
+                    iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
+                  />)}
                 </div>
-                <div className="flex mb-5">
-                  <RouteButton {...routeConfigs[2]} onClick={() => navigate('/routes')} />
-                </div>
+                {routeConfigs[2] && (
+                  <div className="flex mb-5">
+                    <RouteButton
+                      {...routeConfigs[2]}
+                      onClick={() => navigate('/routes')}
+                      onIniciarViagem={handleIniciarViagem}
+                      iniciandoViagem={iniciandoViagem && rotaIniciandoId === routeConfigs[2].rotaId}
+                    />
+                  </div>
+                )}
               </>
             )}
 

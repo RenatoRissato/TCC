@@ -1,12 +1,13 @@
-import { recentUpdates as MOCK_UPDATES, routeConfigs as MOCK_ROUTES } from '../data/mockData';
+import { recentUpdates as MOCK_UPDATES } from '../data/mockData';
+import { listarRotasComContagem } from './rotaService';
 import type { WhatsAppUpdate, RouteConfig } from '../types';
 
-// Mock implementation — substituir por chamadas à API real (ex: GET /api/dashboard)
-
+// Feed de respostas recentes — ainda mockado.
+// TODO: ler de `mensagens` (direcao = 'entrada', últimas N) quando ativarmos.
 export function getRecentUpdates(): WhatsAppUpdate[] {
   return MOCK_UPDATES;
 }
 
-export function getRouteConfigs(): RouteConfig[] {
-  return MOCK_ROUTES;
+export async function getRouteConfigs(): Promise<RouteConfig[]> {
+  return listarRotasComContagem();
 }

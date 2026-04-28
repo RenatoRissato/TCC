@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   User, Phone, Home, BookOpen, MapPin, CheckCircle2,
   AlertCircle, Save, Users, Edit2, X,
 } from 'lucide-react';
 import { FormInput } from '../shared/FormInput';
+import { listarRotas, inferirRouteType } from '../../services/rotaService';
+import type { RotaRow } from '../../types/database';
 import type { Passenger, RouteType } from '../../types';
 import type { PassengerFormValues } from '../../hooks/usePassengers';
 
 const BLANK: PassengerFormValues = {
   name: '', parentName: '', address: '', neighborhood: '',
-  phone: '', grade: '', routes: ['morning'],
+  phone: '', grade: '', routes: ['morning'], rotaId: undefined,
 };
 
 const SHIFT_OPTIONS: { key: RouteType; label: string; emoji: string; color: string; time: string }[] = [
@@ -50,12 +52,13 @@ function LoadSpinner() {
 
 interface PassengerFormProps {
   editTarget: Passenger | null;
-  onSave: (values: PassengerFormValues, id?: number) => void;
+  onSave: (values: PassengerFormValues, id?: string) => void;
   onClose: () => void;
 }
 
 export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProps) {
   const isEdit = editTarget !== null;
+  const [rotas, setRotas] = useState<RotaRow[]>([]);
   const [form, setForm] = useState<PassengerFormValues>(
     isEdit
       ? {
@@ -66,14 +69,35 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
           phone:        editTarget.phone,
           grade:        editTarget.grade,
           routes:       [...editTarget.routes],
+          rotaId:       editTarget.rotaId,
         }
       : { ...BLANK },
   );
   const [errors, setErrors] = useState<Partial<Record<keyof PassengerFormValues, string>>>({});
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    listarRotas().then(rs => {
+      setRotas(rs);
+      if (!isEdit && !form.rotaId && rs.length > 0) {
+        const primeira = rs[0];
+        setForm(f => ({ ...f, rotaId: primeira.id, routes: [inferirRouteType(primeira.nome)] }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const set = (k: keyof PassengerFormValues) => (v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const selecionarRota = (id: string) => {
+    const r = rotas.find(x => x.id === id);
+    setForm(f => ({
+      ...f,
+      rotaId: id,
+      routes: r ? [inferirRouteType(r.nome)] : f.routes,
+    }));
+  };
 
   const toggleRoute = (r: RouteType) => {
     setForm((f) => ({
@@ -88,7 +112,7 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
     if (!form.parentName.trim()) e.parentName = 'Responsável é obrigatório';
     if (!form.address.trim()) e.address = 'Endereço é obrigatório';
     if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'WhatsApp inválido';
-    if (form.routes.length === 0) e.routes = 'Selecione ao menos um turno';
+    if (!form.rotaId) e.routes = 'Selecione uma rota';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -96,9 +120,11 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    onSave(form, editTarget?.id);
-    setSaving(false);
+    try {
+      await onSave(form, editTarget?.id);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const hasError = Object.keys(errors).length > 0;
@@ -159,8 +185,24 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
         {errors.address && <ErrMsg msg={errors.address} />}
         <FormInput label="Bairro" icon={MapPin} value={form.neighborhood} onChange={set('neighborhood')} placeholder="Ex: Jardim América" />
 
-        <SectionDivider label="Turnos" />
-        <p className="text-xs text-ink-soft m-0 mb-2.5">Selecione os turnos que este passageiro utiliza:</p>
+        <SectionDivider label="Rota" />
+        {rotas.length === 0 ? (
+          <p className="text-xs text-warning m-0 mb-3">Nenhuma rota cadastrada. Crie uma rota antes de adicionar passageiros.</p>
+        ) : (
+          <select
+            value={form.rotaId ?? ''}
+            onChange={(e) => selecionarRota(e.target.value)}
+            className="w-full bg-field border-2 border-app-border rounded-[14px] px-3.5 py-3 text-sm font-bold text-ink outline-none mb-3 font-sans min-h-[52px]"
+          >
+            <option value="" disabled>Selecione uma rota...</option>
+            {rotas.map(r => (
+              <option key={r.id} value={r.id}>{r.nome} {r.horario_saida ? `· ${r.horario_saida.slice(0,5)}` : ''}</option>
+            ))}
+          </select>
+        )}
+
+        <SectionDivider label="Turno (referência visual)" />
+        <p className="text-xs text-ink-soft m-0 mb-2.5">Sincronizado automaticamente com a rota selecionada:</p>
         <div className="flex gap-2 mb-2 flex-wrap">
           {SHIFT_OPTIONS.map((sh) => {
             const active = form.routes.includes(sh.key);
