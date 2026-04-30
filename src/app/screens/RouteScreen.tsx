@@ -1,10 +1,17 @@
 import { useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   Search, X, MapPin, CheckCircle2, XCircle, Clock, Plus, Trash2, Menu,
 } from 'lucide-react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { usePassengers, type PassengerFilter, type PassengerPeriod } from '../hooks/usePassengers';
+
+function turnoInicialDaQuery(searchParams: URLSearchParams): PassengerPeriod {
+  const t = searchParams.get('turno');
+  if (t === 'morning' || t === 'afternoon' || t === 'night') return t;
+  return 'all';
+}
 import { PassengerCard } from '../components/passengers/PassengerCard';
 import { PassengerFilters } from '../components/passengers/PassengerFilters';
 import { PassengerForm } from '../components/passengers/PassengerForm';
@@ -28,9 +35,20 @@ export function RouteScreen() {
   const { isDesktop, isLg, isMd, isXxl } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<PassengerFilter>('all');
-  const [period, setPeriod] = useState<PassengerPeriod>('all');
+  const [period, setPeriod] = useState<PassengerPeriod>(() => turnoInicialDaQuery(searchParams));
+
+  const handlePeriodChange = useCallback((p: PassengerPeriod) => {
+    setPeriod(p);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (p === 'all') next.delete('turno');
+      else next.set('turno', p);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Passenger | null>(null);
   const [delTarget, setDelTarget] = useState<Passenger | null>(null);
@@ -97,7 +115,7 @@ export function RouteScreen() {
           filter={filter}
           counts={counts}
           paddingX={px}
-          onPeriodChange={setPeriod}
+          onPeriodChange={handlePeriodChange}
           onFilterChange={setFilter}
         />
       </div>

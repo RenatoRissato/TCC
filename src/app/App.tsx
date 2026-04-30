@@ -9,21 +9,8 @@ import { router } from './routes';
 type AuthView = 'login' | 'register';
 
 function AuthGate() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [view, setView] = useState<AuthView>('login');
-
-  if (loading) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#0F1117', color: '#FFC107',
-        fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600,
-      }}>
-        Carregando...
-      </div>
-    );
-  }
 
   if (isAuthenticated) {
     return <RouterProvider router={router} />;

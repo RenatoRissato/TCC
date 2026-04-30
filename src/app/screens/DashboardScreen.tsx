@@ -11,7 +11,7 @@ import { usePassengers } from '../hooks/usePassengers';
 import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
 import { useNavDrawer } from '../context/NavDrawerContext';
-import type { RouteConfig } from '../types';
+import type { RouteConfig, WhatsAppUpdate } from '../types';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
@@ -42,7 +42,7 @@ export function DashboardScreen() {
   const [time, setTime] = useState(new Date());
   const { summary: s } = useDailyList();
   const { list: passengers } = usePassengers();
-  const recentUpdates = getRecentUpdates();
+  const [recentUpdates, setRecentUpdates] = useState<WhatsAppUpdate[]>([]);
   const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
   const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
   const [rotaIniciandoId, setRotaIniciandoId] = useState<string | null>(null);
@@ -61,11 +61,16 @@ export function DashboardScreen() {
 
   useEffect(() => {
     let ativo = true;
-    getRouteConfigs().then(rc => { if (ativo) setRouteConfigs(rc); });
+    getRouteConfigs()
+      .then(rc => { if (ativo) setRouteConfigs(Array.isArray(rc) ? rc : []); })
+      .catch(err => { console.error('getRouteConfigs:', err); if (ativo) setRouteConfigs([]); });
+    getRecentUpdates()
+      .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
+      .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
     return () => { ativo = false; };
   }, []);
 
-  const firstName = user?.name?.split(' ')[0] ?? 'Motorista';
+  const firstName = user?.name?.split(' ').slice(0, 2).join(' ') ?? 'Motorista';
   const dateStr = time.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
   const pad = isDesktop ? 36 : isMd ? 24 : 16;
@@ -159,7 +164,7 @@ export function DashboardScreen() {
                 {routeConfigs.map(rc => <RouteButton
                     key={rc.rotaId ?? rc.type}
                     {...rc}
-                    onClick={() => navigate('/routes')}
+                    onClick={() => navigate(`/routes?turno=${rc.type}`)}
                     onIniciarViagem={handleIniciarViagem}
                     iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
                   />)}
@@ -170,7 +175,7 @@ export function DashboardScreen() {
                   {routeConfigs.slice(0, 2).map(rc => <RouteButton
                     key={rc.rotaId ?? rc.type}
                     {...rc}
-                    onClick={() => navigate('/routes')}
+                    onClick={() => navigate(`/routes?turno=${rc.type}`)}
                     onIniciarViagem={handleIniciarViagem}
                     iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
                   />)}
@@ -179,7 +184,7 @@ export function DashboardScreen() {
                   <div className="flex mb-5">
                     <RouteButton
                       {...routeConfigs[2]}
-                      onClick={() => navigate('/routes')}
+                      onClick={() => navigate(`/routes?turno=${routeConfigs[2].type}`)}
                       onIniciarViagem={handleIniciarViagem}
                       iniciandoViagem={iniciandoViagem && rotaIniciandoId === routeConfigs[2].rotaId}
                     />
@@ -224,7 +229,14 @@ export function DashboardScreen() {
                 <span className="text-[11px] font-bold text-[#128C7E] tracking-[0.04em]">WhatsApp Bot · Ao vivo</span>
                 <span className="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-[#128C7E] ml-1" />
               </div>
-              {recentUpdates.map(u => <UpdateRow key={u.id} update={u} />)}
+              {recentUpdates.length === 0 ? (
+                <div className="py-7 text-center">
+                  <p className="text-[12px] text-ink-muted m-0 mb-1">Nenhuma resposta recebida ainda.</p>
+                  <p className="text-[11px] text-ink-muted/70 m-0">As confirmações dos responsáveis aparecerão aqui.</p>
+                </div>
+              ) : (
+                recentUpdates.map(u => <UpdateRow key={u.id} update={u} />)
+              )}
               <button onClick={() => navigate('/whatsapp')} className="flex items-center justify-center gap-1.5 w-full bg-transparent border-0 cursor-pointer pt-2.5 pb-1 text-xs font-bold text-[#128C7E] font-sans">
                 Ver todas <ChevronRight size={13} strokeWidth={2.5} />
               </button>

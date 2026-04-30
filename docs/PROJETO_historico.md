@@ -6,7 +6,7 @@
 
 O **SmartRoutes** é um PWA (Progressive Web App) mobile-first desenvolvido para **motoristas de vans escolares**. O problema que ele resolve é simples e real: todo dia, o motorista precisa saber quais alunos vão ou não vão na van — e isso geralmente é feito por ligações, mensagens manuais no WhatsApp ou planilhas. O SmartRoutes automatiza esse processo com um **bot de WhatsApp** que envia perguntas automáticas para os responsáveis e consolida as respostas em um dashboard visual e intuitivo.
 
-O produto é 100% **frontend**, sem backend real — todos os dados são mockados para simulação e demonstração. É uma plataforma SaaS proposta para o segmento escolar brasileiro, com suporte completo a **dark mode**, **responsividade total** (mobile, tablet e desktop) e identidade visual própria baseada em amarelo (#FFC107) como cor primária.
+O produto é uma plataforma SaaS para o segmento escolar brasileiro, com suporte completo a **dark mode**, **responsividade total** (mobile, tablet e desktop) e identidade visual própria baseada em amarelo (#FFC107) como cor primária. A partir da Fase 9 (abril/2026), o projeto tem **backend real com Supabase** — autenticação, banco de dados PostgreSQL e Edge Functions — substituindo integralmente os dados mockados.
 
 ---
 
@@ -542,6 +542,8 @@ it('exibe "PENDENTE" para status pending')
 
 ## Dados Mock (o "banco de dados" atual)
 
+> **Nota:** A partir da Fase 9, o projeto usa dados reais do Supabase. Os mocks abaixo foram a base de desenvolvimento até a integração real.
+
 12 passageiros cadastrados:
 - 6 com status `going` (confirmados)
 - 3 com status `absent` (não vão)
@@ -556,13 +558,258 @@ it('exibe "PENDENTE" para status pending')
 
 ---
 
+### Fase 9: Integração Real com Supabase — Backend Completo (30/04/2026)
+
+Esta fase marca a transição do projeto de protótipo mockado para uma aplicação com backend real. Todos os dados agora persistem no Supabase (PostgreSQL + Auth + Edge Functions).
+
+---
+
+#### 9.1 — Supabase configurado e banco de dados criado
+
+**Backend Supabase:**
+- Projeto criado no Supabase com PostgreSQL gerenciado
+- `src/lib/supabase.ts` criado com `createClient` configurado com `persistSession`, `autoRefreshToken`, `detectSessionInUrl` e `storageKey: 'smartroutes-auth-v1'` (evita reutilização de sessões obsoletas ao trocar anon key)
+- Anon key migrada do formato `sb_publishable_*` para JWT (`eyJ...`) compatível com o SDK mais recente
+
+**Tabelas criadas via migrations SQL:**
+
+| Tabela | Descrição |
+|---|---|
+| `motoristas` | Perfil do motorista (nome, email, telefone, cnh, user_id FK para auth.users) |
+| `rotas` | Rotas de transporte (nome, horario_saida, status, motorista_id) |
+| `passageiros` | Passageiros por rota (nome_completo, responsavel, endereco, telefone, rota_id, motorista_id, status) |
+| `confirmacoes` | Respostas diárias (passageiro_id, data, status, tipo_confirmacao, respondida_em) |
+| `viagens` | Viagens iniciadas (rota_id, motorista_id, data, status, iniciada_em, finalizada_em) |
+| `viagem_passageiros` | Passageiros por viagem (viagem_id, passageiro_id, status_embarque) |
+
+**RLS (Row Level Security):** todas as tabelas têm RLS ativado com políticas que garantem que cada motorista acessa apenas seus próprios dados (`motorista_id = auth.uid()` ou via join com `motoristas`).
+
+---
+
+#### 9.2 — Migration de GRANTs (bug crítico de 403)
+
+**Problema:** RLS policies corretas não bastam — o PostgreSQL também exige `GRANT` explícito ao role `authenticated` para que as queries funcionem. Sem o GRANT, todas as chamadas retornavam `403 permission denied` mesmo com JWT válido.
+
+**Arquivo criado:** `supabase/migrations/20260429000000_grants_authenticated.sql`
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON motoristas TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON rotas TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON passageiros TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON confirmacoes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON viagens TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON viagem_passageiros TO authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+```
+
+---
+
+#### 9.3 — Edge Function: `criar-perfil-motorista`
+
+**Localização:** `supabase/functions/criar-perfil-motorista/index.ts`
+
+**Responsabilidade:** Criar o registro na tabela `motoristas` após o cadastro via `supabase.auth.signUp`. Como o `signUp` cria o usuário em `auth.users` mas não na tabela `motoristas`, essa Edge Function é chamada logo após o signup bem-sucedido.
+
+**Por que Edge Function e não INSERT direto?**
+- O INSERT em `motoristas` precisa do `user_id` do usuário autenticado
+- A Edge Function roda com o JWT do usuário, garantindo que `auth.uid()` retorna o id correto para as policies RLS
+- Padrão mais seguro que expor `service_role` no cliente
+
+**Fluxo de criação de motorista:**
+1. `supabase.auth.signUp()` → cria em `auth.users`
+2. `supabase.functions.invoke('criar-perfil-motorista', { body: { nome, telefone, cnh } })` → cria em `motoristas`
+3. `criarRotasPadrao(motorista.id)` → cria as 3 rotas padrão
+
+---
+
+#### 9.4 — `AuthContext.tsx` — Refatoração completa de hidratação de sessão
+
+O `AuthContext` foi reescrito do zero para suportar autenticação real com Supabase.
+
+**Estrutura anterior:** login mockado com delay de 900ms, usuário hardcoded "Carlos Andrade".
+
+**Estrutura nova:**
+
+**`hidratarSessao(session)`** — função central chamada pelo `onAuthStateChange`:
+1. **Fallback imediato do JWT** (zero await): extrai `nome`, `email`, `telefone` do `user_metadata` do token e atualiza o estado imediatamente — sem esperar query ao banco. Garante que o header mostre nome/email instantaneamente.
+2. **Carrega o perfil real** em background via `carregarMotorista(userId)` com timeout de 15s. Se travar, mantém o fallback do JWT sem quebrar a UX.
+3. **Auto-criação do perfil** se motorista não existir: chama `criar-perfil-motorista` Edge Function com timeout de 10s. Isso cobre o caso de confirmação de email — o perfil é criado no primeiro login após confirmar.
+4. **Cria rotas padrão** apenas quando `motoristaAcabouDeNascer=true` (evita query extra em todo refresh).
+
+**`useRef lastLoadedUserId`** — cache da última sessão hidratada:
+- `onAuthStateChange` dispara eventos `TOKEN_REFRESHED` a cada ~50 minutos e `SIGNED_IN` ao voltar da aba
+- Sem o ref, cada evento reexecutaria `carregarMotorista` — query desnecessária + risco de timeout em aba acordando do background
+- Com o ref: se o `user_id` não mudou, `hidratarSessao` retorna imediatamente sem nenhuma query
+
+**`ehErroDeJwtInvalido(error)`** — detecção de JWT inválido:
+- Quando o JWT está expirado ou inválido, o PostgREST trata a request como `anon`
+- O Postgres retorna `42501 permission denied` com hint contendo `"TO anon"`
+- Ao detectar esse padrão, `carregarMotorista` faz `signOut()` automático, forçando o usuário a fazer login novamente
+
+**`logout` otimista:**
+- `setUser(null)` e `setMotoristaId(null)` executam **sincronamente** — a UI vai para o login instantaneamente sem esperar round-trip de rede
+- `supabase.auth.signOut({ scope: 'local' })` roda em background (não bloqueante)
+- `scope: 'local'` invalida apenas esta sessão (não logout em outros dispositivos) e responde mais rápido que o default `global`
+
+**`withTimeout<T>(promise, ms)`** — utilitário de timeout:
+```ts
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout após ${ms}ms`)), ms)
+    ),
+  ]);
+}
+```
+Aplicado em: `carregarMotorista` (15s), `criar-perfil-motorista` Edge Function (10s), `signInWithPassword` (30s).
+
+**`onAuthStateChange` como única fonte da sessão:**
+- Não usamos mais `supabase.auth.getSession()` separadamente — `onAuthStateChange` dispara `INITIAL_SESSION` ao se inscrever, eliminando a race condition entre os dois
+- `safety timer` de 5s garante que `setLoading(false)` acontece mesmo se o listener nunca disparar
+
+---
+
+#### 9.5 — `App.tsx` — Loading screen removida
+
+**Antes:** `App.tsx` mostrava uma tela "Carregando..." enquanto `loading === true` no `AuthContext`.
+
+**Problema:** Se `setLoading(false)` travasse (bug de timeout, network frio), o app ficava em tela preta infinita.
+
+**Solução:** A loading screen foi removida. O app vai direto para `AuthGate`, que decide se mostra `LoginScreen` ou `RouterProvider` com base em `isAuthenticated`. O usuário sempre vê a tela de login imediatamente — sem bloqueio.
+
+---
+
+#### 9.6 — `rotaService.ts` — Dados reais + rotas padrão automáticas
+
+**Arquivo:** `src/app/services/rotaService.ts` (criado do zero)
+
+**`listarRotas()`** — busca rotas ativas do motorista logado:
+```ts
+supabase.from('rotas').select('*').eq('status', 'ativa').order('horario_saida', { ascending: true })
+```
+
+**`listarRotasComContagem()`** — busca rotas + contagem de passageiros ativos por rota (2 queries, sem JOIN para simplicidade):
+1. Lista todas as rotas ativas
+2. Conta passageiros com `status = 'ativo'` por `rota_id`
+3. Mapeia para `RouteConfig[]` com emoji/cor baseados no nome da rota (`inferirRouteType`)
+
+**`criarRotasPadrao(motoristaId)`** — idempotente:
+```ts
+// 1. Verifica se já existem rotas para este motorista
+// 2. Se não existir nenhuma, insere as 3 padrão:
+{ nome: 'Rota Manhã', horario_saida: '07:00', status: 'ativa' }
+{ nome: 'Rota Tarde', horario_saida: '12:00', status: 'ativa' }
+{ nome: 'Rota Noite', horario_saida: '17:30', status: 'ativa' }
+```
+
+**`inferirRouteType(nome)`** — deduz o turno a partir do nome:
+```ts
+if (n.includes('tarde') || n.includes('afternoon')) return 'afternoon';
+if (n.includes('noite') || n.includes('night')) return 'night';
+return 'morning'; // default
+```
+
+---
+
+#### 9.7 — `dashboardService.ts` — Respostas recentes com dados reais
+
+**Antes:** `getRecentUpdates()` retornava `MOCK_UPDATES` (array hardcoded).
+
+**Depois:** query real na tabela `confirmacoes` com join em `passageiros`:
+
+```ts
+supabase
+  .from('confirmacoes')
+  .select('id, status, tipo_confirmacao, respondida_em, passageiros!inner(nome_completo)')
+  .in('status', ['confirmado', 'ausente'])
+  .not('respondida_em', 'is', null)
+  .order('respondida_em', { ascending: false })
+  .limit(5)
+```
+
+**Funções auxiliares:**
+- `obterIniciais(nome)` — extrai iniciais do nome (ex: "João Silva" → "JS")
+- `formatarTempoRelativo(iso)` — formata tempo (ex: "há 3 min", "há 2h", "há 1d")
+- `mensagemPorTipo(tipo, indo)` — texto da resposta baseado em `tipo_confirmacao` (ida_e_volta / somente_ida / somente_volta)
+
+**`getRouteConfigs()`** — delega para `listarRotasComContagem()` em `rotaService.ts`.
+
+---
+
+#### 9.8 — `DashboardScreen.tsx` — Integração de dados reais
+
+**`recentUpdates`** virou `useState<WhatsAppUpdate[]>([])` com `useEffect` async:
+```ts
+useEffect(() => {
+  let ativo = true;
+  getRecentUpdates()
+    .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
+    .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
+  return () => { ativo = false; };
+}, []);
+```
+
+**Navegação com filtro pré-selecionado:** `RouteButton.onClick` navega para `/routes?turno=${rc.type}` (ex: `/routes?turno=morning`), e a `RouteScreen` inicializa o filtro de período a partir desse query param.
+
+---
+
+#### 9.9 — `RouteScreen.tsx` — Sincronização de filtro com URL
+
+**`useSearchParams`** adicionado para sincronizar o filtro de período com a URL:
+
+```ts
+const [searchParams, setSearchParams] = useSearchParams();
+const [period, setPeriod] = useState<PassengerPeriod>(
+  () => turnoInicialDaQuery(searchParams)  // lazy init lê o ?turno= da URL
+);
+
+const handlePeriodChange = useCallback((p: PassengerPeriod) => {
+  setPeriod(p);
+  setSearchParams(prev => {
+    const next = new URLSearchParams(prev);
+    if (p === 'all') next.delete('turno');
+    else next.set('turno', p);
+    return next;
+  }, { replace: true });
+}, [setSearchParams]);
+```
+
+Isso permite que o Dashboard envie o usuário para `RouteScreen` com o filtro correto já aplicado (ex: clicou em "Rota Tarde" → abre a tela de rotas já no turno tarde).
+
+---
+
+#### 9.10 — Hooks migrados para dados reais
+
+**`usePassengers`** — agora busca passageiros do Supabase via `motoristaId` do `AuthContext`. Suporta filtro por `rota_id` baseado no período selecionado (faz query para obter a rota correspondente ao turno e filtra os passageiros daquela rota).
+
+**`useDailyList`** — calcula o summary (going/absent/pending/total) a partir da lista retornada pelo `usePassengers`.
+
+**`useIniciarViagem`** — novo hook que faz INSERT em `viagens` e redireciona para a tela de viagem em andamento.
+
+---
+
+#### Bugs corrigidos na Fase 9
+
+| Bug | Causa | Fix |
+|---|---|---|
+| Login travando com "Servidor não respondeu" | `signInWithPassword` sem timeout; `setLoading(false)` nunca executava | `withTimeout(30s)` + `safety timer` no `useEffect` |
+| Tela preta "Carregando..." infinita | `loading` nunca virava `false` quando `carregarMotorista` travava | Loading screen removida do `App.tsx` |
+| 403 em todas as queries | RLS policies existiam mas faltavam `GRANT` ao role `authenticated` | Migration com `GRANT SELECT/INSERT/UPDATE/DELETE` em todas as tabelas |
+| Nome revertendo para email após ~50min | `TOKEN_REFRESHED` re-executava `hidratarSessao` e sobrescrevia o user com fallback | `useRef lastLoadedUserId` evita re-hidratação quando o `user_id` não mudou |
+| JWT inválido causando requests como `anon` | Token expirado → PostgREST trata como `anon` → `42501` com hint `TO anon` | `ehErroDeJwtInvalido()` detecta e força `signOut()` automático |
+| Rotas não aparecendo após cadastro | Motorista recém-criado não tinha rotas no banco | `criarRotasPadrao()` chamada após criação do motorista |
+| Query extra de rotas em todo refresh | `criarRotasPadrao` era chamada em todo `hidratarSessao` | Flag `motoristaAcabouDeNascer` restringe a chamada apenas ao primeiro login |
+| Timeout no console ao voltar da aba | Visibility change disparava `carregarMotorista` com aba "fria" | `lastLoadedUserId` ref elimina re-hidratação + timeout aumentado para 15s |
+| Logout lento / não redirecionando | `await signOut()` bloqueava a UI até resposta do servidor | `setUser(null)` síncrono + `signOut({ scope: 'local' })` em background |
+
+---
+
 ## O que NÃO existe (ainda)
 
-- **Backend / API real** — todos os dados são mockados em memória, resetam ao recarregar
-- **Banco de dados** — nenhum dado persiste além do `localStorage` (apenas tema)
-- **WhatsApp real** — a integração com bot é simulada (sem Twilio, Meta API, etc.)
-- **Autenticação real** — qualquer email/senha funciona
+- **WhatsApp real** — a integração com bot ainda é simulada (sem Twilio, Meta API, Evolution API)
 - **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
-- **Deploy** — sem CI/CD configurado, sem service worker, sem manifest PWA completo
+- **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
 - **Internacionalização** — strings hardcoded em PT-BR
 - **Notificações push reais** — apenas UI
+- **Tela de Viagem em andamento** — hook `useIniciarViagem` existe, rota `/viagem/:id` a implementar
