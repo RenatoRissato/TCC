@@ -1,7 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { PassageiroRow, ConfirmacaoRow, RotaRow } from '../types/database';
 import type { Passenger, RouteType, StudentStatus, Summary } from '../types';
-import { inferirRouteType } from './rotaService';
 
 function iniciais(nome: string): string {
   return nome.trim().split(/\s+/).filter(Boolean).map(p => p[0]?.toUpperCase() ?? '').slice(0, 2).join('');
@@ -21,7 +20,7 @@ function rowToPassenger(
   rota: RotaRow | undefined,
   confirmacao?: ConfirmacaoRow,
 ): Passenger {
-  const routeType: RouteType = rota ? inferirRouteType(rota.nome) : 'morning';
+  const routeType: RouteType = rota ? rota.turno : 'morning';
   return {
     id: row.id,
     rotaId: row.rota_id,
@@ -158,4 +157,24 @@ export function calcularSummary(list: Passenger[]): Summary {
 // Compat com chamadas legadas
 export function getSummary(list: Passenger[]): Summary {
   return calcularSummary(list);
+}
+
+/**
+ * Lista os endereços de embarque dos passageiros ATIVOS de uma rota,
+ * ordenados por `ordem_na_rota`. Usado para montar os waypoints do Google Maps.
+ */
+export async function listarPassageirosDaRota(rotaId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('passageiros')
+    .select('endereco_embarque, ordem_na_rota')
+    .eq('rota_id', rotaId)
+    .eq('status', 'ativo')
+    .order('ordem_na_rota', { ascending: true });
+  if (error) {
+    console.error('listarPassageirosDaRota:', error);
+    return [];
+  }
+  return (data ?? [])
+    .map((p: { endereco_embarque: string }) => (p.endereco_embarque ?? '').trim())
+    .filter((s): s is string => s.length > 0);
 }

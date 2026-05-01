@@ -36,6 +36,7 @@ export interface RouteConfig {
   passengerCount: number;
   color: string;
   darkBg: boolean;
+  pontoSaida?: string | null;
 }
 
 export interface Summary {

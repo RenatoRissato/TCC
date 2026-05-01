@@ -79,21 +79,49 @@ Deno.serve(async (req: Request) => {
       'criar_dados_iniciais_motorista',
       { p_motorista_id: novoMotorista.id },
     )
-    if (rpcErr) {
-      // motorista já criado — reportamos mas não falhamos completamente
-      return ok(
-        {
-          motorista: novoMotorista,
-          criado: true,
-          aviso:
-            'Perfil criado, porém criar_dados_iniciais_motorista falhou: ' +
-            rpcErr.message,
-        },
-        201,
-      )
+
+    // Cria as 3 rotas padrão (Manhã / Tarde / Noite) no MESMO request com o
+    // JWT já validado. Garante atomicidade e elimina race conditions de RLS
+    // no client logo após signUp. Idempotente: se já existem (raro), pula.
+    const { data: rotasExistentes } = await supabase
+      .from('rotas')
+      .select('id')
+      .eq('motorista_id', novoMotorista.id)
+      .limit(1)
+
+    let rotasCriadas = 0
+    let rotasErro: string | null = null
+    if (!rotasExistentes || rotasExistentes.length === 0) {
+      const padroes = [
+        { motorista_id: novoMotorista.id, nome: 'Rota Manhã', horario_saida: '07:00', turno: 'morning',   status: 'ativa' },
+        { motorista_id: novoMotorista.id, nome: 'Rota Tarde', horario_saida: '12:00', turno: 'afternoon', status: 'ativa' },
+        { motorista_id: novoMotorista.id, nome: 'Rota Noite', horario_saida: '17:30', turno: 'night',     status: 'ativa' },
+      ]
+      const { data: inseridas, error: rotasErr } = await supabase
+        .from('rotas')
+        .insert(padroes)
+        .select('id')
+      if (rotasErr) {
+        rotasErro = rotasErr.message
+        console.error('[criar-perfil-motorista] falha ao criar rotas padrão:', rotasErr)
+      } else {
+        rotasCriadas = inseridas?.length ?? 0
+      }
     }
 
-    return ok({ motorista: novoMotorista, criado: true }, 201)
+    const avisos: string[] = []
+    if (rpcErr) avisos.push('criar_dados_iniciais_motorista falhou: ' + rpcErr.message)
+    if (rotasErro) avisos.push('criação de rotas padrão falhou: ' + rotasErro)
+
+    return ok(
+      {
+        motorista: novoMotorista,
+        criado: true,
+        rotas_criadas: rotasCriadas,
+        ...(avisos.length > 0 ? { aviso: avisos.join(' | ') } : {}),
+      },
+      201,
+    )
   } catch (err) {
     return erroServidor(err)
   }

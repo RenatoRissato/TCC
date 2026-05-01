@@ -4,7 +4,7 @@ import {
   AlertCircle, Save, Users, Edit2, X,
 } from 'lucide-react';
 import { FormInput } from '../shared/FormInput';
-import { listarRotas, inferirRouteType } from '../../services/rotaService';
+import { listarRotas } from '../../services/rotaService';
 import type { RotaRow } from '../../types/database';
 import type { Passenger, RouteType } from '../../types';
 import type { PassengerFormValues } from '../../hooks/usePassengers';
@@ -81,7 +81,7 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
       setRotas(rs);
       if (!isEdit && !form.rotaId && rs.length > 0) {
         const primeira = rs[0];
-        setForm(f => ({ ...f, rotaId: primeira.id, routes: [inferirRouteType(primeira.nome)] }));
+        setForm(f => ({ ...f, rotaId: primeira.id, routes: [primeira.turno] }));
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +95,7 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
     setForm(f => ({
       ...f,
       rotaId: id,
-      routes: r ? [inferirRouteType(r.nome)] : f.routes,
+      routes: r ? [r.turno] : f.routes,
     }));
   };
 

@@ -805,6 +805,414 @@ Isso permite que o Dashboard envie o usuário para `RouteScreen` com o filtro co
 
 ---
 
+### Fase 10: Roteiro Flexível por Rota — Gerenciar Rotas + Maps (30/04/2026)
+
+Esta fase substitui o conceito antigo de "uma rota = um turno fixo + lista linear de passageiros" por um modelo flexível: cada rota tem um **roteiro ordenado** que mistura passageiros e destinos em qualquer sequência. O motorista também ganhou criação/edição/remoção de rotas direto pelo Dashboard, e o botão Play agora abre o Google Maps com o trajeto completo já montado.
+
+---
+
+#### 10.1 — Modelo: tabela `paradas_rota` + ajustes em `rotas`
+
+**Migration:** `supabase/migrations/20260430000000_paradas_rota.sql`
+
+**Mudanças em `rotas`:**
+- `ponto_saida` (text) — endereço único de partida da van (no topo do roteiro)
+- `turno` (text, NOT NULL, check em `morning|afternoon|night`) — define cor/ícone independente do nome. Antes, o turno era inferido do nome da rota; agora o usuário pode renomear livremente ("Faculdade Brasil") sem perder a identidade visual.
+
+**Backfill do `turno`** para registros antigos: rotas com "tarde" no nome viram `afternoon`, com "noite"/"night" viram `night`, o resto fica `morning`.
+
+**Nova tabela `paradas_rota`:**
+
+```sql
+create table paradas_rota (
+  id              uuid primary key,
+  rota_id         uuid references rotas(id) on delete cascade,
+  ordem           integer not null,
+  tipo            text check (tipo in ('embarque','destino')),
+  passageiro_id   uuid references passageiros(id) on delete cascade,  -- só p/ embarque
+  rotulo          text,        -- só p/ destino, ex: "Faculdade Brasil"
+  endereco        text,        -- só p/ destino
+  unique (rota_id, ordem),
+  check ((tipo='embarque' AND passageiro_id IS NOT NULL) OR
+         (tipo='destino'  AND endereco IS NOT NULL))
+);
+```
+
+A unicidade `(rota_id, ordem)` garante que não há duas paradas na mesma posição. O check constraint garante coerência: embarque sempre tem passageiro, destino sempre tem endereço.
+
+**Backfill do roteiro:** para cada passageiro ativo já existente, é criada uma `parada_rota` do tipo `embarque` preservando o `ordem_na_rota` antigo. Assim, motoristas que já tinham passageiros cadastrados não precisam refazer nada — o roteiro é gerado automaticamente.
+
+**RLS + GRANTs** seguindo o mesmo padrão das outras tabelas.
+
+---
+
+#### 10.2 — Tipos atualizados
+
+`src/app/types/database.ts`:
+- `RotaRow` ganha `ponto_saida` e `turno: TurnoRota`
+- Novo `ParadaRotaRow` com `tipo: TipoParada` (embarque|destino)
+
+`src/app/types/index.ts`:
+- `RouteConfig` ganha `pontoSaida` para o Dashboard usar ao montar a URL do Maps
+
+---
+
+#### 10.3 — `rotaService.ts` reescrito
+
+**Removido:** função `inferirRouteType(nome)` — não é mais necessário deduzir do nome, o `turno` vem direto do banco.
+
+**Atualizado:**
+- `listarRotasComContagem`: lê `r.turno` direto. Inclui `pontoSaida` no `RouteConfig` retornado.
+- `criarRotasPadrao`: insere `turno` explicitamente nas 3 rotas padrão.
+
+**Novas funções:**
+- `criarRota({ motoristaId, nome, turno, horarioSaida, pontoSaida })` — INSERT, retorna `RotaRow`
+- `atualizarRota(id, patch)` — UPDATE com campos opcionais
+- `apagarRota(id)` — **soft delete** (`status='inativa'`). Hard delete dispararia `on delete cascade` e apagaria passageiros + viagens — perigoso.
+- `obterRota(id)` — busca uma rota específica
+
+---
+
+#### 10.4 — `paradaRotaService.ts` (novo)
+
+Camada inteira de manipulação do roteiro. Funções:
+
+- `listarParadasDaRota(rotaId)` — retorna `ParadaItem[]` com passageiros já resolvidos via JOIN. Cada item tem `tipo`, `ordem` e — dependendo do tipo — `nomePassageiro`/`enderecoPassageiro` ou `rotulo`/`enderecoDestino`.
+- `listarEnderecosDaRota(rotaId)` — versão simplificada usada pelo Google Maps: array de strings na ordem do roteiro.
+- `listarPassageirosNaoIncluidos(rotaId)` — passageiros do motorista que ainda não estão neste roteiro (para o seletor "+ Adicionar passageiro"). Usa `not in` baseado em IDs já presentes em `paradas_rota`.
+- `adicionarParadaPassageiro(rotaId, passageiroId)` — calcula próxima ordem e insere
+- `adicionarParadaDestino(rotaId, rotulo, endereco)` — idem
+- `atualizarParadaDestino(paradaId, { rotulo?, endereco? })` — UPDATE
+- `removerParada(paradaId)` — DELETE
+- `reordenarParadas(rotaId, ordemFinal[])` — usa **estratégia em 2 passos** para evitar conflito com `UNIQUE (rota_id, ordem)`:
+  1. Move tudo para `1000 + novaOrdem` (escapa do range atual)
+  2. Move de volta para a `novaOrdem` definitiva
+
+Sem o offset, ao trocar parada A (ordem=2) com B (ordem=3), o primeiro UPDATE tentaria gravar A.ordem=3 enquanto B ainda estava em 3 — violação de unique.
+
+---
+
+#### 10.5 — `utils/maps.ts` (novo)
+
+**`montarUrlGoogleMaps(origem, paradas[])`** — formato oficial da Google:
+
+```
+https://www.google.com/maps/dir/?api=1
+  &origin=PONTO_SAIDA
+  &destination=ULTIMO_ITEM
+  &waypoints=ITEM1|ITEM2|ITEM3
+  &travelmode=driving
+```
+
+Convenção: o **último item da lista** vira `destination`, o resto vira `waypoints`. Retorna `null` quando falta origem ou paradas — aí o Dashboard avisa o motorista a configurar antes.
+
+**`abrirEmNovaAba(janelaPreAberta, url)`** — pop-up blockers: navegadores só permitem `window.open()` em contexto **síncrono** de gesto do usuário. Como precisamos esperar a query async dos endereços antes de saber a URL, abrimos uma janela vazia (`about:blank`) ainda no clique síncrono, depois setamos `.location.href` quando a URL fica pronta.
+
+---
+
+#### 10.6 — `GerenciarRotasModal.tsx` (novo)
+
+Modal completo com **chips de seleção de rota** no topo + **2 abas internas**:
+
+**Header (chips):**
+- Lista horizontal scrollável das rotas existentes, cada uma com ícone do turno
+- Botão "+ Nova" abre modo de criação (form vazio)
+
+**Aba "Dados da Rota":**
+- `nome` (livre) — ex: "Faculdade Brasil"
+- `turno` (radio cards Manhã/Tarde/Noite) — define cor e ícone visual
+- `horario_saida` (input time)
+- `ponto_saida` (input text com endereço)
+- Botão **Salvar** (criar ou atualizar conforme contexto)
+- Botão **Apagar rota** (com confirmação inline antes de executar)
+
+**Aba "Roteiro":**
+- Header com o ponto de saída atual (read-only — edita na aba Dados)
+- Lista vertical de **blocos editáveis**, cada um mostrando:
+  - Número da posição (1, 2, 3...)
+  - Ícone (👤 verde para passageiro, 📍 laranja para destino)
+  - Nome/rótulo + endereço
+  - Botões `↑` `↓` (reordenar), `✏️` (só destinos — editar inline), `🗑️` (remover)
+- Botões `+ Passageiro` e `+ Destino`:
+  - **+ Passageiro** abre sub-modal (`PassageiroPicker`) listando passageiros do motorista que ainda não estão neste roteiro
+  - **+ Destino** abre form inline com rótulo + endereço
+
+**Reordenar com atualização otimista:** o `setParadas` é atualizado instantaneamente na UI; depois o `reordenarParadas` é chamado. Se falhar, recarrega do banco para resincronizar.
+
+---
+
+#### 10.7 — `DashboardScreen.tsx`
+
+**Botão "Ver todas" → "Gerenciar Rotas":**
+- `SectionHead` ganhou prop `ActionIcon` (default `ChevronRight`); aqui passa `Settings`
+- Click abre `GerenciarRotasModal`
+
+**Layout flexível para N rotas:**
+- Removido o slice fixo `(0,2)` + `[2]` que limitava a 3 rotas
+- Substituído por `grid` com `gridTemplateColumns: repeat(2, 1fr)` no mobile e `repeat(min(N,3), 1fr)` no desktop
+- Estado vazio (zero rotas): card central com CTA "Gerenciar Rotas"
+
+**Botão Play → Google Maps + Iniciar Viagem:**
+```ts
+const handleIniciarViagem = async (rotaId: string) => {
+  const janelaMaps = window.open('about:blank', '_blank');  // SÍNCRONO
+  setRotaIniciandoId(rotaId);
+  try {
+    const rota = routeConfigs.find(r => r.rotaId === rotaId);
+    const enderecos = await listarEnderecosDaRota(rotaId);
+    const url = montarUrlGoogleMaps(rota?.pontoSaida, enderecos);
+    if (url) abrirEmNovaAba(janelaMaps, url);
+    else { janelaMaps?.close(); toast.info('Configure ponto de saída e paradas...'); }
+
+    const r = await iniciarViagem(rotaId);
+    if (r) navigate(`/viagem/${r.viagem_id}`);
+  } finally {
+    setRotaIniciandoId(null);
+  }
+};
+```
+
+A chave é o `window.open('about:blank')` **antes do primeiro await** — sem isso, navegadores como Firefox bloqueiam o pop-up porque o `open` aconteceu fora do gesto direto.
+
+---
+
+#### 10.8 — `PassengerForm.tsx`
+
+`inferirRouteType` foi removido. Agora o turno do passageiro vem direto de `rota.turno` quando seleciona uma rota:
+
+```ts
+setForm(f => ({ ...f, rotaId: id, routes: r ? [r.turno] : f.routes }));
+```
+
+---
+
+#### Bugs/edge-cases tratados na Fase 10
+
+| Caso | Tratamento |
+|---|---|
+| Motorista renomeia rota para nome arbitrário | `turno` separado do `nome` mantém cor/ícone consistentes |
+| Hard delete de rota ativa | Substituído por soft delete (`status='inativa'`) — preserva histórico |
+| Reordenar paradas viola UNIQUE | Estratégia em 2 passos (offset 1000) |
+| Pop-up do Maps bloqueado | `window.open('about:blank')` síncrono + `location.href` após await |
+| Rota sem ponto_saida ou sem paradas | URL retorna null, modal informa o motorista, viagem inicia normalmente |
+| Passageiros antigos sem `paradas_rota` | Backfill SQL cria automaticamente preservando `ordem_na_rota` |
+| Layout fixo de 3 rotas no Dashboard | Grid responsivo `repeat(N, 1fr)` para qualquer quantidade |
+
+---
+
+### Fase 11: Refinos pós-roteiro flexível (30/04/2026)
+
+Esta fase reúne os ajustes feitos depois da Fase 10 com base no uso real: o modelo de "blocos editáveis" foi simplificado, o ponto de saída ganhou estrutura, vários bugs de timing foram corrigidos e o fluxo de iniciar viagem ganhou validação.
+
+---
+
+#### 11.1 — Endereço estruturado do ponto de saída
+
+**Migration:** `supabase/migrations/20260430010000_endereco_estruturado.sql`
+
+A coluna `ponto_saida` (string livre) foi substituída por 4 colunas estruturadas em `rotas`:
+
+- `ponto_saida_rua` (text)
+- `ponto_saida_numero` (text — suporta "123A", "S/N")
+- `ponto_saida_bairro` (text)
+- `ponto_saida_cep` (text — com ou sem hífen)
+
+Backfill: registros antigos com `ponto_saida` preenchido têm o conteúdo copiado para `ponto_saida_rua` (aproximação). Depois a coluna antiga é dropada.
+
+**Helper novo em `utils/maps.ts`:**
+
+```ts
+formatarEnderecoCompleto({ rua, numero, bairro, cep }) → string
+// Concatena no formato: "Rua X, 123, Bairro Y, 01310-100"
+// Aceita campos vazios — usa só os que estiverem preenchidos.
+```
+
+**UI no modal:** os 4 inputs ficam empilhados (Rua em linha cheia, Número + Bairro lado a lado em grid `1fr 1.4fr`, CEP em linha cheia), com o mesmo padrão visual. A função `formatarEnderecoCompleto` é chamada na hora de montar a URL do Google Maps — o banco mantém os campos separados, o Maps recebe a string já concatenada.
+
+**Tipos:** `RotaRow.ponto_saida_*` substitui o antigo `ponto_saida`.
+
+---
+
+#### 11.2 — Race condition na primeira hidratação
+
+**Sintoma reportado**: ao criar uma conta nova, as 3 rotas padrão não apareciam na home — só aparecendo após trocar de aba e voltar.
+
+**Causa raiz**: `DashboardScreen` e `usePassengers` faziam fetch dentro de `useEffect(() => {...}, [])` — disparado **uma única vez no mount**, antes da sessão estar completamente hidratada. As queries chegavam ao Supabase sem JWT pronto, retornavam vazio, e o componente nunca re-buscava. Trocar de aba disparava `onAuthStateChange` (visibility) e algum mecanismo interno revalidava — daí "magicamente" aparecia.
+
+**Fix**: trocar a dependência do `useEffect` para `[motoristaId]`. Quando o auth completa e `motoristaId` muda de `null` → id real, a query é refeita automaticamente.
+
+```ts
+// DashboardScreen.tsx + usePassengers.ts
+useEffect(() => {
+  if (!motoristaId) return;  // guarda contra primeira execução sem auth
+  let ativo = true;
+  // ... fetch
+}, [motoristaId]);
+```
+
+`usePassengers` agora importa `useAuth` para acessar o `motoristaId`.
+
+---
+
+#### 11.3 — Substituição do modelo `paradas_rota` por destinos JSONB
+
+**Migration:** `supabase/migrations/20260430020000_destinos_em_rotas.sql`
+
+O modelo de "blocos editáveis intercalados" da Fase 10 foi substituído por um modelo mais simples e direto:
+
+```sql
+alter table rotas add column destinos jsonb not null default '[]';
+drop table paradas_rota cascade;
+```
+
+Cada item do array `destinos`:
+
+```ts
+{
+  rotulo: "Faculdade Brasil",
+  rua: "Av. Paulista", numero: "1500",
+  bairro: "Bela Vista",  cep: "01310-100"
+}
+```
+
+**Trade-off vs Fase 10**: perde-se a possibilidade de intercalar destinos entre passageiros (ex: "Renato → Lucas → Faculdade A → Marcelo → Faculdade B"). O novo modelo assume sequência fixa: motorista pega TODOS os passageiros, depois entrega nos destinos em ordem.
+
+Foi escolhido pela usabilidade — drag-and-drop intercalado tinha UX ruim no mobile e poucos casos reais usavam intercalação.
+
+**Aba "Roteiro" REMOVIDA do modal**. O modal agora tem uma única view "Dados da Rota" com:
+- Nome, Turno, Horário
+- Ponto de saída (4 campos)
+- **Seção "Destinos finais"**: lista de cards (`DestinoCard`) com rótulo + 4 campos de endereço + botão de remover
+- Botão `+ Adicionar destino`
+
+**`paradaRotaService.ts` foi DELETADO**. Substituído por:
+- `listarPassageirosDaRota(rotaId)` em `passageiroService.ts` — retorna apenas os endereços de embarque ordenados por `ordem_na_rota`, usados como waypoints
+
+**Tipos:** `DestinoRota` adicionado, `ParadaRotaRow`/`TipoParada` removidos.
+
+---
+
+#### 11.4 — Botão Play: nova lógica de montar a URL do Maps
+
+`handleIniciarViagem` no Dashboard agora:
+
+1. Busca `obterRota(rotaId)` (com destinos) e `listarPassageirosDaRota(rotaId)` em paralelo
+2. **origem** = ponto de saída (formatado dos 4 campos)
+3. **paradas** = endereços de passageiros (ordem_na_rota) seguidos dos endereços de destinos (ordem cadastrada)
+4. **optimize** = `true` apenas quando há 0 ou 1 destino (Google reordena os waypoints, que são todos passageiros). Com 2+ destinos, `optimize: false` para preservar a ordem ("primeiro Faculdade A, depois B")
+
+**`utils/maps.ts`** ganhou parâmetro `{ optimize?: boolean }` em `montarUrlGoogleMaps`. Quando `true`, prefixa os waypoints com `optimize:true|`.
+
+---
+
+#### 11.5 — Validação antes de iniciar viagem
+
+Nova função em `rotaService.ts`:
+
+```ts
+validarRotaParaInicio(rotaId): Promise<{ valido: boolean; erro?: string }>
+```
+
+Verifica em ordem (retorna na primeira falha):
+
+| Cenário | Mensagem ao motorista |
+|---|---|
+| Sem ponto de saída (rua vazia) | "Configure o ponto de saída da van antes de iniciar. Clique em 'Gerenciar Rotas' para editar." |
+| Sem destino final cadastrado | "Adicione pelo menos um destino final na rota. Clique em 'Gerenciar Rotas' para editar." |
+| Sem passageiros ativos | "Nenhum passageiro cadastrado nesta rota. Adicione passageiros antes de iniciar a viagem." |
+
+`handleIniciarViagem` chama essa função **antes** do `window.open` — se inválido, exibe `toast.error()` e aborta sem abrir aba inútil. O `window.open('about:blank')` só roda após validação, dentro da janela de tolerância de pop-up blocker (a validação é uma única query rápida).
+
+---
+
+#### 11.6 — Bug: rotas padrão não criadas em registro novo
+
+**Sintoma**: ao registrar um novo motorista, as 3 rotas padrão (Manhã/Tarde/Noite) não eram inseridas no banco. Erro intermitente "Edge Function returned a non-2xx status code" aparecia.
+
+**Causa raiz suspeita**: `criarRotasPadrao` era chamado **no client** logo após `signUp`. O Supabase JS pode não ter persistido a session interna ainda → o `INSERT` em `rotas` chegava ao PostgREST como `anon` → bloqueado pela RLS. O `console.error` registrava, mas o código retornava `void` e o erro era invisível ao caller.
+
+**Fix em duas camadas:**
+
+**1. Edge Function `criar-perfil-motorista` agora cria as rotas no mesmo request:**
+
+```ts
+// supabase/functions/criar-perfil-motorista/index.ts
+// Após criar motorista + chamar criar_dados_iniciais_motorista:
+if (!rotasExistentes || rotasExistentes.length === 0) {
+  const padroes = [
+    { motorista_id, nome: 'Rota Manhã', horario_saida: '07:00', turno: 'morning',   status: 'ativa' },
+    { motorista_id, nome: 'Rota Tarde', horario_saida: '12:00', turno: 'afternoon', status: 'ativa' },
+    { motorista_id, nome: 'Rota Noite', horario_saida: '17:30', turno: 'night',     status: 'ativa' },
+  ];
+  await supabase.from('rotas').insert(padroes).select('id');
+}
+```
+
+Vantagens:
+- Roda no servidor com JWT validado → sem race condition
+- Atômico com a criação do motorista
+- Erro aparece no log da Edge Function (visível)
+
+A resposta inclui `rotas_criadas: number` e, em caso de erro parcial, `aviso: string`.
+
+**2. `criarRotasPadrao` no client virou fallback idempotente:**
+
+A função agora retorna estado explícito em vez de `void`:
+
+```ts
+interface CriarRotasPadraoResult {
+  status: 'ja_existiam' | 'criadas' | 'erro';
+  totalCriadas?: number;
+  erro?: string;
+}
+```
+
+Se já existem rotas (Edge Function já criou), retorna `'ja_existiam'`. Se a Edge Function for de versão antiga (sem a feature de rotas) ou falhou parcialmente, o client tenta criar — agora sem perder o erro.
+
+**3. Logs detalhados em todo o fluxo de auth:**
+
+Em `register`:
+```
+[register] iniciando registro { email, nome }
+[register] signUp OK { userId, temSession }
+[register] sem session — confirmação de email pendente   (caminho A)
+[register] chamando Edge Function criar-perfil-motorista (caminho B)
+[register] Edge Function retornou: { motorista, rotas_criadas, ... }
+[register] fallback criarRotasPadrao para motorista <id>
+[register] criarRotasPadrao resultado: { status: 'ja_existiam' }
+[register] hidratando sessão...
+[register] concluído com sucesso
+```
+
+Em `hidratarSessao`:
+```
+[hidratarSessao] motorista não existe — chamando Edge Function
+[hidratarSessao] Edge Function retornou: ...
+[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para <id>
+[hidratarSessao] criarRotasPadrao resultado: ...
+```
+
+Permite ao desenvolvedor reproduzir o problema localmente e ver exatamente onde o fluxo falha.
+
+> ⚠️ **Importante**: a versão atualizada da Edge Function precisa ser deployada no Supabase (`supabase functions deploy criar-perfil-motorista`) para o fix #1 ter efeito. Enquanto isso, o fallback do client cobre.
+
+---
+
+#### Bugs/edge-cases tratados na Fase 11
+
+| Caso | Tratamento |
+|---|---|
+| Endereço como string solta dificultava edição | Decomposto em 4 colunas estruturadas |
+| Rotas só apareciam após trocar de aba (race condition) | `useEffect` depende de `motoristaId` |
+| Modelo `paradas_rota` complexo demais para uso real | Substituído por `destinos jsonb`, aba Roteiro removida |
+| `optimize:true` reordenava destinos sequenciais | Aplicado só quando ≤1 destino; ordem preservada com 2+ |
+| Play sem validação abria Maps com URL quebrada | `validarRotaParaInicio` com mensagens específicas em PT-BR |
+| Rotas padrão não criadas em signup | Movido para Edge Function (servidor) + fallback no client |
+| `criarRotasPadrao` falhava silenciosamente | Retorna `CriarRotasPadraoResult` com status explícito |
+| Diagnóstico de problemas de auth difícil sem logs | Logs `[register]` e `[hidratarSessao]` em todas as etapas |
+
+---
+
 ## O que NÃO existe (ainda)
 
 - **WhatsApp real** — a integração com bot ainda é simulada (sem Twilio, Meta API, Evolution API)

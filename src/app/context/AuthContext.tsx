@@ -154,34 +154,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 3) Sem perfil no DB? Tenta auto-criar via Edge Function (também com timeout)
     let motoristaAcabouDeNascer = false;
     if (!motorista) {
+      console.log('[hidratarSessao] motorista não existe — chamando Edge Function');
       try {
         const telefone = metaPhone.replace(/\D/g, '') || null;
-        const { error: fnError } = await withTimeout(
+        const { data: fnData, error: fnError } = await withTimeout(
           supabase.functions.invoke('criar-perfil-motorista', {
             body: { nome: fallbackName, telefone, cnh: null },
           }),
           10000,
         );
         if (fnError) {
-          console.error('criar-perfil-motorista falhou:', fnError);
+          console.error('[hidratarSessao] criar-perfil-motorista falhou:', fnError);
           return;
         }
+        console.log('[hidratarSessao] Edge Function retornou:', fnData);
         motorista = await withTimeout(carregarMotorista(userId), 15000);
         if (motorista) motoristaAcabouDeNascer = true;
       } catch (err) {
-        console.debug('Auto-criação do perfil demorou — usando fallback do JWT:', err);
+        console.debug('[hidratarSessao] auto-criação do perfil demorou — usando fallback do JWT:', err);
         return;
       }
     }
 
     if (motorista) {
-      // Só populamos as rotas padrão quando o motorista acabou de nascer.
-      // Para usuário já existente, NÃO bloqueamos — a query de checagem
-      // adiciona ~500ms ao refresh. As rotas dele já foram criadas no
-      // primeiro login (ou no register), então não precisa re-validar
-      // a cada hidratação.
+      // Fallback idempotente: a Edge Function já cria as rotas, mas se ela
+      // for de uma versão antiga ou tiver falhado parcialmente, garantimos
+      // aqui no primeiro login após registro. Se as rotas já existem,
+      // criarRotasPadrao retorna sem inserir.
       if (motoristaAcabouDeNascer) {
-        await criarRotasPadrao(motorista.id);
+        console.log('[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para', motorista.id);
+        const r = await criarRotasPadrao(motorista.id);
+        console.log('[hidratarSessao] criarRotasPadrao resultado:', r);
       }
 
       setUser(motoristaToUser(motorista));
@@ -239,6 +242,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (data: RegisterData): Promise<RegisterResult> => {
+    console.log('[register] iniciando registro', { email: data.email, nome: data.name });
+
     let signUpData: Awaited<ReturnType<typeof supabase.auth.signUp>>['data'];
     let signUpError: Awaited<ReturnType<typeof supabase.auth.signUp>>['error'];
     try {
@@ -252,23 +257,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       signUpData = res.data;
       signUpError = res.error;
-    } catch {
+    } catch (err) {
+      console.error('[register] signUp timeout/throw:', err);
       return { ok: false, errorMessage: 'Servidor não respondeu. Verifique sua conexão e tente novamente.' };
     }
     if (signUpError) {
+      console.error('[register] signUp error:', signUpError);
       return { ok: false, errorMessage: traduzirAuthErro(signUpError.message) };
     }
     if (!signUpData.user) {
+      console.error('[register] signUp sem user retornado');
       return { ok: false, errorMessage: 'O servidor não retornou um usuário válido. Tente novamente.' };
     }
+    console.log('[register] signUp OK', {
+      userId: signUpData.user.id,
+      temSession: !!signUpData.session,
+    });
 
     // Quando "Confirm email" está ativo no projeto, signUp não devolve sessão.
     // Sem sessão, não dá pra chamar a Edge Function (precisa de JWT). O perfil
     // será criado no primeiro login após o usuário confirmar o email.
     if (!signUpData.session) {
+      console.log('[register] sem session — confirmação de email pendente');
       return { ok: true, needsEmailConfirmation: true };
     }
 
+    console.log('[register] chamando Edge Function criar-perfil-motorista');
     const { data: fnData, error: fnError } = await supabase.functions.invoke('criar-perfil-motorista', {
       body: {
         nome: data.name,
@@ -277,20 +291,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (fnError) {
-      console.error('criar-perfil-motorista falhou:', fnError);
+      console.error('[register] criar-perfil-motorista falhou:', fnError);
       return {
         ok: false,
         errorMessage: 'Conta criada, mas houve um erro ao montar o perfil de motorista. Faça login para tentar novamente.',
       };
     }
+    console.log('[register] Edge Function retornou:', fnData);
 
-    // Motorista criado com sucesso — popula as 3 rotas padrão (Manhã/Tarde/Noite).
+    // A Edge Function já cria as 3 rotas padrão (Manhã/Tarde/Noite) no mesmo
+    // request, com JWT validado e bypassando race conditions de RLS no client.
+    // Aqui chamamos criarRotasPadrao como FALLBACK idempotente: se a Edge
+    // Function for uma versão antiga (sem a feature de rotas), garantimos
+    // que as rotas existam. Se já existirem, a função retorna sem inserir.
     const motoristaIdCriado = (fnData as { motorista?: { id?: string } } | null)?.motorista?.id;
     if (motoristaIdCriado) {
-      await criarRotasPadrao(motoristaIdCriado);
+      console.log('[register] fallback criarRotasPadrao para motorista', motoristaIdCriado);
+      const r = await criarRotasPadrao(motoristaIdCriado);
+      console.log('[register] criarRotasPadrao resultado:', r);
+    } else {
+      console.warn('[register] motorista.id ausente no retorno da Edge Function');
     }
 
+    console.log('[register] hidratando sessão...');
     await hidratarSessao(signUpData.session);
+    console.log('[register] concluído com sucesso');
     return { ok: true };
   }, [hidratarSessao]);
 

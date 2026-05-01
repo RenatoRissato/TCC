@@ -16,12 +16,28 @@ export interface MotoristaRow {
   criado_em: string;
 }
 
+export type TurnoRota = 'morning' | 'afternoon' | 'night';
+
+export interface DestinoRota {
+  rotulo: string;
+  rua: string;
+  numero: string;
+  bairro: string;
+  cep: string;
+}
+
 export interface RotaRow {
   id: string;
   motorista_id: string;
   nome: string;
   descricao: string | null;
   horario_saida: string | null;
+  ponto_saida_rua: string | null;
+  ponto_saida_numero: string | null;
+  ponto_saida_bairro: string | null;
+  ponto_saida_cep: string | null;
+  destinos: DestinoRota[];
+  turno: TurnoRota;
   status: StatusRota;
   criada_em: string;
 }

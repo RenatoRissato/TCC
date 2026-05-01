@@ -6,6 +6,7 @@ import {
   inativarPassageiro,
   calcularSummary,
 } from '../services/passageiroService';
+import { useAuth } from '../context/AuthContext';
 import type { Passenger, RouteType, StudentStatus } from '../types';
 
 export type PassengerFilter = 'all' | StudentStatus;
@@ -31,6 +32,7 @@ interface UsePassengersOptions {
 const STATUS_ORDER: Record<StudentStatus, number> = { going: 0, pending: 1, absent: 2 };
 
 export function usePassengers({ search = '', filter = 'all', period = 'all' }: UsePassengersOptions = {}) {
+  const { motoristaId } = useAuth();
   const [list, setList] = useState<Passenger[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,12 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
     }
   }, []);
 
-  useEffect(() => { recarregar(); }, [recarregar]);
+  // Recarrega quando o motoristaId fica disponível (evita race condition
+  // em registro novo / primeiro login, quando o JWT ainda não está pronto).
+  useEffect(() => {
+    if (!motoristaId) return;
+    recarregar();
+  }, [motoristaId, recarregar]);
 
   const counts = useMemo(() => ({
     all: list.length,

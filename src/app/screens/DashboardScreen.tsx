@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import {
-  Bell, ChevronRight, Wifi, Moon, SunMedium, ArrowRight, Menu,
+  Bell, ChevronRight, Wifi, Moon, SunMedium, ArrowRight, Menu, Settings,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -10,13 +11,28 @@ import { useDailyList } from '../hooks/useDailyList';
 import { usePassengers } from '../hooks/usePassengers';
 import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
+import { obterRota, validarRotaParaInicio } from '../services/rotaService';
+import { listarPassageirosDaRota } from '../services/passageiroService';
 import { useNavDrawer } from '../context/NavDrawerContext';
+import {
+  montarUrlGoogleMaps,
+  abrirEmNovaAba,
+  formatarEnderecoCompleto,
+} from '../utils/maps';
 import type { RouteConfig, WhatsAppUpdate } from '../types';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
+import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
 
-function SectionHead({ label, actionLabel, onAction }: { label: string; actionLabel: string; onAction: () => void }) {
+function SectionHead({
+  label, actionLabel, onAction, ActionIcon = ChevronRight,
+}: {
+  label: string;
+  actionLabel: string;
+  onAction: () => void;
+  ActionIcon?: typeof ChevronRight;
+}) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-[7px]">
@@ -25,9 +41,9 @@ function SectionHead({ label, actionLabel, onAction }: { label: string; actionLa
       </div>
       <button
         onClick={onAction}
-        className="flex items-center gap-[3px] text-pending text-xs font-bold bg-transparent border-0 cursor-pointer px-0 py-1 min-h-8"
+        className="flex items-center gap-[5px] text-pending text-xs font-bold bg-transparent border-0 cursor-pointer px-0 py-1 min-h-8"
       >
-        {actionLabel} <ChevronRight size={14} strokeWidth={2.5} />
+        {actionLabel} <ActionIcon size={14} strokeWidth={2.5} />
       </button>
     </div>
   );
@@ -35,7 +51,7 @@ function SectionHead({ label, actionLabel, onAction }: { label: string; actionLa
 
 export function DashboardScreen() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, motoristaId } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
@@ -46,12 +62,79 @@ export function DashboardScreen() {
   const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
   const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
   const [rotaIniciandoId, setRotaIniciandoId] = useState<string | null>(null);
+  const [gerenciarAberto, setGerenciarAberto] = useState(false);
+
+  const recarregarRotas = useCallback(() => {
+    let cancelado = false;
+    getRouteConfigs()
+      .then(rc => { if (!cancelado) setRouteConfigs(Array.isArray(rc) ? rc : []); })
+      .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
+    return () => { cancelado = true; };
+  }, []);
 
   const handleIniciarViagem = async (rotaId: string) => {
     setRotaIniciandoId(rotaId);
-    const r = await iniciarViagem(rotaId);
-    setRotaIniciandoId(null);
-    if (r) navigate(`/viagem/${r.viagem_id}`);
+    try {
+      // 1) Validação de pré-requisitos: ponto de saída, destinos e passageiros
+      // ativos. Falha → toast e abortamos antes de abrir qualquer aba.
+      const validacao = await validarRotaParaInicio(rotaId);
+      if (!validacao.valido) {
+        toast.error(validacao.erro ?? 'Rota inválida para iniciar viagem.');
+        return;
+      }
+
+      // 2) Pop-up blocker: abrimos uma aba vazia AGORA (ainda dentro do mesmo
+      // turno do clique) para reservar a permissão; populamos a URL depois.
+      // A validação acima é uma única query rápida, então a janela permanece
+      // dentro da janela de tolerância dos browsers.
+      const janelaMaps = window.open('about:blank', '_blank', 'noopener,noreferrer');
+
+      // 3) Busca rota completa (com destinos) e passageiros em paralelo
+      const [rota, enderecosPassageiros] = await Promise.all([
+        obterRota(rotaId),
+        listarPassageirosDaRota(rotaId),
+      ]);
+
+      const origem = rota
+        ? formatarEnderecoCompleto({
+            rua: rota.ponto_saida_rua,
+            numero: rota.ponto_saida_numero,
+            bairro: rota.ponto_saida_bairro,
+            cep: rota.ponto_saida_cep,
+          })
+        : '';
+
+      const enderecosDestinos = (rota?.destinos ?? [])
+        .map(d => formatarEnderecoCompleto({
+          rua: d.rua, numero: d.numero, bairro: d.bairro, cep: d.cep,
+        }))
+        .filter(Boolean);
+
+      const paradas = [...enderecosPassageiros, ...enderecosDestinos];
+
+      // optimize:true só faz sentido com 0 ou 1 destino — caso contrário,
+      // o Google reordena os destinos intermediários e quebra a ordem que
+      // o motorista definiu ("primeiro Faculdade A, depois B").
+      const otimizar = enderecosDestinos.length <= 1;
+
+      const url = montarUrlGoogleMaps(origem, paradas, { optimize: otimizar });
+
+      if (url) {
+        abrirEmNovaAba(janelaMaps, url);
+      } else {
+        // Cenário inesperado pós-validação — não deveria ocorrer, mas é
+        // melhor falhar graciosamente do que abrir Maps com URL quebrada.
+        janelaMaps?.close();
+        toast.error('Não foi possível montar o trajeto. Verifique os endereços cadastrados.');
+        return;
+      }
+
+      // 4) Inicia a viagem no backend
+      const r = await iniciarViagem(rotaId);
+      if (r) navigate(`/viagem/${r.viagem_id}`);
+    } finally {
+      setRotaIniciandoId(null);
+    }
   };
 
   useEffect(() => {
@@ -59,7 +142,13 @@ export function DashboardScreen() {
     return () => clearInterval(t);
   }, []);
 
+  // Carrega rotas e respostas recentes assim que a sessão estiver pronta
+  // (motoristaId muda de null para o id real). Dependência de motoristaId
+  // garante que, em registro novo / login, a query refaz quando o auth
+  // termina — sem isso, a primeira execução pode rodar antes do JWT estar
+  // disponível e voltar lista vazia.
   useEffect(() => {
+    if (!motoristaId) return;
     let ativo = true;
     getRouteConfigs()
       .then(rc => { if (ativo) setRouteConfigs(Array.isArray(rc) ? rc : []); })
@@ -68,7 +157,7 @@ export function DashboardScreen() {
       .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
       .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
     return () => { ativo = false; };
-  }, []);
+  }, [motoristaId]);
 
   const firstName = user?.name?.split(' ').slice(0, 2).join(' ') ?? 'Motorista';
   const dateStr = time.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -157,40 +246,43 @@ export function DashboardScreen() {
           <div>
             {!isDesktop && <OccupancySummary summary={s} />}
 
-            <SectionHead label="ROTAS DE HOJE" actionLabel="Ver todas" onAction={() => navigate('/routes')} />
+            <SectionHead
+              label="ROTAS DE HOJE"
+              actionLabel="Gerenciar Rotas"
+              onAction={() => setGerenciarAberto(true)}
+              ActionIcon={Settings}
+            />
 
-            {isDesktop ? (
-              <div className="flex gap-3.5 mb-6">
-                {routeConfigs.map(rc => <RouteButton
-                    key={rc.rotaId ?? rc.type}
-                    {...rc}
-                    onClick={() => navigate(`/routes?turno=${rc.type}`)}
-                    onIniciarViagem={handleIniciarViagem}
-                    iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
-                  />)}
+            {routeConfigs.length === 0 ? (
+              <div className="bg-panel border-[1.5px] border-dashed border-app-border rounded-[18px] px-4 py-6 text-center mb-5">
+                <p className="text-[13px] font-bold text-ink m-0 mb-1">Nenhuma rota cadastrada</p>
+                <p className="text-xs text-ink-soft m-0 mb-3">Crie sua primeira rota para começar.</p>
+                <button
+                  onClick={() => setGerenciarAberto(true)}
+                  className="inline-flex items-center gap-1.5 bg-pending text-[#212529] border-0 rounded-[12px] px-4 py-2 text-xs font-bold cursor-pointer min-h-[40px]"
+                >
+                  <Settings size={14} strokeWidth={2.5} /> Gerenciar Rotas
+                </button>
               </div>
             ) : (
-              <>
-                <div className="flex gap-2.5 mb-2.5">
-                  {routeConfigs.slice(0, 2).map(rc => <RouteButton
+              <div
+                className="grid gap-2.5 mb-5"
+                style={{
+                  gridTemplateColumns: isDesktop
+                    ? `repeat(${Math.min(routeConfigs.length, 3)}, 1fr)`
+                    : 'repeat(2, 1fr)',
+                }}
+              >
+                {routeConfigs.map(rc => (
+                  <RouteButton
                     key={rc.rotaId ?? rc.type}
                     {...rc}
                     onClick={() => navigate(`/routes?turno=${rc.type}`)}
                     onIniciarViagem={handleIniciarViagem}
                     iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
-                  />)}
-                </div>
-                {routeConfigs[2] && (
-                  <div className="flex mb-5">
-                    <RouteButton
-                      {...routeConfigs[2]}
-                      onClick={() => navigate(`/routes?turno=${routeConfigs[2].type}`)}
-                      onIniciarViagem={handleIniciarViagem}
-                      iniciandoViagem={iniciandoViagem && rotaIniciandoId === routeConfigs[2].rotaId}
-                    />
-                  </div>
-                )}
-              </>
+                  />
+                ))}
+              </div>
             )}
 
             {isDesktop && (
@@ -244,6 +336,12 @@ export function DashboardScreen() {
           </div>
         </div>
       </div>
+
+      <GerenciarRotasModal
+        open={gerenciarAberto}
+        onOpenChange={setGerenciarAberto}
+        onChanged={recarregarRotas}
+      />
     </div>
   );
 }
