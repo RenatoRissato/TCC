@@ -8,6 +8,7 @@ import {
 } from '../services/passageiroService';
 import { useAuth } from '../context/AuthContext';
 import type { Passenger, RouteType, StudentStatus, TipoPassageiro } from '../types';
+import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
 
 export type PassengerFilter = 'all' | StudentStatus;
 export type PassengerPeriod = 'all' | string; // 'all' | rotaId
@@ -45,23 +46,40 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const recarregar = useCallback(async () => {
-    setLoading(true);
+  const recarregar = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     try {
       const dados = await listarPassageiros();
       setList(dados);
+      if (motoristaId) {
+        writeJsonCache(cacheKeys.passageiros(motoristaId), dados);
+      }
       setError(null);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [motoristaId]);
 
   // Recarrega quando o motoristaId fica disponível (evita race condition
   // em registro novo / primeiro login, quando o JWT ainda não está pronto).
   useEffect(() => {
-    if (!motoristaId) return;
+    if (!motoristaId) {
+      setList([]);
+      setLoading(false);
+      return;
+    }
+
+    const cached = readJsonCache<Passenger[]>(cacheKeys.passageiros(motoristaId));
+    if (Array.isArray(cached)) {
+      setList(cached);
+      setLoading(false);
+      recarregar({ silent: true });
+      return;
+    }
+
+    setLoading(true);
     recarregar();
   }, [motoristaId, recarregar]);
 

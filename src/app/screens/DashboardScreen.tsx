@@ -1,8 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
-  Bell, ChevronRight, Wifi, Moon, SunMedium, ArrowRight, Menu, Settings,
+  Bell, ChevronRight, Wifi, Moon, SunMedium, ArrowRight, Menu, Settings, Loader2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -11,11 +11,12 @@ import { usePassengers } from '../hooks/usePassengers';
 import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
 import { obterRota, validarRotaParaInicio } from '../services/rotaService';
-import { listarPassageirosDaRota } from '../services/passageiroService';
+import { listarPassageirosDaRota, otimizarSequenciaPassageirosDaRota } from '../services/passageiroService';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import {
   montarUrlGoogleMaps,
   abrirEmNovaAba,
+  deveAbrirMapsNoMesmoContexto,
   formatarEnderecoCompleto,
 } from '../utils/maps';
 import type { RouteConfig, WhatsAppUpdate } from '../types';
@@ -23,6 +24,13 @@ import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
+import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
+
+const ETAPAS_OTIMIZACAO = [
+  'Localizando endereços...',
+  'Calculando melhor ordem...',
+  'Salvando nova sequência...',
+] as const;
 
 function SectionHead({
   label, actionLabel, onAction, ActionIcon = ChevronRight,
@@ -57,11 +65,13 @@ export function DashboardScreen() {
   const [time, setTime] = useState(new Date());
   // Uma única chamada a listarPassageiros() — periodSummary já fornece o Summary
   // que antes vinha do useDailyList, evitando query duplicada no mount.
-  const { list: passengers, periodSummary: s } = usePassengers();
+  const { list: passengers, periodSummary: s, loading: loadingPassengers } = usePassengers();
   const [recentUpdates, setRecentUpdates] = useState<WhatsAppUpdate[]>([]);
   const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
   const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
   const [rotaIniciandoId, setRotaIniciandoId] = useState<string | null>(null);
+  const [rotaOtimizandoId, setRotaOtimizandoId] = useState<string | null>(null);
+  const [etapaOtimizacaoIndex, setEtapaOtimizacaoIndex] = useState(0);
   const [gerenciarAberto, setGerenciarAberto] = useState(false);
 
   const recarregarRotas = useCallback(() => {
@@ -72,7 +82,7 @@ export function DashboardScreen() {
         const arr = Array.isArray(rc) ? rc : [];
         setRouteConfigs(arr);
         if (motoristaId) {
-          try { localStorage.setItem(`sr_rotas_${motoristaId}`, JSON.stringify(arr)); } catch { /* ok */ }
+          writeJsonCache(cacheKeys.rotas(motoristaId), arr);
         }
       })
       .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
@@ -94,7 +104,15 @@ export function DashboardScreen() {
       // turno do clique) para reservar a permissão; populamos a URL depois.
       // A validação acima é uma única query rápida, então a janela permanece
       // dentro da janela de tolerância dos browsers.
-      const janelaMaps = window.open('about:blank', '_blank', 'noopener,noreferrer');
+      const janelaMaps = deveAbrirMapsNoMesmoContexto() ? null : window.open('', '_blank');
+      if (janelaMaps) {
+        try {
+          janelaMaps.opener = null;
+          janelaMaps.document.title = 'Abrindo trajeto...';
+        } catch {
+          // Alguns navegadores podem restringir ajustes na janela recém-aberta.
+        }
+      }
 
       // 3) Busca rota completa (com destinos) e passageiros em paralelo
       const [rota, enderecosPassageiros] = await Promise.all([
@@ -119,12 +137,10 @@ export function DashboardScreen() {
 
       const paradas = [...enderecosPassageiros, ...enderecosDestinos];
 
-      // optimize:true só faz sentido com 0 ou 1 destino — caso contrário,
-      // o Google reordena os destinos intermediários e quebra a ordem que
-      // o motorista definiu ("primeiro Faculdade A, depois B").
-      const otimizar = enderecosDestinos.length <= 1;
-
-      const url = montarUrlGoogleMaps(origem, paradas, { optimize: otimizar });
+      // Mantemos a ordem definida pela aplicação. O prefixo "optimize:true|"
+      // em URLs do Maps Web pode virar uma parada fantasma ("Optimize ..."),
+      // então a URL segue sempre com waypoints explícitos e ordenados.
+      const url = montarUrlGoogleMaps(origem, paradas);
 
       if (url) {
         abrirEmNovaAba(janelaMaps, url);
@@ -144,10 +160,64 @@ export function DashboardScreen() {
     }
   };
 
+  const handleOtimizarSequencia = async (rotaId: string) => {
+    setRotaOtimizandoId(rotaId);
+    try {
+      const resultado = await otimizarSequenciaPassageirosDaRota({
+        rotaId,
+      });
+
+      if (resultado.total < 2) {
+        toast.info('É preciso ter pelo menos 2 passageiros ativos para otimizar a sequência.');
+        return;
+      }
+
+      if (resultado.status === 'sem_alteracao') {
+        toast.success(
+          resultado.provedor === 'google'
+            ? 'A sequência atual dos passageiros já está otimizada.'
+            : 'A sequência atual dos passageiros já está otimizada pelo fallback automático.',
+        );
+        return;
+      }
+
+      toast.success(
+        resultado.provedor === 'google'
+          ? `Sequência otimizada com sucesso para ${resultado.total} passageiros. Nova ordem: ${resultado.ordemDepois.join(' -> ')}`
+          : `Sequência otimizada com sucesso para ${resultado.total} passageiros usando o fallback automático. Nova ordem: ${resultado.ordemDepois.join(' -> ')}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error
+        ? err.message
+        : (err && typeof err === 'object' && 'erro' in err && typeof (err as { erro?: unknown }).erro === 'string')
+            ? (err as { erro: string }).erro
+            : 'Não foi possível otimizar a sequência.';
+      toast.error(msg);
+    } finally {
+      setRotaOtimizandoId(null);
+    }
+  };
+
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!rotaOtimizandoId) {
+      setEtapaOtimizacaoIndex(0);
+      return undefined;
+    }
+
+    setEtapaOtimizacaoIndex(0);
+    const interval = window.setInterval(() => {
+      setEtapaOtimizacaoIndex((atual) => (
+        atual < ETAPAS_OTIMIZACAO.length - 1 ? atual + 1 : atual
+      ));
+    }, 1700);
+
+    return () => window.clearInterval(interval);
+  }, [rotaOtimizandoId]);
 
   // Carrega rotas e respostas recentes assim que a sessão estiver pronta
   // (motoristaId muda de null para o id real). Dependência de motoristaId
@@ -162,11 +232,8 @@ export function DashboardScreen() {
     // usuário não ver "Nenhuma rota cadastrada" durante o cold start
     // do free tier (5-15s). Query abaixo revalida e sobrescreve.
     try {
-      const cached = localStorage.getItem(`sr_rotas_${motoristaId}`);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) setRouteConfigs(parsed);
-      }
+      const cached = readJsonCache<RouteConfig[]>(cacheKeys.rotas(motoristaId));
+      if (Array.isArray(cached)) setRouteConfigs(cached);
     } catch { /* cache corrompido — ignora e segue para a query */ }
 
     getRouteConfigs()
@@ -174,7 +241,7 @@ export function DashboardScreen() {
         if (!ativo) return;
         const arr = Array.isArray(rc) ? rc : [];
         setRouteConfigs(arr);
-        try { localStorage.setItem(`sr_rotas_${motoristaId}`, JSON.stringify(arr)); } catch { /* ok */ }
+        writeJsonCache(cacheKeys.rotas(motoristaId), arr);
       })
       .catch(err => { console.error('getRouteConfigs:', err); /* mantém cache na tela */ });
     getRecentUpdates()
@@ -188,6 +255,26 @@ export function DashboardScreen() {
   const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
   const pad = isDesktop ? 36 : isMd ? 24 : 16;
 
+  const routeConfigsVisiveis = useMemo(() => {
+    if (loadingPassengers && passengers.length === 0) return routeConfigs;
+
+    const counts = new Map<string, number>();
+    passengers.forEach((p) => {
+      counts.set(p.rotaId, (counts.get(p.rotaId) ?? 0) + 1);
+    });
+
+    return routeConfigs.map((rc) => ({
+      ...rc,
+      passengerCount: rc.rotaId ? (counts.get(rc.rotaId) ?? 0) : rc.passengerCount,
+    }));
+  }, [loadingPassengers, passengers, routeConfigs]);
+
+  const rotaOtimizandoLabel = useMemo(
+    () => routeConfigsVisiveis.find((rc) => rc.rotaId === rotaOtimizandoId)?.label ?? 'rota',
+    [routeConfigsVisiveis, rotaOtimizandoId],
+  );
+  const etapaOtimizacao = ETAPAS_OTIMIZACAO[etapaOtimizacaoIndex] ?? ETAPAS_OTIMIZACAO[0];
+
   const desktopStats = [
     { n: s.going,   l: 'INDO',      c: '#4ADE80', bg: 'rgba(25,135,84,0.22)' },
     { n: s.absent,  l: 'AUSENTES',  c: '#FF6B7A', bg: 'rgba(220,53,69,0.22)' },
@@ -197,6 +284,25 @@ export function DashboardScreen() {
 
   return (
     <div className="bg-surface min-h-full transition-colors">
+      {rotaOtimizandoId && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[140] px-4">
+          <div className="overflow-hidden rounded-[18px] border border-pending/35 bg-[#212529]/95 shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-md">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pending/15">
+                <Loader2 size={18} color="#FFC107" strokeWidth={2.5} className="animate-spin" />
+              </div>
+              <div className="min-w-[220px]">
+                <p className="m-0 text-sm font-extrabold text-white">Otimizando sequência da {rotaOtimizandoLabel}...</p>
+                <p className="m-0 text-xs text-white/70">{etapaOtimizacao}</p>
+              </div>
+            </div>
+            <div className="h-1.5 w-full bg-white/8">
+              <div className="h-full w-1/3 rounded-r-full bg-[linear-gradient(90deg,#FFC107_0%,#FFD95A_100%)] animate-[pulse_1.2s_ease-in-out_infinite]" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <header
         className={`relative overflow-hidden ${isDark ? 'bg-[linear-gradient(160deg,#0A0D12_0%,#161B22_100%)]' : 'bg-[linear-gradient(160deg,#161B22_0%,#212529_100%)]'}`}
         style={{ padding: `${isDesktop ? 28 : 20}px ${pad}px ${isDesktop ? 36 : 32}px` }}
@@ -277,7 +383,7 @@ export function DashboardScreen() {
               ActionIcon={Settings}
             />
 
-            {routeConfigs.length === 0 ? (
+            {routeConfigsVisiveis.length === 0 ? (
               <div className="bg-panel border-[1.5px] border-dashed border-app-border rounded-[18px] px-4 py-6 text-center mb-5">
                 <p className="text-[13px] font-bold text-ink m-0 mb-1">Nenhuma rota cadastrada</p>
                 <p className="text-xs text-ink-soft m-0 mb-3">Crie sua primeira rota para começar.</p>
@@ -293,17 +399,19 @@ export function DashboardScreen() {
                 className="grid gap-2.5 mb-5"
                 style={{
                   gridTemplateColumns: isDesktop
-                    ? `repeat(${Math.min(routeConfigs.length, 3)}, 1fr)`
+                    ? `repeat(${Math.min(routeConfigsVisiveis.length, 3)}, 1fr)`
                     : 'repeat(2, 1fr)',
                 }}
               >
-                {routeConfigs.map(rc => (
+                {routeConfigsVisiveis.map(rc => (
                   <RouteButton
                     key={rc.rotaId ?? rc.type}
                     {...rc}
                     onClick={() => navigate(`/routes?turno=${rc.type}`)}
                     onIniciarViagem={handleIniciarViagem}
                     iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
+                    onOtimizarSequencia={handleOtimizarSequencia}
+                    otimizandoSequencia={rotaOtimizandoId === rc.rotaId}
                   />
                 ))}
               </div>

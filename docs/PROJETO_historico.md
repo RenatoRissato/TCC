@@ -62,16 +62,16 @@ src/
 │   └── StatusBadge.test.tsx → Testes de componente do StatusBadge
 └── app/
     ├── App.tsx              → Root: AuthProvider > ThemeProvider > AuthGate
-    ├── routes.tsx           → Rotas protegidas (AppLayout + 4 telas)
+    ├── routes.tsx           → Rotas protegidas (AppLayout + telas autenticadas)
     ├── types/index.ts       → Tipos centralizados (Passenger, User, etc.)
-    ├── data/mockData.ts     → 12 passageiros + rotas + atualizações mockados
-    ├── services/            → Camada de acesso aos dados (encapsula mockData)
+    ├── data/mockData.ts     → Base histórica usada até a Fase 8 (antes da integração real)
+    ├── services/            → Camada de acesso aos dados; nasceu encapsulando `mockData` e hoje conversa com Supabase
     │   ├── passengerService.ts → getPassengers(), getSummary()
     │   ├── dashboardService.ts → getRecentUpdates(), getRouteConfigs()
     │   └── index.ts         → Re-exporta tudo de services/
     ├── context/             → Estado global (Auth, Theme, NavDrawer)
     ├── hooks/               → Lógica reutilizável (Passengers, WhatsApp, etc.)
-    ├── screens/             → As 6 telas da aplicação
+    ├── screens/             → As telas da aplicação (incluindo login, cadastro e viagem em andamento)
     └── components/          → Componentes organizados por domínio
 ```
 
@@ -86,7 +86,8 @@ App.tsx
                            ├── /home    → DashboardScreen
                            ├── /routes  → RouteScreen
                            ├── /whatsapp→ WhatsAppScreen
-                           └── /settings→ SettingsScreen
+                           ├── /settings→ SettingsScreen
+                           └── /viagem/:viagemId → LiveTripScreen
 ```
 
 ---
@@ -116,7 +117,7 @@ A tela principal após o login. Exibe uma saudação personalizada com o nome do
 - **Relógio** atualizado a cada minuto
 - **Botões de Rota** (Manhã ☀️ / Tarde 🌤️ / Noite 🌙) com contagem de passageiros
 - **OccupancySummary**: donut chart SVG + stats em 3 colunas (VAI / NÃO VAI / PENDENTE)
-- **Feed de respostas recentes** do WhatsApp Bot (ao vivo simulado)
+- **Feed de respostas recentes** do WhatsApp Bot (inicialmente simulado; hoje alimentado por dados reais do Supabase)
 - **Alerta inteligente**: se houver pendentes, exibe dica de ir ao WhatsApp
 - **Layout adaptativo**: em desktop vira grid 2 colunas com stats extras no header
 
@@ -246,7 +247,7 @@ O arquivo `src/styles/theme.css` define variáveis CSS para light e dark mode us
 ## Os Contextos Globais
 
 ### AuthContext
-Gerencia autenticação simulada. `login()` aceita qualquer email não-vazio (delay de 900ms para simular API). `register()` cria usuário com delay de 1s. O usuário mock é **Carlos Andrade** (carlos@smartroutes.app, van Mercedes Sprinter, placa BRA-2E19).
+Hoje gerencia autenticação real com **Supabase Auth** e hidratação do perfil do motorista. Até a Fase 8, este contexto era simulado: `login()` aceitava qualquer email não-vazio (delay de 900ms para simular API), `register()` criava usuário com delay de 1s e o usuário mock era **Carlos Andrade** (carlos@smartroutes.app, van Mercedes Sprinter, placa BRA-2E19).
 
 ### ThemeContext
 Gerencia dark/light mode com persistência em `localStorage`. Aplica a classe `.dark` ao `<html>` para o Tailwind v4 funcionar. Expõe também `useColors()` com 20+ tokens de cor para uso em inline styles quando necessário.
@@ -262,13 +263,13 @@ Contexto simples que expõe `openDrawer()` — qualquer tela pode abrir o drawer
 Detecta dimensões da janela e mapeia para breakpoints Bootstrap 5. SSR-safe (default 1280×800). Usado em praticamente todas as telas para layout responsivo.
 
 ### `usePassengers`
-CRUD completo de passageiros em memória. Recebe parâmetros de busca, filtro de status e período. Retorna lista filtrada e ordenada (`going` → `pending` → `absent`), contagens por status, e funções `add/edit/remove`. Usa `useMemo` para performance.
+Hoje busca e persiste passageiros no Supabase. Na fase inicial, fazia CRUD completo em memória: recebia parâmetros de busca, filtro de status e período, retornava lista filtrada e ordenada (`going` → `pending` → `absent`), contagens por status, e funções `add/edit/remove`. Usa `useMemo` para performance.
 
 ### `useDailyList`
 Calcula resumo do dia (going/absent/pending/total) a partir da lista de passageiros. Filtra por período se necessário. Usado pelo Dashboard e Settings.
 
 ### `useWhatsApp`
-Gerencia todo o estado da tela WhatsApp: conexão simulada (2.2s de QR scan), horários de agendamento, template de mensagem, flags de feedback (saved) com auto-dismiss de 2s.
+Ainda hoje gerencia apenas o estado local da tela WhatsApp: conexão simulada (2.2s de QR scan), horários de agendamento, template de mensagem e flags de feedback (`saved`) com auto-dismiss de 2s. O backend real da integração com Evolution API já existe nas Edge Functions, mas essa tela específica ainda não foi conectada a ele.
 
 ---
 
@@ -376,7 +377,7 @@ dist
 - Novos documentos técnicos criados na pasta `docs/`:
   - `docs/banco.md` — modelagem do banco de dados para o backend futuro
   - `docs/Edge_Functions.md` — estratégia de Edge Functions para a API
-  - `docs/evolution_api.md` — integração planejada com Evolution API (WhatsApp real)
+  - `docs/evolution_api.md` — documento criado quando a integração com Evolution API ainda era planejada; hoje a base já possui Edge Functions implementadas para esse fluxo
   - `docs/requisitos_resumido.md` — requisitos funcionais e não-funcionais resumidos
   - `docs/diagrama_arquitetura.md` — diagrama textual da arquitetura do sistema
   - `docs/smartroutes_architecture_v3.svg` — diagrama visual SVG da arquitetura
@@ -542,7 +543,7 @@ it('exibe "PENDENTE" para status pending')
 
 ## Dados Mock (o "banco de dados" atual)
 
-> **Nota:** A partir da Fase 9, o projeto usa dados reais do Supabase. Os mocks abaixo foram a base de desenvolvimento até a integração real.
+> **Nota:** A partir da Fase 9, o projeto usa dados reais do Supabase. Os mocks abaixo descrevem o estado histórico da base até a integração real.
 
 12 passageiros cadastrados:
 - 6 com status `going` (confirmados)
@@ -554,7 +555,7 @@ it('exibe "PENDENTE" para status pending')
 - **Tarde** 🌤️ 12:30 — 6 passageiros — cor #FD7E14
 - **Noite** 🌙 19:00 — 4 passageiros — cor #6C5CE7
 
-5 atualizações recentes de WhatsApp simuladas (feed ao vivo)
+5 atualizações recentes de WhatsApp simuladas (feed visual da fase mock)
 
 ---
 
@@ -1099,9 +1100,22 @@ Foi escolhido pela usabilidade — drag-and-drop intercalado tinha UX ruim no mo
 1. Busca `obterRota(rotaId)` (com destinos) e `listarPassageirosDaRota(rotaId)` em paralelo
 2. **origem** = ponto de saída (formatado dos 4 campos)
 3. **paradas** = endereços de passageiros (ordem_na_rota) seguidos dos endereços de destinos (ordem cadastrada)
-4. **optimize** = `true` apenas quando há 0 ou 1 destino (Google reordena os waypoints, que são todos passageiros). Com 2+ destinos, `optimize: false` para preservar a ordem ("primeiro Faculdade A, depois B")
+4. A URL final preserva explicitamente a ordem calculada pela aplicação. O último item vira `destination` e os anteriores vão em `waypoints`
 
-**`utils/maps.ts`** ganhou parâmetro `{ optimize?: boolean }` em `montarUrlGoogleMaps`. Quando `true`, prefixa os waypoints com `optimize:true|`.
+**Atualização posterior (maio/2026):** o prefixo `optimize:true|` foi removido de `utils/maps.ts`, porque o Google Maps Web passou a interpretar esse trecho como uma parada literal em alguns cenários, gerando o waypoint fantasma "Optimize Consultoria". Desde então, `montarUrlGoogleMaps` trabalha apenas com waypoints explícitos e ordenados.
+
+#### 11.4.1 — Botão de otimizar sequência de passageiros
+
+O card de rota no Dashboard também ganhou um botão dedicado para **otimizar somente a sequência dos passageiros**, sem mexer na ordem dos destinos finais da rota.
+
+- O cálculo parte do `ponto_saida` da van
+- Usa os passageiros ativos da rota como intermediários reordenáveis
+- Mantém o primeiro destino final como ponto de chegada fixo para a otimização
+- Persiste a nova ordem em `ordem_na_rota`, para que o próximo início de viagem já abra o Maps com a sequência otimizada
+- Quando `GOOGLE_MAPS_API_KEY` existe nas secrets do Supabase, usa Google Routes API via Edge Function
+- Sem chave do Google, entra automaticamente em fallback com geocodificação via OpenStreetMap e ordenação via OSRM
+
+Quando não há pelo menos 2 passageiros ativos, o botão apenas informa que não existe nada a reordenar.
 
 ---
 
@@ -1205,7 +1219,7 @@ Permite ao desenvolvedor reproduzir o problema localmente e ver exatamente onde 
 | Endereço como string solta dificultava edição | Decomposto em 4 colunas estruturadas |
 | Rotas só apareciam após trocar de aba (race condition) | `useEffect` depende de `motoristaId` |
 | Modelo `paradas_rota` complexo demais para uso real | Substituído por `destinos jsonb`, aba Roteiro removida |
-| `optimize:true` reordenava destinos sequenciais | Aplicado só quando ≤1 destino; ordem preservada com 2+ |
+| Prefixo `optimize:true|` no Maps Web gerava waypoint fantasma | Removido; a aplicação envia apenas waypoints explícitos e ordenados |
 | Play sem validação abria Maps com URL quebrada | `validarRotaParaInicio` com mensagens específicas em PT-BR |
 | Rotas padrão não criadas em signup | Movido para Edge Function (servidor) + fallback no client |
 | `criarRotasPadrao` falhava silenciosamente | Retorna `CriarRotasPadraoResult` com status explícito |
@@ -1444,9 +1458,9 @@ Agora o Google Maps recebe exatamente o mesmo endereço exibido na tela — sem 
 
 ## O que NÃO existe (ainda)
 
-- **WhatsApp real** — a integração com bot ainda é simulada (sem Twilio, Meta API, Evolution API)
+- **Tela WhatsApp ligada ao backend real** — a UI de conexão, QR code, horários e template ainda usa estado local/simulado, embora a integração backend com Evolution API já exista nas Edge Functions
 - **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
 - **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
 - **Internacionalização** — strings hardcoded em PT-BR
 - **Notificações push reais** — apenas UI
-- **Tela de Viagem em andamento** — hook `useIniciarViagem` existe, rota `/viagem/:id` a implementar
+- **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend

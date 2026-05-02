@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import type { PassageiroRow, ConfirmacaoRow, RotaRow, ObservacoesPassageiro, TipoPassageiro } from '../types/database';
 import type { Passenger, RouteType, StudentStatus, Summary } from '../types';
 import { formatarEnderecoCompleto } from '../utils/maps';
+import { obterRota } from './rotaService';
 
 /**
  * Formata a string de "série/curso" exibida no PassengerCard a partir do
@@ -278,4 +279,414 @@ export async function listarPassageirosDaRota(rotaId: string): Promise<string[]>
       bairro: p.embarque_bairro, cep: p.embarque_cep,
     }).trim())
     .filter((s): s is string => s.length > 0);
+}
+
+export interface OtimizacaoPassageirosResultado {
+  status: 'otimizada' | 'sem_alteracao';
+  total: number;
+  ordemAntes: string[];
+  ordemDepois: string[];
+  provedor: 'google' | 'osm';
+}
+
+interface EdgeFnError {
+  erro: string;
+  codigo?: string;
+  detalhes?: unknown;
+}
+
+function extrairErro(error: unknown, fallback = 'Erro inesperado'): EdgeFnError {
+  if (error && typeof error === 'object') {
+    const e = error as { erro?: string; codigo?: string; detalhes?: unknown };
+    if (e.erro) {
+      return { erro: e.erro, codigo: e.codigo, detalhes: e.detalhes };
+    }
+    const ctx = (error as { context?: { json?: () => Promise<EdgeFnError> } }).context;
+    if (ctx) {
+      console.error('Edge function erro:', error);
+    }
+    const msg = (error as { message?: string }).message;
+    if (msg) return { erro: msg };
+  }
+  return { erro: fallback };
+}
+
+function traduzirErroOtimizarSequencia(error: EdgeFnError): EdgeFnError {
+  if (error.erro.trim() === 'Failed to fetch') {
+    return {
+      erro: 'Não foi possível conectar à função de otimização no Supabase. Recarregue a página e tente novamente.',
+      codigo: error.codigo,
+      detalhes: error.detalhes,
+    };
+  }
+  return error;
+}
+
+interface PassageiroAtivoDaRota {
+  id: string;
+  nome_completo: string;
+  ordem_na_rota: number;
+  endereco: string;
+}
+
+interface Coordenada {
+  lat: number;
+  lon: number;
+}
+
+interface NominatimSearchItem {
+  lat: string;
+  lon: string;
+}
+
+interface OsrmTripWaypoint {
+  waypoint_index: number;
+}
+
+interface OsrmTripResponse {
+  code?: string;
+  waypoints?: OsrmTripWaypoint[];
+}
+
+async function buscarPassageirosAtivosDaRota(rotaId: string): Promise<PassageiroAtivoDaRota[]> {
+  const { data, error } = await supabase
+    .from('passageiros')
+    .select('id, nome_completo, embarque_rua, embarque_numero, embarque_bairro, embarque_cep, ordem_na_rota')
+    .eq('rota_id', rotaId)
+    .eq('status', 'ativo')
+    .order('ordem_na_rota', { ascending: true });
+
+  if (error) {
+    throw new Error(`Não foi possível carregar os passageiros da rota: ${error.message}`);
+  }
+
+  return (data ?? [])
+    .map((p: {
+      id: string;
+      nome_completo: string;
+      embarque_rua: string | null;
+      embarque_numero: string | null;
+      embarque_bairro: string | null;
+      embarque_cep: string | null;
+      ordem_na_rota: number;
+    }) => ({
+      id: p.id,
+      nome_completo: p.nome_completo,
+      ordem_na_rota: p.ordem_na_rota,
+      endereco: formatarEnderecoCompleto({
+        rua: p.embarque_rua,
+        numero: p.embarque_numero,
+        bairro: p.embarque_bairro,
+        cep: p.embarque_cep,
+      }).trim(),
+    }))
+    .filter((p) => p.endereco.length > 0);
+}
+
+function reordenarPassageirosPorIndices<T>(lista: T[], indices: number[]): T[] {
+  if (lista.length !== indices.length) {
+    throw new Error('A quantidade de índices otimizados não confere com a lista de passageiros.');
+  }
+
+  const vistos = new Set<number>();
+  return indices.map((idx) => {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= lista.length) {
+      throw new Error('A otimização retornou um índice de passageiro inválido.');
+    }
+    if (vistos.has(idx)) {
+      throw new Error('A otimização retornou índices duplicados para os passageiros.');
+    }
+    vistos.add(idx);
+    return lista[idx];
+  });
+}
+
+function extrairIndicesOtimizadosDoOsrm(
+  waypoints: Array<{ waypoint_index: number }>,
+  totalPassageiros: number,
+): number[] {
+  if (waypoints.length !== totalPassageiros + 2) {
+    throw new Error('A otimização OSRM retornou uma quantidade inesperada de waypoints.');
+  }
+
+  return waypoints
+    .slice(1, totalPassageiros + 1)
+    .map((waypoint, idxOriginal) => {
+      if (!Number.isInteger(waypoint.waypoint_index)) {
+        throw new Error('A otimização OSRM retornou waypoint_index inválido.');
+      }
+      return {
+        idxOriginal,
+        waypointIndex: waypoint.waypoint_index,
+      };
+    })
+    .sort((a, b) => a.waypointIndex - b.waypointIndex)
+    .map((item) => item.idxOriginal);
+}
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
+function normalizarTextoEndereco(endereco: string): string {
+  return endereco
+    .replace(/\bRod\.\b/gi, 'Rodovia')
+    .replace(/\bDep\.\b/gi, 'Deputado')
+    .replace(/\bAv\.\b/gi, 'Avenida')
+    .replace(/\bR\.\b/gi, 'Rua')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function gerarConsultasEndereco(endereco: string): string[] {
+  const normalizado = normalizarTextoEndereco(endereco);
+  const partes = normalizado.split(',').map((p) => p.trim()).filter(Boolean);
+  const [rua, numero, bairro, cep] = partes;
+
+  const candidatos = [
+    normalizado,
+    `${normalizado}, Brasil`,
+    [rua, numero, bairro, cep].filter(Boolean).join(', '),
+    [rua, numero, bairro].filter(Boolean).join(', '),
+    [rua, numero, cep].filter(Boolean).join(', '),
+    [rua, numero].filter(Boolean).join(', '),
+    [bairro, cep].filter(Boolean).join(', '),
+    cep ?? '',
+    cep ? `${cep}, Brasil` : '',
+  ];
+
+  return [...new Set(candidatos.map((c) => c.trim()).filter(Boolean))];
+}
+
+async function geocodificarEnderecoOpenStreetMap(
+  endereco: string,
+  cache: Map<string, Coordenada>,
+  controle: { ultimaConsultaEm: number },
+): Promise<Coordenada> {
+  const normalizado = endereco.trim();
+  const cached = cache.get(normalizado);
+  if (cached) return cached;
+
+  const intervaloMinimoMs = 1100;
+  const decorrido = Date.now() - controle.ultimaConsultaEm;
+  if (decorrido < intervaloMinimoMs) {
+    await esperar(intervaloMinimoMs - decorrido);
+  }
+
+  let ultimoErro: Error | null = null;
+  for (const consulta of gerarConsultasEndereco(normalizado)) {
+    const params = new URLSearchParams({
+      q: consulta,
+      format: 'jsonv2',
+      limit: '1',
+      countrycodes: 'br',
+      addressdetails: '0',
+    });
+
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    controle.ultimaConsultaEm = Date.now();
+
+    if (!response.ok) {
+      const body = await response.text();
+      ultimoErro = new Error(`Nominatim respondeu ${response.status}: ${body}`);
+      continue;
+    }
+
+    const data = (await response.json()) as NominatimSearchItem[];
+    const match = data[0];
+    if (!match) continue;
+
+    const lat = Number(match.lat);
+    const lon = Number(match.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      ultimoErro = new Error(`O OpenStreetMap retornou coordenadas inválidas para "${consulta}".`);
+      continue;
+    }
+
+    const coordenada = { lat, lon };
+    cache.set(normalizado, coordenada);
+    return coordenada;
+  }
+
+  if (ultimoErro) throw ultimoErro;
+  throw new Error(`Não foi possível localizar o endereço "${normalizado}" no OpenStreetMap.`);
+}
+
+async function solicitarOrdemOtimizadaOSRM(params: {
+  origem: string;
+  destinoFinal: string;
+  passageiros: PassageiroAtivoDaRota[];
+}): Promise<number[]> {
+  const cache = new Map<string, Coordenada>();
+  const controle = { ultimaConsultaEm: 0 };
+
+  const coordenadas: Coordenada[] = [];
+  coordenadas.push(await geocodificarEnderecoOpenStreetMap(params.origem, cache, controle));
+  for (const passageiro of params.passageiros) {
+    coordenadas.push(await geocodificarEnderecoOpenStreetMap(passageiro.endereco, cache, controle));
+  }
+  coordenadas.push(await geocodificarEnderecoOpenStreetMap(params.destinoFinal, cache, controle));
+
+  const coordenadasParam = coordenadas
+    .map((coord) => `${coord.lon},${coord.lat}`)
+    .join(';');
+
+  const url = new URL(`https://router.project-osrm.org/trip/v1/driving/${coordenadasParam}`);
+  url.searchParams.set('source', 'first');
+  url.searchParams.set('destination', 'last');
+  url.searchParams.set('roundtrip', 'false');
+  url.searchParams.set('steps', 'false');
+  url.searchParams.set('overview', 'false');
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OSRM respondeu ${response.status}: ${body}`);
+  }
+
+  const data = (await response.json()) as OsrmTripResponse;
+  if (data.code !== 'Ok' || !data.waypoints) {
+    throw new Error(`OSRM não conseguiu otimizar a rota (${data.code ?? 'erro desconhecido'}).`);
+  }
+
+  return extrairIndicesOtimizadosDoOsrm(data.waypoints, params.passageiros.length);
+}
+
+async function otimizarSequenciaPassageirosLocalmente(params: {
+  rotaId: string;
+  destinoIndex?: number;
+}): Promise<OtimizacaoPassageirosResultado> {
+  const rota = await obterRota(params.rotaId);
+  if (!rota) {
+    throw new Error('Rota não encontrada.');
+  }
+
+  const origem = formatarEnderecoCompleto({
+    rua: rota.ponto_saida_rua,
+    numero: rota.ponto_saida_numero,
+    bairro: rota.ponto_saida_bairro,
+    cep: rota.ponto_saida_cep,
+  }).trim();
+
+  const destinos = (rota.destinos ?? [])
+    .map((d) => formatarEnderecoCompleto({
+      rua: d.rua,
+      numero: d.numero,
+      bairro: d.bairro,
+      cep: d.cep,
+    }).trim())
+    .filter(Boolean);
+
+  if (!origem) {
+    throw new Error('Configure o ponto de saída antes de otimizar a sequência.');
+  }
+  if (destinos.length === 0) {
+    throw new Error('Adicione ao menos um destino final antes de otimizar a sequência.');
+  }
+
+  const destinoIndex = params.destinoIndex ?? 0;
+  if (destinoIndex >= destinos.length) {
+    throw new Error('Destino final inválido para a otimização da rota.');
+  }
+
+  const passageiros = await buscarPassageirosAtivosDaRota(params.rotaId);
+  const ordemAntes = passageiros.map((p) => p.nome_completo);
+
+  if (passageiros.length < 2) {
+    return {
+      status: 'sem_alteracao',
+      total: passageiros.length,
+      ordemAntes,
+      ordemDepois: ordemAntes,
+      provedor: 'osm',
+    };
+  }
+
+  const indicesOtimizados = await solicitarOrdemOtimizadaOSRM({
+    origem,
+    destinoFinal: destinos[destinoIndex],
+    passageiros,
+  });
+
+  const reordenados = reordenarPassageirosPorIndices(passageiros, indicesOtimizados);
+  const ordemDepois = reordenados.map((p) => p.nome_completo);
+  const mudou = ordemAntes.some((nome, i) => nome !== ordemDepois[i]);
+
+  if (!mudou) {
+    return {
+      status: 'sem_alteracao',
+      total: passageiros.length,
+      ordemAntes,
+      ordemDepois,
+      provedor: 'osm',
+    };
+  }
+
+  const updates = reordenados.map((p, index) =>
+    supabase
+      .from('passageiros')
+      .update({ ordem_na_rota: index + 1 })
+      .eq('id', p.id),
+  );
+
+  const resultados = await Promise.all(updates);
+  const erro = resultados.find((r) => r.error)?.error;
+  if (erro) {
+    throw new Error(`Não foi possível salvar a nova ordem da rota: ${erro.message}`);
+  }
+
+  return {
+    status: 'otimizada',
+    total: passageiros.length,
+    ordemAntes,
+    ordemDepois,
+    provedor: 'osm',
+  };
+}
+
+export async function otimizarSequenciaPassageirosDaRota(params: {
+  rotaId: string;
+  destinoIndex?: number;
+}): Promise<OtimizacaoPassageirosResultado> {
+  const body: { rota_id: string; destino_index?: number } = { rota_id: params.rotaId };
+  if (params.destinoIndex !== undefined) {
+    body.destino_index = params.destinoIndex;
+  }
+
+  const { data, error } = await supabase.functions.invoke<OtimizacaoPassageirosResultado>(
+    'otimizar-sequencia-passageiros',
+    { body },
+  );
+  if (error) {
+    throw traduzirErroOtimizarSequencia(
+      extrairErro(error, 'Falha ao otimizar sequência dos passageiros.'),
+    );
+  }
+  if (!data) {
+    throw {
+      erro: 'A função de otimização respondeu vazia. Tente novamente em alguns instantes.',
+      codigo: 'EDGE_FUNCTION_EMPTY_RESPONSE',
+    } as EdgeFnError;
+  }
+  if (error) {
+    const erroServidor = extrairErro(error, 'Falha ao otimizar sequência dos passageiros');
+    console.warn('Fallback local da otimização após falha da Edge Function:', erroServidor);
+    return otimizarSequenciaPassageirosLocalmente(params);
+  }
+  if (!data) {
+    console.warn('Fallback local da otimização após resposta vazia da Edge Function.');
+    return otimizarSequenciaPassageirosLocalmente(params);
+  }
+  return data;
 }

@@ -66,7 +66,7 @@ Copie o template e preencha com valores reais:
 
 ```bash
 cp supabase/.env.example supabase/.env
-# Edite supabase/.env com EVOLUTION_API_URL, EVOLUTION_API_KEY, ...
+# Edite supabase/.env com EVOLUTION_API_URL, EVOLUTION_API_KEY, GOOGLE_MAPS_API_KEY, ...
 ```
 
 Envie para o projeto remoto:
@@ -86,6 +86,7 @@ npx supabase functions deploy finalizar-viagem
 npx supabase functions deploy webhook-evolution --no-verify-jwt
 npx supabase functions deploy enviar-mensagem
 npx supabase functions deploy reenviar-confirmacao
+npx supabase functions deploy otimizar-sequencia-passageiros
 npx supabase functions deploy automacao-diaria --no-verify-jwt
 ```
 
@@ -148,6 +149,7 @@ URL local das funções: `http://localhost:54321/functions/v1/<nome>`.
 | `EVOLUTION_API_URL` | `.env` | URL base da Evolution API |
 | `EVOLUTION_API_KEY` | `.env` | API key da Evolution |
 | `EVOLUTION_INSTANCE_NAME` | `.env` | Nome da instância (ex: `smartroute`) |
+| `GOOGLE_MAPS_API_KEY` | `.env` | Chave secreta da Google Routes API para otimização de sequência |
 | `WEBHOOK_SECRET` | `.env` | Segredo do webhook da Evolution |
 | `CRON_SECRET` | `.env` | Segredo do cron job |
 
@@ -364,7 +366,7 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/automacao-diaria" \
 - [ ] Webhook da Evolution API apontando para `webhook-evolution`
 - [ ] Cron job criado no SQL Editor
 - [ ] Realtime habilitado em `confirmacoes`, `viagens`, `instancias_whatsapp`
-- [ ] Frontend usando `supabase.functions.invoke()` em vez de `mockData`
+- [ ] Frontend ligado aos dados reais também na tela WhatsApp e nas configurações ainda locais
 
 ## Dicas de troubleshooting
 

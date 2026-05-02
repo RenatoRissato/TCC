@@ -61,3 +61,6 @@ verify_jwt = true
 
 [functions.automacao-diaria]
 verify_jwt = false
+
+[functions.otimizar-sequencia-passageiros]
+verify_jwt = true

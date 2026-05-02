@@ -24,6 +24,10 @@ export function formatarEnderecoCompleto(end: EnderecoEstruturado): string {
   return partes.join(', ');
 }
 
+export function deveAbrirMapsNoMesmoContexto(userAgent = globalThis.navigator?.userAgent ?? ''): boolean {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+}
+
 /**
  * Monta a URL do Google Maps com origem, destino e waypoints.
  * Formato oficial: https://developers.google.com/maps/documentation/urls/get-started
@@ -33,17 +37,12 @@ export function formatarEnderecoCompleto(end: EnderecoEstruturado): string {
  *   - paradas = sequência ordenada (passageiros + destinos intermediários + destino final)
  *   - O ÚLTIMO item da lista vira `destination`; o resto vira `waypoints`.
  *
- * Quando `optimize=true`, prefixa os waypoints com `optimize:true|` para que
- * o Google reordene-os pelo caminho mais curto. Aplica-se a TODOS os waypoints
- * (não dá para otimizar só uma parte) — quem chama decide se faz sentido.
- *
  * Retorna `null` quando não há informação suficiente para montar uma rota válida
  * (sem origem ou sem nenhuma parada).
  */
 export function montarUrlGoogleMaps(
   origem: string | null | undefined,
   paradas: string[],
-  options: { optimize?: boolean } = {},
 ): string | null {
   const o = (origem ?? '').trim();
   const limpas = paradas.map(s => (s ?? '').trim()).filter(Boolean);
@@ -59,9 +58,11 @@ export function montarUrlGoogleMaps(
     travelmode: 'driving',
   });
   if (waypoints.length > 0) {
-    // Google Maps usa "|" para separar waypoints. URLSearchParams encoda como %7C.
-    const prefix = options.optimize ? 'optimize:true|' : '';
-    params.set('waypoints', prefix + waypoints.join('|'));
+    // Importante: NÃO usar o prefixo "optimize:true|" em URLs do Google Maps.
+    // Na prática, o Maps Web pode interpretar esse prefixo como uma parada
+    // literal e inserir um waypoint fantasma, como "Optimize Consultoria".
+    // Aqui preservamos estritamente a ordem definida pela aplicação.
+    params.set('waypoints', waypoints.join('|'));
   }
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
@@ -74,10 +75,24 @@ export function montarUrlGoogleMaps(
  * (ainda síncrono) e setamos `.location` depois.
  */
 export function abrirEmNovaAba(janelaPreAberta: Window | null, url: string): void {
+  if (deveAbrirMapsNoMesmoContexto()) {
+    window.location.assign(url);
+    return;
+  }
+
   if (janelaPreAberta && !janelaPreAberta.closed) {
-    janelaPreAberta.location.href = url;
+    janelaPreAberta.location.replace(url);
+    janelaPreAberta.focus();
     return;
   }
   // Fallback: tenta abrir mesmo assim (pode ser bloqueado).
-  window.open(url, '_blank', 'noopener,noreferrer');
+  const novaJanela = window.open(url, '_blank');
+  if (novaJanela) {
+    try {
+      novaJanela.opener = null;
+      novaJanela.focus();
+    } catch {
+      // Ignora restrições específicas do navegador.
+    }
+  }
 }
