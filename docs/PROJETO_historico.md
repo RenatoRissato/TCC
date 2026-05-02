@@ -1213,6 +1213,235 @@ Permite ao desenvolvedor reproduzir o problema localmente e ver exatamente onde 
 
 ---
 
+---
+
+### Fase 12: Formulário de Passageiro Completo + Integridade de Dados (01/05/2026)
+
+Esta fase reestrutura completamente o cadastro de passageiros, tornando o formulário contextual por tipo de aluno, adicionando validações obrigatórias em toda a aplicação e eliminando a inconsistência de endereços que causava endereços fantasma no Google Maps.
+
+---
+
+#### 12.1 — Endereço estruturado do passageiro (4 colunas)
+
+**Migration:** `supabase/migrations/20260501000000_endereco_estruturado_passageiro.sql`
+
+A coluna `endereco_embarque` (string livre) foi complementada com 4 colunas estruturadas na tabela `passageiros`:
+
+- `embarque_rua` (text)
+- `embarque_numero` (text — suporta "123A", "S/N")
+- `embarque_bairro` (text)
+- `embarque_cep` (text — com ou sem hífen)
+
+**Tipos atualizados:** `PassageiroRow` em `database.ts` ganha os 4 campos estruturados.
+
+**`passageiroService.ts` atualizado:**
+- `criarPassageiro`: grava os 4 campos estruturados no INSERT
+- `atualizarPassageiro`: atualiza os 4 campos em conjunto quando qualquer um mudar (mantém consistência)
+- `rowToPassenger`: usa `formatarEnderecoCompleto({ rua, numero, bairro, cep })` para montar a string de exibição
+
+---
+
+#### 12.2 — JSONB `observacoes` para dados acadêmicos
+
+**Migration:** `supabase/migrations/20260501010000_observacoes_jsonb.sql`
+
+Nova coluna `observacoes jsonb` na tabela `passageiros` armazena os dados acadêmicos sem poluir o schema relacional:
+
+```ts
+interface ObservacoesPassageiro {
+  tipoPassageiro: 'escola' | 'faculdade';
+  instituicao?: string;
+  serieSemestre?: string;
+  curso?: string;
+  nomeResponsavel?: string;  // usado apenas no Fundamental
+}
+```
+
+**Tipo `TipoPassageiro`** adicionado em `types/index.ts`.
+
+**`passageiroService.ts` — `montarObservacoes(input)`:**
+Função interna que constrói o JSONB omitindo chaves vazias:
+```ts
+const obj: ObservacoesPassageiro = { tipoPassageiro: input.tipoPassageiro };
+if (input.instituicao?.trim())     obj.instituicao     = input.instituicao.trim();
+if (input.serieSemestre?.trim())   obj.serieSemestre   = input.serieSemestre.trim();
+// ...
+```
+
+**`formatarGradeParaCard(obs)`:** formata o campo `grade` exibido no PassengerCard:
+- `escola` → `"5º Ano"` / `"3º Médio"`
+- `faculdade` → `"Engenharia · 3º Semestre"` (curso + semestre separados por `·`)
+
+---
+
+#### 12.3 — Formulário de dois tipos (escola / faculdade)
+
+**`PassengerForm.tsx`** reestruturado com seleção de tipo via `TipoCard` (cards clicáveis com emoji e rótulo):
+
+**Tipo "Escola"** exibe:
+- Nome da escola (`instituicao`)
+- Dropdown Série/Ano com opções: `1º Ano` … `9º Ano` + `1º Médio` … `3º Médio`
+- Campo "Nome do Responsável" — aparece **somente para séries Fundamental** (1º Ano a 9º Ano)
+- WhatsApp do Responsável (Fundamental) **ou** WhatsApp do Aluno (Médio)
+
+**Tipo "Faculdade"** exibe:
+- Nome da faculdade (`instituicao`)
+- Curso (`curso`)
+- Dropdown Semestre: `1º Semestre` … `10º Semestre`
+- WhatsApp do Aluno
+
+**`FUNDAMENTAL_SET`:** `Set<string>` derivado de `SERIES_FUNDAMENTAL` usado por `isSerieFundamental(serie)` para decidir dinamicamente se o campo de responsável aparece.
+
+**`trocarTipo(tipo)`:** ao trocar entre escola e faculdade, limpa os campos exclusivos do tipo anterior (evita dados obsoletos no JSONB).
+
+**`trocarSerieEscola(serie)`:** ao trocar de Fundamental para Médio, limpa `nomeResponsavel` (não é mais aplicável).
+
+---
+
+#### 12.4 — Máscara de telefone +55 com DDD
+
+Campo de WhatsApp passa a ter pré-preenchimento e máscara automática:
+
+```ts
+// Novo padrão de display: +55 (19) 99999-9999
+function applyLocalDigits(local: string): string { ... }
+function phoneForDisplay(stored: string): string { ... }  // carrega do banco
+function applyPhoneMask(displayValue: string): string { ... }  // aplica ao digitar
+```
+
+- **Novo cadastro**: campo já inicia com `'+55 '`
+- **Edição**: `phoneForDisplay(editTarget.phone)` detecta se o número armazenado tem ou não o DDI (≥12 dígitos = com DDI, <12 = sem DDI) e formata corretamente
+- **Digitação**: `applyPhoneMask` sempre strip o `'55'` inicial (que vem do prefixo fixo) antes de formatar os dígitos locais
+- **Validação**: atualizada de `< 10` para `< 12` dígitos (55 + DDD + número)
+
+---
+
+#### 12.5 — Séries renomeadas de "Fundamental" para "Ano"
+
+```ts
+// Antes
+const SERIES_FUNDAMENTAL = ['1º Fundamental', ..., '9º Fundamental'];
+
+// Depois
+const SERIES_FUNDAMENTAL = ['1º Ano', ..., '9º Ano'];
+```
+
+O `FUNDAMENTAL_SET` e `isSerieFundamental()` usam o mesmo array — nenhuma outra alteração necessária.
+
+---
+
+#### 12.6 — Filtros de passageiros por `rotaId` (em vez de turno fixo)
+
+**`usePassengers`** e **`PassengerFilters`** migraram de filtro por turno (`morning|afternoon|night`) para filtro por `rotaId`:
+
+```ts
+export type PassengerPeriod = 'all' | string;  // 'all' | rotaId
+```
+
+Os chips de filtro são gerados dinamicamente a partir das rotas reais do banco — não mais hardcoded para Manhã/Tarde/Noite. Cada chip mostra o nome da rota e o ícone do turno. Isso permite filtrar por "Faculdade Brasil" ou "Rota Escola Objetivo" diretamente.
+
+**`RouteScreen`** recebe as rotas via prop e monta os chips dinamicamente.
+
+---
+
+#### 12.7 — Horário padrão por turno no GerenciarRotas
+
+Ao selecionar um turno, o campo Horário de Saída é preenchido automaticamente:
+
+```ts
+const HORARIO_PADRAO: Record<TurnoRota, string> = {
+  morning:   '06:00',
+  afternoon: '13:00',
+  night:     '18:00',
+};
+```
+
+O horário pode ser editado manualmente após a seleção. Ao editar uma rota existente, o horário salvo é preservado.
+
+---
+
+#### 12.8 — Validações obrigatórias em toda a aplicação
+
+**Cadastro de passageiro (`PassengerForm`):**
+Todos os campos são agora obrigatórios:
+- Nome, Instituição, Série/Semestre, Curso (faculdade), Responsável (Fundamental)
+- WhatsApp
+- Rua, Número, Bairro, CEP
+- Rota
+
+Cada campo com erro exibe `<ErrMsg>` vermelho abaixo com mensagem específica.
+
+**Gerenciar Rotas (`GerenciarRotasModal`):**
+
+*Ponto de saída:* todos os 4 campos obrigatórios (Rua, Número, Bairro, CEP). Labels com `*` vermelho. Validação sequencial — avisa qual campo está faltando.
+
+*Destinos:* ao tentar salvar, percorre todos os destinos e valida cada campo:
+```ts
+for (let i = 0; i < destinos.length; i++) {
+  if (!d.rotulo.trim()) toast.error(`Informe o rótulo do Destino ${n}`);
+  if (!d.rua.trim())    toast.error(`Informe a rua do Destino ${n}`);
+  // ... numero, bairro, cep
+}
+```
+Todos os campos do `DestinoCard` mostram `required` (asterisco no label).
+
+---
+
+#### 12.9 — Hard delete de passageiros
+
+**Antes:** `inativarPassageiro(id)` fazia soft delete (`UPDATE status = 'inativo'`). O registro permanecia no banco — invisível na UI (filtro `status = 'ativo'`), mas presente na tabela.
+
+**Depois:** `inativarPassageiro(id)` executa `DELETE`:
+```ts
+supabase.from('passageiros').delete().eq('id', id)
+```
+
+O registro é removido permanentemente do Supabase ao clicar na lixeira.
+
+---
+
+#### 12.10 — Remoção da coluna `endereco_embarque`
+
+**Migration:** `supabase/migrations/20260501020000_drop_endereco_embarque.sql`
+
+```sql
+ALTER TABLE passageiros DROP COLUMN IF EXISTS endereco_embarque;
+```
+
+**Diagnóstico do problema:** a coluna `endereco_embarque` (string livre legada) coexistia com as 4 colunas estruturadas. O app exibia o endereço usando os campos estruturados, mas `listarPassageirosDaRota` (usada para montar o Google Maps) lia apenas `endereco_embarque`. Quando um passageiro tinha o endereço editado, `endereco_embarque` poderia conter um valor antigo — que então aparecia como parada fantasma no Maps.
+
+**Arquivos atualizados:**
+- `database.ts`: `endereco_embarque` removido de `PassageiroRow`
+- `passageiroService.ts`:
+  - `rowToPassenger`: fallback `|| row.endereco_embarque` removido
+  - `criarPassageiro`: `endereco_embarque` removido do INSERT
+  - `atualizarPassageiro`: `patch.endereco_embarque` removido
+  - `listarPassageirosDaRota`: reescrito para usar apenas os 4 campos estruturados:
+    ```ts
+    .select('embarque_rua, embarque_numero, embarque_bairro, embarque_cep, ordem_na_rota')
+    // ...
+    .map(p => formatarEnderecoCompleto({ rua: p.embarque_rua, ... }))
+    ```
+
+Agora o Google Maps recebe exatamente o mesmo endereço exibido na tela — sem divergência possível.
+
+---
+
+#### Bugs/edge-cases tratados na Fase 12
+
+| Caso | Causa | Tratamento |
+|---|---|---|
+| Endereço fantasma "Optimize Consultoria" no Google Maps | `listarPassageirosDaRota` usava `endereco_embarque` (legado) desatualizado | `listarPassageirosDaRota` migrada para campos estruturados + coluna legada dropada |
+| Passageiro excluído permanecia no banco | `inativarPassageiro` fazia soft delete (UPDATE status) | Trocado para `DELETE` real |
+| Campo responsável aparecia para aluno do Médio | Formulário não distinguia Fundamental de Médio | `isSerieFundamental()` com `FUNDAMENTAL_SET` controla visibilidade dinamicamente |
+| Telefone sem DDD/DDI causava erros de formação de URL | Campo livre sem máscara | Máscara `+55 (DD) NNNNN-NNNN` com pré-preenchimento automático |
+| Filtro de rota por turno quebrava com nomes livres | `PassengerPeriod` mapeava para `'morning'|'afternoon'|'night'` | Migrado para `rotaId` (string) — funciona com qualquer nome de rota |
+| Destinos com dados incompletos eram salvos sem erro | Sem validação de campos do destino | Validação campo a campo com toast específico por destino |
+| Ponto de saída parcialmente preenchido liberava o Maps | Apenas `rua` era validada | Todos os 4 campos (rua, número, bairro, CEP) obrigatórios |
+| Horário "07:00" hardcoded ao criar nova rota | `iniciarNovaRota` usava string fixa | `HORARIO_PADRAO` por turno com preenchimento automático ao selecionar |
+
+---
+
 ## O que NÃO existe (ainda)
 
 - **WhatsApp real** — a integração com bot ainda é simulada (sem Twilio, Meta API, Evolution API)
