@@ -1456,6 +1456,212 @@ Agora o Google Maps recebe exatamente o mesmo endereço exibido na tela — sem 
 
 ---
 
+
+### Fase 13: Otimização Operacional de Rotas + UX de Navegação + Sincronização da Documentação (02/05/2026)
+
+Esta fase consolida uma série de ajustes feitos após o uso real do sistema em ambiente local. O foco saiu de "criar a feature" e passou para **tornar o fluxo confiável de ponta a ponta**: documentação alinhada com o estado atual do código, dashboard mais rápido após `F5`, otimização real da sequência de passageiros, feedback visual durante processamento e abertura mais robusta do Google Maps em desktop, mobile e Brave.
+
+---
+
+#### 13.1 — Documentação sincronizada com o estado real da base
+
+Os documentos históricos e de visão geral foram atualizados para parar de descrever o projeto como se ele ainda estivesse majoritariamente em mock.
+
+**Ajustes feitos:**
+- `docs/sobreprojeto.md` passou a refletir que já existem **Supabase Auth**, **PostgreSQL**, **Realtime**, **Edge Functions** e tela de viagem em andamento
+- `README_BACKEND.md` deixou de tratar o backend como "planejado" em partes que já estavam implementadas
+- `docs/PROJETO_historico.md` foi revisado para distinguir melhor o que era verdade nas fases mockadas e o que já é verdade na fase atual
+
+**Resultado:** o histórico e a documentação geral passaram a refletir com mais precisão o projeto como ele existe hoje, reduzindo divergência entre onboarding/documentação e comportamento real da aplicação.
+
+---
+
+#### 13.2 — Dashboard mais rápido após refresh (`F5`) com cache local
+
+**Sintoma reportado:** ao recarregar a página já autenticado, rotas e passageiros demoravam a reaparecer. O usuário via cards vazios ou contagens zeradas até as queries voltarem do Supabase.
+
+**Tratamento aplicado:**
+- Criação de `src/app/utils/localCache.ts`
+- `usePassengers.ts` passou a:
+  - ler passageiros do cache local imediatamente
+  - exibir a lista sem esperar a resposta remota
+  - revalidar em background e sobrescrever o cache depois
+- `DashboardScreen.tsx` passou a:
+  - hidratar as rotas a partir do cache assim que `motoristaId` fica disponível
+  - recalcular `passengerCount` das rotas com base na lista real/cacheada de passageiros
+
+**Arquivos impactados:**
+- `src/app/utils/localCache.ts`
+- `src/app/hooks/usePassengers.ts`
+- `src/app/screens/DashboardScreen.tsx`
+
+**Resultado:** depois da primeira carga bem-sucedida, os próximos `F5` mostram rotas e passageiros muito mais rápido, reduzindo o "vazio visual" do cold start.
+
+---
+
+#### 13.3 — Otimização de sequência de passageiros por rota
+
+O Dashboard ganhou um botão dedicado para **otimizar somente a sequência dos passageiros** de cada rota, sem alterar ponto de saída nem a ordem dos destinos finais.
+
+**Fluxo implementado:**
+- novo botão de otimização nos cards de rota (`RouteButton`)
+- chamada do frontend para `otimizarSequenciaPassageirosDaRota()`
+- processamento da otimização no servidor via Edge Function
+- persistência da nova ordem em `passageiros.ordem_na_rota`
+- próximo clique em `Iniciar viagem` já usa a nova sequência
+
+**Arquivos impactados:**
+- `src/app/components/dashboard/RouteButton.tsx`
+- `src/app/screens/DashboardScreen.tsx`
+- `src/app/services/passageiroService.ts`
+- `supabase/functions/otimizar-sequencia-passageiros/index.ts`
+- `supabase/config.toml`
+
+---
+
+#### 13.4 — Edge Function `otimizar-sequencia-passageiros`
+
+Para evitar expor chave sensível no frontend e para fugir de problemas de CORS/rede no navegador, a lógica principal de otimização foi consolidada no **Supabase Edge Runtime**.
+
+**Estratégia final da function:**
+- recebe `rota_id` e, opcionalmente, `destino_index`
+- carrega ponto de saída, destinos e passageiros ativos da rota
+- tenta Google Routes API quando `GOOGLE_MAPS_API_KEY` está configurada nas secrets do Supabase
+- se Google falhar ou não existir secret, faz fallback server-side para OpenStreetMap + OSRM
+- salva a nova ordem no banco e devolve:
+  - `status`
+  - `total`
+  - `ordemAntes`
+  - `ordemDepois`
+  - `provedor`
+
+**Importante:** o frontend deixou de depender do fallback direto no browser para otimização, porque esse caminho estava sujeito a `Failed to fetch`, CORS e bloqueios de rede do navegador.
+
+---
+
+#### 13.5 — Geocoding mais tolerante para endereços brasileiros
+
+Durante os testes, alguns endereços completos não eram encontrados de primeira pelo OpenStreetMap/Nominatim.
+
+**Tratamento aplicado em client e servidor:**
+- normalização de abreviações:
+  - `Rod.` → `Rodovia`
+  - `Dep.` → `Deputado`
+  - `Av.` → `Avenida`
+  - `R.` → `Rua`
+- geração de múltiplas consultas candidatas para o mesmo endereço:
+  - endereço completo
+  - endereço + `Brasil`
+  - rua + número + bairro + CEP
+  - rua + número + CEP
+  - apenas CEP
+
+**Resultado:** a chance de o fallback server-side localizar destinos brasileiros aumentou consideravelmente sem exigir mudança manual no cadastro em todos os casos.
+
+---
+
+#### 13.6 — Alinhamento entre otimização e destino final real da viagem
+
+**Bug identificado:** a otimização estava mirando por padrão o **primeiro destino** da rota, enquanto a abertura do Google Maps considera o **último destino da lista** como destino final real.
+
+Isso criava um falso positivo: a otimização retornava sucesso, mas o trajeto aberto no Maps não melhorava de fato quando havia mais de um destino salvo.
+
+**Correção aplicada:**
+- a Edge Function agora usa, por padrão, o **último destino da rota** quando `destino_index` não é enviado
+- o frontend deixou de forçar `destino_index = 0`
+
+**Resultado:** a ordem calculada passou a corresponder ao trajeto que realmente é aberto ao motorista ao iniciar a viagem.
+
+---
+
+#### 13.7 — Feedback visual completo durante a otimização
+
+Como a otimização pode levar alguns segundos (geocoding + cálculo + persistência), foi adicionado um pop fixo no topo do Dashboard enquanto o processo está em andamento.
+
+**Melhorias de UX adicionadas:**
+- spinner visível
+- texto contextual com o nome da rota
+- barra de progresso visual indeterminada
+- mensagens em etapas mais humanas:
+  - `Localizando endereços...`
+  - `Calculando melhor ordem...`
+  - `Salvando nova sequência...`
+- toast final de sucesso agora também mostra `ordemDepois`
+
+**Resultado:** o usuário deixa de interpretar o atraso como travamento e passa a entender que a aplicação está processando a otimização.
+
+---
+
+#### 13.8 — Correção da aba `about:blank` ao iniciar viagem
+
+**Sintoma:** ao clicar em `Iniciar viagem`, alguns navegadores abriam duas abas:
+- uma `about:blank`
+- outra com o Google Maps
+
+No Brave, em alguns casos, apenas a `about:blank` permanecia e a aba do Maps era bloqueada.
+
+**Causa raiz:** o fluxo antigo usava uma aba reservada com `noopener/noreferrer`, o que podia quebrar a reutilização do handle da janela recém-aberta.
+
+**Correção aplicada:**
+- a aba reservada passou a ser reaproveitada corretamente no desktop
+- `abrirEmNovaAba()` passou a usar `location.replace(url)` + `focus()`
+
+**Resultado:** a janela aberta no gesto do usuário é a mesma que recebe o Google Maps, sem "aba fantasma" sobrando no fluxo desktop.
+
+---
+
+#### 13.9 — Fluxo mobile para abrir o Google Maps de forma mais compatível com o app nativo
+
+O comportamento de `Iniciar viagem` foi separado por contexto:
+
+- **Desktop:** mantém a estratégia de nova aba protegida contra popup blockers
+- **Mobile:** navega no mesmo contexto com o link universal do Google Maps, para permitir que Android/iPhone entreguem o link ao app do Google Maps quando ele estiver instalado
+
+**Implementação:**
+- `deveAbrirMapsNoMesmoContexto(userAgent)` em `utils/maps.ts`
+- detecção simples de user agents mobile (`Android`, `iPhone`, `iPad`, `iPod`, `Mobile`)
+- em mobile, `abrirEmNovaAba()` usa `window.location.assign(url)` em vez de abrir nova aba
+
+**Resultado esperado:**
+- no celular, `Iniciar viagem` tende a abrir diretamente o app do Google Maps quando disponível
+- no desktop, o comportamento continua em aba separada
+
+> Observação: em alguns navegadores móveis, a decisão final de abrir o app nativo ou manter no navegador ainda pode depender de preferência/permissão do próprio browser.
+
+---
+
+#### 13.10 — Testes e cobertura incremental
+
+O conjunto de testes foi ampliado para cobrir os utilitários de Maps e a nova diferença entre desktop/mobile.
+
+**Coberturas adicionadas/atualizadas:**
+- `montarUrlGoogleMaps()`:
+  - último item como `destination`
+  - itens anteriores como `waypoints`
+  - ausência do prefixo `optimize:true`
+- `deveAbrirMapsNoMesmoContexto()`:
+  - retorna `true` para user agents mobile
+  - retorna `false` para desktop
+
+**Arquivo:**
+- `src/test/maps.test.ts`
+
+---
+
+#### Bugs/edge-cases tratados na Fase 13
+
+| Caso | Causa | Tratamento |
+|---|---|---|
+| Dashboard demorava para mostrar rotas/passageiros após `F5` | App dependia exclusivamente do fetch remoto pós-hidratação | Cache local para rotas e passageiros + revalidação em background |
+| Otimização falhava com `Failed to fetch` | Fallback direto no navegador dependia de chamadas externas bloqueáveis | Otimização consolidada no servidor via Edge Function |
+| Endereço brasileiro não encontrado pelo OSM no formato original | Consulta única muito rígida | Normalização + múltiplas consultas candidatas |
+| Otimização retornava "sucesso" sem melhorar o trajeto real | Otimização olhava o primeiro destino; Maps usava o último como final | Alinhamento para usar o destino final real da rota |
+| Usuário não sabia se a otimização ainda estava rodando | Processo demorado sem feedback suficiente | Pop fixo com spinner, barra e etapas humanas |
+| `Iniciar viagem` deixava aba `about:blank` sobrando | Reaproveitamento inconsistente da janela reservada | Reuso da mesma aba com `location.replace()` |
+| Brave podia bloquear a navegação final do Maps | Segunda abertura de aba após a reserva inicial | Fluxo ajustado para reaproveitar a janela aberta no clique |
+| Celular abria o Maps no navegador em vez de privilegiar o app | Mesmo fluxo desktop/mobile | Navegação no mesmo contexto para mobile com link universal do Google Maps |
+
+
 ## O que NÃO existe (ainda)
 
 - **Tela WhatsApp ligada ao backend real** — a UI de conexão, QR code, horários e template ainda usa estado local/simulado, embora a integração backend com Evolution API já exista nas Edge Functions
@@ -1464,3 +1670,4 @@ Agora o Google Maps recebe exatamente o mesmo endereço exibido na tela — sem 
 - **Internacionalização** — strings hardcoded em PT-BR
 - **Notificações push reais** — apenas UI
 - **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend
+---
