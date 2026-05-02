@@ -7,18 +7,26 @@ import {
   calcularSummary,
 } from '../services/passageiroService';
 import { useAuth } from '../context/AuthContext';
-import type { Passenger, RouteType, StudentStatus } from '../types';
+import type { Passenger, RouteType, StudentStatus, TipoPassageiro } from '../types';
 
 export type PassengerFilter = 'all' | StudentStatus;
-export type PassengerPeriod = 'all' | RouteType;
+export type PassengerPeriod = 'all' | string; // 'all' | rotaId
 
 export interface PassengerFormValues {
   name: string;
-  parentName: string;
-  address: string;
-  neighborhood: string;
+  // Tipo + dados acadêmicos. nomeResponsavel só usado quando série é Fundamental.
+  tipoPassageiro: TipoPassageiro;
+  instituicao: string;
+  serieSemestre: string;
+  curso: string;
+  nomeResponsavel: string;
+  // phone vai sempre para telefone_responsavel no banco — pode ser do
+  // responsável (Fundamental) ou do próprio aluno (Médio/Faculdade).
   phone: string;
-  grade: string;
+  addressRua: string;
+  addressNumero: string;
+  addressBairro: string;
+  addressCep: string;
   routes: RouteType[];
   rotaId?: string;
 }
@@ -66,7 +74,7 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
 
   const filtered = useMemo(() => {
     let l = [...list];
-    if (period !== 'all') l = l.filter(p => p.routes.includes(period));
+    if (period !== 'all') l = l.filter(p => p.rotaId === period);
     if (filter !== 'all') l = l.filter(p => p.status === filter);
     const q = search.trim().toLowerCase();
     if (q) {
@@ -80,7 +88,7 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
   }, [list, search, filter, period]);
 
   const periodSummary = useMemo(
-    () => calcularSummary(period === 'all' ? list : list.filter(p => p.routes.includes(period))),
+    () => calcularSummary(period === 'all' ? list : list.filter(p => p.rotaId === period)),
     [list, period],
   );
 
@@ -93,10 +101,15 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
       rotaId: form.rotaId,
       nomeCompleto: form.name,
       telefoneResponsavel: form.phone,
-      enderecoEmbarque: form.address,
-      pontoReferencia: form.neighborhood || undefined,
-      observacoes: form.parentName || undefined,
-      turno: form.grade || undefined,
+      embarqueRua:    form.addressRua,
+      embarqueNumero: form.addressNumero || undefined,
+      embarqueBairro: form.addressBairro || undefined,
+      embarqueCep:    form.addressCep    || undefined,
+      tipoPassageiro: form.tipoPassageiro,
+      instituicao:    form.instituicao || undefined,
+      serieSemestre:  form.serieSemestre || undefined,
+      curso:          form.curso || undefined,
+      nomeResponsavel: form.nomeResponsavel || undefined,
     });
     await recarregar();
   }, [recarregar]);
@@ -106,10 +119,15 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
       rotaId: form.rotaId,
       nomeCompleto: form.name,
       telefoneResponsavel: form.phone,
-      enderecoEmbarque: form.address,
-      pontoReferencia: form.neighborhood || undefined,
-      observacoes: form.parentName || undefined,
-      turno: form.grade || undefined,
+      embarqueRua:    form.addressRua,
+      embarqueNumero: form.addressNumero || undefined,
+      embarqueBairro: form.addressBairro || undefined,
+      embarqueCep:    form.addressCep    || undefined,
+      tipoPassageiro: form.tipoPassageiro,
+      instituicao:    form.instituicao || undefined,
+      serieSemestre:  form.serieSemestre || undefined,
+      curso:          form.curso || undefined,
+      nomeResponsavel: form.nomeResponsavel || undefined,
     });
     await recarregar();
   }, [recarregar]);

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
   Search, X, MapPin, CheckCircle2, XCircle, Clock, Plus, Trash2, Menu,
@@ -6,12 +6,8 @@ import {
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { usePassengers, type PassengerFilter, type PassengerPeriod } from '../hooks/usePassengers';
-
-function turnoInicialDaQuery(searchParams: URLSearchParams): PassengerPeriod {
-  const t = searchParams.get('turno');
-  if (t === 'morning' || t === 'afternoon' || t === 'night') return t;
-  return 'all';
-}
+import { listarRotas } from '../services/rotaService';
+import type { RotaRow } from '../types/database';
 import { PassengerCard } from '../components/passengers/PassengerCard';
 import { PassengerFilters } from '../components/passengers/PassengerFilters';
 import { PassengerForm } from '../components/passengers/PassengerForm';
@@ -38,14 +34,19 @@ export function RouteScreen() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<PassengerFilter>('all');
-  const [period, setPeriod] = useState<PassengerPeriod>(() => turnoInicialDaQuery(searchParams));
+  const [period, setPeriod] = useState<PassengerPeriod>(() => searchParams.get('rota') ?? 'all');
+  const [rotas, setRotas] = useState<RotaRow[]>([]);
+
+  useEffect(() => {
+    listarRotas().then(setRotas);
+  }, []);
 
   const handlePeriodChange = useCallback((p: PassengerPeriod) => {
     setPeriod(p);
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      if (p === 'all') next.delete('turno');
-      else next.set('turno', p);
+      if (p === 'all') next.delete('rota');
+      else next.set('rota', p);
       return next;
     }, { replace: true });
   }, [setSearchParams]);
@@ -115,6 +116,7 @@ export function RouteScreen() {
           filter={filter}
           counts={counts}
           paddingX={px}
+          rotas={rotas}
           onPeriodChange={handlePeriodChange}
           onFilterChange={setFilter}
         />

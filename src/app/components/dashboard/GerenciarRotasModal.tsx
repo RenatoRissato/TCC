@@ -21,6 +21,12 @@ const TURNO_META: Record<TurnoRota, { label: string; color: string; Icon: typeof
   night:     { label: 'Noite',  color: '#6C5CE7', Icon: Moon },
 };
 
+const HORARIO_PADRAO: Record<TurnoRota, string> = {
+  morning:   '06:00',
+  afternoon: '13:00',
+  night:     '18:00',
+};
+
 interface GerenciarRotasModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -91,7 +97,7 @@ export function GerenciarRotasModal({ open, onOpenChange, onChanged }: Gerenciar
   const iniciarNovaRota = () => {
     setCriandoNova(true);
     setRotaSelecionadaId(null);
-    setNome(''); setTurno('morning'); setHorario('07:00');
+    setNome(''); setTurno('morning'); setHorario(HORARIO_PADRAO.morning);
     setPsRua(''); setPsNumero(''); setPsBairro(''); setPsCep('');
     setDestinos([]);
     setConfirmandoApagar(false);
@@ -112,6 +118,23 @@ export function GerenciarRotasModal({ open, onOpenChange, onChanged }: Gerenciar
   const salvar = async () => {
     const nomeTrim = nome.trim();
     if (!nomeTrim) { toast.error('Informe o nome da rota'); return; }
+
+    // Valida ponto de saída — todos os campos são obrigatórios
+    if (!psRua.trim())    { toast.error('Informe a rua do ponto de saída');    return; }
+    if (!psNumero.trim()) { toast.error('Informe o número do ponto de saída'); return; }
+    if (!psBairro.trim()) { toast.error('Informe o bairro do ponto de saída'); return; }
+    if (!psCep.trim())    { toast.error('Informe o CEP do ponto de saída');    return; }
+
+    // Valida todos os campos de cada destino adicionado
+    for (let i = 0; i < destinos.length; i++) {
+      const d = destinos[i];
+      const n = i + 1;
+      if (!d.rotulo.trim()) { toast.error(`Informe o rótulo do Destino ${n}`);  return; }
+      if (!d.rua.trim())    { toast.error(`Informe a rua do Destino ${n}`);     return; }
+      if (!d.numero.trim()) { toast.error(`Informe o número do Destino ${n}`);  return; }
+      if (!d.bairro.trim()) { toast.error(`Informe o bairro do Destino ${n}`);  return; }
+      if (!d.cep.trim())    { toast.error(`Informe o CEP do Destino ${n}`);     return; }
+    }
 
     // Filtra destinos completamente vazios (sem rótulo nem rua) para não persistir lixo
     const destinosLimpos = destinos
@@ -283,7 +306,7 @@ export function GerenciarRotasModal({ open, onOpenChange, onChanged }: Gerenciar
                   return (
                     <button
                       key={t}
-                      onClick={() => setTurno(t)}
+                      onClick={() => { setTurno(t); setHorario(HORARIO_PADRAO[t]); }}
                       className="flex-1 flex items-center justify-center gap-1.5 rounded-[12px] py-2.5 text-xs font-bold cursor-pointer transition-colors min-h-[44px]"
                       style={{
                         background: active ? `${meta.color}22` : 'var(--field)',
@@ -309,14 +332,14 @@ export function GerenciarRotasModal({ open, onOpenChange, onChanged }: Gerenciar
 
               {/* Ponto de saída */}
               <p className="text-[10px] font-extrabold text-pending tracking-[0.11em] uppercase mt-1 mb-2">
-                Ponto de saída da van
+                Ponto de saída da van <span className="text-danger normal-case tracking-normal">*</span>
               </p>
-              <FormInput label="Rua" icon={Home} value={psRua} onChange={setPsRua} placeholder="Ex: Rua das Acácias" />
+              <FormInput label="Rua" icon={Home} value={psRua} onChange={setPsRua} placeholder="Ex: Rua das Acácias" required />
               <div className="grid grid-cols-[1fr_1.4fr] gap-2.5">
-                <FormInput label="Número" icon={Hash} value={psNumero} onChange={setPsNumero} placeholder="Ex: 123" />
-                <FormInput label="Bairro" icon={MapPin} value={psBairro} onChange={setPsBairro} placeholder="Ex: Jardim América" />
+                <FormInput label="Número" icon={Hash} value={psNumero} onChange={setPsNumero} placeholder="Ex: 123" required />
+                <FormInput label="Bairro" icon={MapPin} value={psBairro} onChange={setPsBairro} placeholder="Ex: Jardim América" required />
               </div>
-              <FormInput label="CEP" icon={Mail} value={psCep} onChange={setPsCep} placeholder="Ex: 01310-100" />
+              <FormInput label="CEP" icon={Mail} value={psCep} onChange={setPsCep} placeholder="Ex: 01310-100" required />
 
               {/* Destinos */}
               <div className="flex items-center justify-between mt-3 mb-2">
@@ -431,6 +454,7 @@ function DestinoCard({ destino, index, total, onChange, onRemove }: DestinoCardP
         value={destino.rotulo}
         onChange={(v) => onChange({ rotulo: v })}
         placeholder="Ex: Faculdade Brasil"
+        required
       />
       <FormInput
         label="Rua"
@@ -438,6 +462,7 @@ function DestinoCard({ destino, index, total, onChange, onRemove }: DestinoCardP
         value={destino.rua}
         onChange={(v) => onChange({ rua: v })}
         placeholder="Ex: Rua das Flores"
+        required
       />
       <div className="grid grid-cols-[1fr_1.4fr] gap-2.5">
         <FormInput
@@ -446,6 +471,7 @@ function DestinoCard({ destino, index, total, onChange, onRemove }: DestinoCardP
           value={destino.numero}
           onChange={(v) => onChange({ numero: v })}
           placeholder="Ex: 100"
+          required
         />
         <FormInput
           label="Bairro"
@@ -453,6 +479,7 @@ function DestinoCard({ destino, index, total, onChange, onRemove }: DestinoCardP
           value={destino.bairro}
           onChange={(v) => onChange({ bairro: v })}
           placeholder="Ex: Centro"
+          required
         />
       </div>
       <FormInput
@@ -461,6 +488,7 @@ function DestinoCard({ destino, index, total, onChange, onRemove }: DestinoCardP
         value={destino.cep}
         onChange={(v) => onChange({ cep: v })}
         placeholder="Ex: 01310-100"
+        required
       />
     </div>
   );

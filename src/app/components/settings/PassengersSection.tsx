@@ -18,7 +18,7 @@ function MiniPassengerCard({ p, onNavigate }: { p: Passenger; onNavigate: () => 
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-bold text-ink m-0 truncate">{p.name}</p>
-        <p className="text-[11px] text-ink-soft m-0">{p.grade} · {p.neighborhood}</p>
+        <p className="text-[11px] text-ink-soft m-0">{[p.grade, p.addressBairro].filter(Boolean).join(' · ')}</p>
       </div>
       <div className="flex items-center gap-1.5">
         <div className="w-[7px] h-[7px] rounded-full" style={{ background: STATUS_COLOR[p.status] }} />

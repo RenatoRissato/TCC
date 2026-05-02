@@ -1,11 +1,11 @@
 import type { PassengerFilter, PassengerPeriod } from '../../hooks/usePassengers';
+import type { RotaRow, TurnoRota } from '../../types/database';
 
-const PERIODS: { key: PassengerPeriod; label: string; emoji: string }[] = [
-  { key: 'all',       label: 'Todas',  emoji: '📋' },
-  { key: 'morning',   label: 'Manhã',  emoji: '☀️' },
-  { key: 'afternoon', label: 'Tarde',  emoji: '🌤️' },
-  { key: 'night',     label: 'Noite',  emoji: '🌙' },
-];
+const TURNO_EMOJI: Record<TurnoRota, string> = {
+  morning:   '☀️',
+  afternoon: '🌤️',
+  night:     '🌙',
+};
 
 const CHIPS: { key: PassengerFilter; label: string; color: string }[] = [
   { key: 'all',     label: 'Todos',        color: '#6C757D' },
@@ -19,28 +19,39 @@ interface PassengerFiltersProps {
   filter: PassengerFilter;
   counts: Record<PassengerFilter, number>;
   paddingX: number;
+  rotas: RotaRow[];
   onPeriodChange: (p: PassengerPeriod) => void;
   onFilterChange: (f: PassengerFilter) => void;
 }
 
 export function PassengerFilters({
-  period, filter, counts, paddingX, onPeriodChange, onFilterChange,
+  period, filter, counts, paddingX, rotas, onPeriodChange, onFilterChange,
 }: PassengerFiltersProps) {
   return (
     <>
       <div className="flex gap-2 overflow-x-auto pb-3" style={{ paddingLeft: paddingX, paddingRight: paddingX }}>
-        {PERIODS.map((p) => {
-          const active = period === p.key;
+        <button
+          onClick={() => onPeriodChange('all')}
+          className={`flex items-center gap-[5px] shrink-0 border-0 rounded-[10px] px-3.5 py-2 text-xs font-bold min-h-[38px] font-sans cursor-pointer ${
+            period === 'all' ? 'bg-pending text-[#212529]' : 'bg-white/[0.08] text-white/55'
+          }`}
+        >
+          <span>📋</span> Todas
+        </button>
+
+        {rotas.map((r) => {
+          const active = period === r.id;
+          const emoji = TURNO_EMOJI[r.turno] ?? '🚌';
           return (
             <button
-              key={p.key}
-              onClick={() => onPeriodChange(p.key)}
+              key={r.id}
+              onClick={() => onPeriodChange(r.id)}
               className={`flex items-center gap-[5px] shrink-0 border-0 rounded-[10px] px-3.5 py-2 text-xs font-bold min-h-[38px] font-sans cursor-pointer ${
                 active ? 'bg-pending text-[#212529]' : 'bg-white/[0.08] text-white/55'
               }`}
             >
-              <span>{p.emoji}</span>
-              {p.label}
+              <span>{emoji}</span>
+              {r.nome}
             </button>
           );
         })}

@@ -1,6 +1,21 @@
 import { supabase } from '../../lib/supabase';
-import type { PassageiroRow, ConfirmacaoRow, RotaRow } from '../types/database';
+import type { PassageiroRow, ConfirmacaoRow, RotaRow, ObservacoesPassageiro, TipoPassageiro } from '../types/database';
 import type { Passenger, RouteType, StudentStatus, Summary } from '../types';
+import { formatarEnderecoCompleto } from '../utils/maps';
+
+/**
+ * Formata a string de "série/curso" exibida no PassengerCard a partir do
+ * JSONB. Mantém o card legado funcionando sem alterações.
+ *   escola    → "5º Fundamental" / "3º Médio"
+ *   faculdade → "Engenharia · 3º Semestre" (curso e/ou semestre, separados por ·)
+ */
+function formatarGradeParaCard(obs: ObservacoesPassageiro | null): string {
+  if (!obs) return '';
+  if (obs.tipoPassageiro === 'faculdade') {
+    return [obs.curso, obs.serieSemestre].filter(s => s && s.trim()).join(' · ');
+  }
+  return obs.serieSemestre ?? '';
+}
 
 function iniciais(nome: string): string {
   return nome.trim().split(/\s+/).filter(Boolean).map(p => p[0]?.toUpperCase() ?? '').slice(0, 2).join('');
@@ -21,19 +36,42 @@ function rowToPassenger(
   confirmacao?: ConfirmacaoRow,
 ): Passenger {
   const routeType: RouteType = rota ? rota.turno : 'morning';
+  const addressRua    = row.embarque_rua    ?? '';
+  const addressNumero = row.embarque_numero ?? '';
+  const addressBairro = row.embarque_bairro ?? '';
+  const addressCep    = row.embarque_cep    ?? '';
+  const address = formatarEnderecoCompleto({
+    rua: addressRua, numero: addressNumero, bairro: addressBairro, cep: addressCep,
+  });
+
+  // Defensivo: quando a coluna ainda era TEXT, alguns registros podem chegar
+  // como string crua se cache antigo do PostgREST estiver no caminho. Tratamos.
+  const obsRaw = row.observacoes;
+  const obs: ObservacoesPassageiro | null =
+    obsRaw && typeof obsRaw === 'object' ? obsRaw : null;
+
   return {
     id: row.id,
     rotaId: row.rota_id,
     name: row.nome_completo,
     initials: iniciais(row.nome_completo),
-    address: row.endereco_embarque,
-    neighborhood: row.ponto_referencia ?? '',
+    address,
+    addressRua,
+    addressNumero,
+    addressBairro,
+    addressCep,
     phone: row.telefone_responsavel,
-    parentName: row.observacoes ?? '',
+    // Card mostra parentName quando existe (Fundamental). Para Médio/Faculdade
+    // fica vazio — o link do WhatsApp já trata vazio graciosamente.
+    parentName: obs?.nomeResponsavel ?? '',
     status: statusFromConfirmacao(confirmacao),
     stopOrder: row.ordem_na_rota,
     routes: [routeType],
-    grade: row.turno ?? '',
+    grade: formatarGradeParaCard(obs),
+    tipoPassageiro: obs?.tipoPassageiro ?? 'escola',
+    instituicao:    obs?.instituicao    ?? '',
+    serieSemestre:  obs?.serieSemestre  ?? '',
+    curso:          obs?.curso          ?? '',
   };
 }
 
@@ -83,12 +121,38 @@ export async function listarPassageiros(): Promise<Passenger[]> {
 export interface CriarPassageiroInput {
   rotaId: string;
   nomeCompleto: string;
+  /**
+   * Pode ser do responsável (Fundamental) ou do próprio aluno (Médio/Faculdade).
+   * Vai sempre para a coluna telefone_responsavel — a semântica do número é
+   * inferida pelo tipoPassageiro + serieSemestre armazenados no JSONB.
+   */
   telefoneResponsavel: string;
-  enderecoEmbarque: string;
-  pontoReferencia?: string;
-  turno?: string;
+  embarqueRua: string;
+  embarqueNumero?: string;
+  embarqueBairro?: string;
+  embarqueCep?: string;
   ordemNaRota?: number;
-  observacoes?: string;
+  // Dados acadêmicos (vão para o JSONB observacoes)
+  tipoPassageiro: TipoPassageiro;
+  instituicao?: string;
+  serieSemestre?: string;
+  curso?: string;
+  nomeResponsavel?: string;
+}
+
+/**
+ * Monta o objeto JSONB que vai para a coluna observacoes a partir dos
+ * campos do input. Omite chaves vazias para manter o JSON limpo.
+ */
+function montarObservacoes(input: Pick<CriarPassageiroInput,
+  'tipoPassageiro' | 'instituicao' | 'serieSemestre' | 'curso' | 'nomeResponsavel'
+>): ObservacoesPassageiro | null {
+  const obj: ObservacoesPassageiro = { tipoPassageiro: input.tipoPassageiro };
+  if (input.instituicao?.trim())     obj.instituicao     = input.instituicao.trim();
+  if (input.serieSemestre?.trim())   obj.serieSemestre   = input.serieSemestre.trim();
+  if (input.curso?.trim())           obj.curso           = input.curso.trim();
+  if (input.nomeResponsavel?.trim()) obj.nomeResponsavel = input.nomeResponsavel.trim();
+  return obj;
 }
 
 export async function criarPassageiro(input: CriarPassageiroInput): Promise<PassageiroRow | null> {
@@ -98,11 +162,13 @@ export async function criarPassageiro(input: CriarPassageiroInput): Promise<Pass
       rota_id: input.rotaId,
       nome_completo: input.nomeCompleto,
       telefone_responsavel: input.telefoneResponsavel.replace(/\D/g, ''),
-      endereco_embarque: input.enderecoEmbarque,
-      ponto_referencia: input.pontoReferencia ?? null,
-      turno: input.turno ?? null,
+      embarque_rua:    input.embarqueRua    || null,
+      embarque_numero: input.embarqueNumero || null,
+      embarque_bairro: input.embarqueBairro || null,
+      embarque_cep:    input.embarqueCep    || null,
+      turno: null,
       ordem_na_rota: input.ordemNaRota ?? 1,
-      observacoes: input.observacoes ?? null,
+      observacoes: montarObservacoes(input),
     })
     .select()
     .single();
@@ -115,14 +181,41 @@ export async function criarPassageiro(input: CriarPassageiroInput): Promise<Pass
 
 export async function atualizarPassageiro(id: string, input: Partial<CriarPassageiroInput>): Promise<boolean> {
   const patch: Record<string, unknown> = {};
-  if (input.rotaId !== undefined) patch.rota_id = input.rotaId;
-  if (input.nomeCompleto !== undefined) patch.nome_completo = input.nomeCompleto;
+  if (input.rotaId !== undefined)              patch.rota_id = input.rotaId;
+  if (input.nomeCompleto !== undefined)        patch.nome_completo = input.nomeCompleto;
   if (input.telefoneResponsavel !== undefined) patch.telefone_responsavel = input.telefoneResponsavel.replace(/\D/g, '');
-  if (input.enderecoEmbarque !== undefined) patch.endereco_embarque = input.enderecoEmbarque;
-  if (input.pontoReferencia !== undefined) patch.ponto_referencia = input.pontoReferencia;
-  if (input.turno !== undefined) patch.turno = input.turno;
-  if (input.ordemNaRota !== undefined) patch.ordem_na_rota = input.ordemNaRota;
-  if (input.observacoes !== undefined) patch.observacoes = input.observacoes;
+  if (input.ordemNaRota !== undefined)         patch.ordem_na_rota = input.ordemNaRota;
+
+  // Endereço estruturado — atualiza tudo em conjunto para manter consistência
+  if (
+    input.embarqueRua    !== undefined ||
+    input.embarqueNumero !== undefined ||
+    input.embarqueBairro !== undefined ||
+    input.embarqueCep    !== undefined
+  ) {
+    patch.embarque_rua    = input.embarqueRua    ?? null;
+    patch.embarque_numero = input.embarqueNumero ?? null;
+    patch.embarque_bairro = input.embarqueBairro ?? null;
+    patch.embarque_cep    = input.embarqueCep    ?? null;
+  }
+
+  // Observações JSONB — recompõe inteiro quando qualquer campo acadêmico
+  // muda. Evita merge parcial que deixaria o JSONB inconsistente.
+  if (
+    input.tipoPassageiro  !== undefined ||
+    input.instituicao     !== undefined ||
+    input.serieSemestre   !== undefined ||
+    input.curso           !== undefined ||
+    input.nomeResponsavel !== undefined
+  ) {
+    patch.observacoes = montarObservacoes({
+      tipoPassageiro:  input.tipoPassageiro ?? 'escola',
+      instituicao:     input.instituicao,
+      serieSemestre:   input.serieSemestre,
+      curso:           input.curso,
+      nomeResponsavel: input.nomeResponsavel,
+    });
+  }
 
   const { error } = await supabase.from('passageiros').update(patch).eq('id', id);
   if (error) {
@@ -135,10 +228,10 @@ export async function atualizarPassageiro(id: string, input: Partial<CriarPassag
 export async function inativarPassageiro(id: string): Promise<boolean> {
   const { error } = await supabase
     .from('passageiros')
-    .update({ status: 'inativo' })
+    .delete()
     .eq('id', id);
   if (error) {
-    console.error('inativarPassageiro:', error);
+    console.error('excluirPassageiro:', error);
     return false;
   }
   return true;
@@ -166,7 +259,7 @@ export function getSummary(list: Passenger[]): Summary {
 export async function listarPassageirosDaRota(rotaId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from('passageiros')
-    .select('endereco_embarque, ordem_na_rota')
+    .select('embarque_rua, embarque_numero, embarque_bairro, embarque_cep, ordem_na_rota')
     .eq('rota_id', rotaId)
     .eq('status', 'ativo')
     .order('ordem_na_rota', { ascending: true });
@@ -175,6 +268,14 @@ export async function listarPassageirosDaRota(rotaId: string): Promise<string[]>
     return [];
   }
   return (data ?? [])
-    .map((p: { endereco_embarque: string }) => (p.endereco_embarque ?? '').trim())
+    .map((p: {
+      embarque_rua: string | null;
+      embarque_numero: string | null;
+      embarque_bairro: string | null;
+      embarque_cep: string | null;
+    }) => formatarEnderecoCompleto({
+      rua: p.embarque_rua, numero: p.embarque_numero,
+      bairro: p.embarque_bairro, cep: p.embarque_cep,
+    }).trim())
     .filter((s): s is string => s.length > 0);
 }

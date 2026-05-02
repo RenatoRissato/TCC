@@ -5,7 +5,9 @@ import type { Passenger } from '../app/types';
 function p(status: Passenger['status']): Passenger {
   return {
     id: 'x', rotaId: 'r', name: 'X', initials: 'X',
-    address: '', neighborhood: '', phone: '', parentName: '',
+    address: '', addressRua: '', addressNumero: '', addressBairro: '', addressCep: '',
+    phone: '', parentName: '',
+    tipoPassageiro: 'escola', instituicao: '', serieSemestre: '', curso: '',
     status, stopOrder: 1, routes: ['morning'], grade: '',
   };
 }

@@ -15,7 +15,7 @@ const SHIFT_OPTIONS: Record<RouteType, { label: string; emoji: string; color: st
 
 function MapDropdown({ p }: { p: Passenger }) {
   const [open, setOpen] = useState(false);
-  const q = encodeURIComponent(`${p.address}, ${p.neighborhood}`);
+  const q = encodeURIComponent(p.address);
   const items = [
     { emoji: '🗺️', label: 'Waze',        href: `https://waze.com/ul?q=${q}` },
     { emoji: '📍', label: 'Google Maps', href: `https://maps.google.com/maps?q=${q}` },
@@ -97,7 +97,7 @@ export const PassengerCard = memo(function PassengerCard({
             </p>
           </div>
           <p className="text-[11px] font-medium text-ink-muted m-0 mt-0.5">
-            {p.neighborhood} · {p.grade}
+            {[p.addressBairro, p.grade].filter(Boolean).join(' · ')}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">

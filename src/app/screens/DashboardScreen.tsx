@@ -7,7 +7,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
-import { useDailyList } from '../hooks/useDailyList';
 import { usePassengers } from '../hooks/usePassengers';
 import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
@@ -56,8 +55,9 @@ export function DashboardScreen() {
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
   const [time, setTime] = useState(new Date());
-  const { summary: s } = useDailyList();
-  const { list: passengers } = usePassengers();
+  // Uma única chamada a listarPassageiros() — periodSummary já fornece o Summary
+  // que antes vinha do useDailyList, evitando query duplicada no mount.
+  const { list: passengers, periodSummary: s } = usePassengers();
   const [recentUpdates, setRecentUpdates] = useState<WhatsAppUpdate[]>([]);
   const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
   const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
@@ -67,10 +67,17 @@ export function DashboardScreen() {
   const recarregarRotas = useCallback(() => {
     let cancelado = false;
     getRouteConfigs()
-      .then(rc => { if (!cancelado) setRouteConfigs(Array.isArray(rc) ? rc : []); })
+      .then(rc => {
+        if (cancelado) return;
+        const arr = Array.isArray(rc) ? rc : [];
+        setRouteConfigs(arr);
+        if (motoristaId) {
+          try { localStorage.setItem(`sr_rotas_${motoristaId}`, JSON.stringify(arr)); } catch { /* ok */ }
+        }
+      })
       .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
     return () => { cancelado = true; };
-  }, []);
+  }, [motoristaId]);
 
   const handleIniciarViagem = async (rotaId: string) => {
     setRotaIniciandoId(rotaId);
@@ -150,9 +157,26 @@ export function DashboardScreen() {
   useEffect(() => {
     if (!motoristaId) return;
     let ativo = true;
+
+    // Hidratação otimista: mostra rotas em cache imediatamente para o
+    // usuário não ver "Nenhuma rota cadastrada" durante o cold start
+    // do free tier (5-15s). Query abaixo revalida e sobrescreve.
+    try {
+      const cached = localStorage.getItem(`sr_rotas_${motoristaId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) setRouteConfigs(parsed);
+      }
+    } catch { /* cache corrompido — ignora e segue para a query */ }
+
     getRouteConfigs()
-      .then(rc => { if (ativo) setRouteConfigs(Array.isArray(rc) ? rc : []); })
-      .catch(err => { console.error('getRouteConfigs:', err); if (ativo) setRouteConfigs([]); });
+      .then(rc => {
+        if (!ativo) return;
+        const arr = Array.isArray(rc) ? rc : [];
+        setRouteConfigs(arr);
+        try { localStorage.setItem(`sr_rotas_${motoristaId}`, JSON.stringify(arr)); } catch { /* ok */ }
+      })
+      .catch(err => { console.error('getRouteConfigs:', err); /* mantém cache na tela */ });
     getRecentUpdates()
       .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
       .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });

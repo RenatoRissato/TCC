@@ -42,17 +42,30 @@ export interface RotaRow {
   criada_em: string;
 }
 
+export type TipoPassageiro = 'escola' | 'faculdade';
+
+export interface ObservacoesPassageiro {
+  tipoPassageiro?: TipoPassageiro;
+  instituicao?: string;
+  serieSemestre?: string;
+  curso?: string;
+  nomeResponsavel?: string;
+}
+
 export interface PassageiroRow {
   id: string;
   rota_id: string;
   nome_completo: string;
   telefone_responsavel: string;
-  endereco_embarque: string;
+  embarque_rua: string | null;
+  embarque_numero: string | null;
+  embarque_bairro: string | null;
+  embarque_cep: string | null;
   ponto_referencia: string | null;
   turno: string | null;
   horario_embarque: string | null;
   ordem_na_rota: number;
-  observacoes: string | null;
+  observacoes: ObservacoesPassageiro | null;
   status: StatusPassageiro;
   criado_em: string;
 }

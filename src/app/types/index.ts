@@ -1,5 +1,6 @@
 export type StudentStatus = 'going' | 'absent' | 'pending';
 export type RouteType = 'morning' | 'afternoon' | 'night';
+export type TipoPassageiro = 'escola' | 'faculdade';
 
 export interface Passenger {
   id: string;
@@ -7,7 +8,10 @@ export interface Passenger {
   name: string;
   initials: string;
   address: string;
-  neighborhood: string;
+  addressRua: string;
+  addressNumero: string;
+  addressBairro: string;
+  addressCep: string;
   phone: string;
   parentName: string;
   status: StudentStatus;
@@ -16,6 +20,11 @@ export interface Passenger {
   routes: RouteType[];
   grade: string;
   avatar?: string;
+  // Campos estruturados — vêm do JSONB observacoes
+  tipoPassageiro: TipoPassageiro;
+  instituicao: string;
+  serieSemestre: string;
+  curso: string;
 }
 
 export interface WhatsAppUpdate {

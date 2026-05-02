@@ -138,7 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    // 2) Carrega o perfil real em background, com timeout — se travar, mantém o fallback.
+    // 2a) Hidratação OTIMISTA do motoristaId via cache local. Em reabertura
+    // do app, o JWT precisa refresh + cold start do free tier somam 5-15s
+    // antes da query do motorista responder. Durante esse tempo, motoristaId
+    // fica null e os useEffects do Dashboard não disparam — usuário vê tela
+    // vazia. Setar motoristaId do cache agora desbloqueia os hooks downstream
+    // imediatamente; a query abaixo continua e revalida em background.
+    try {
+      const cached = localStorage.getItem(`sr_motorista_${userId}`);
+      if (cached) setMotoristaId(cached);
+    } catch { /* localStorage indisponível — segue sem cache */ }
+
+    // 2b) Carrega o perfil real em background, com timeout — se travar, mantém o fallback.
     // 15s cobre cold start realista do Supabase free tier + latência intercontinental.
     // Se mesmo assim travar, o fallback do JWT já tem nome/email — UX não quebra.
     let motorista: MotoristaRow | null = null;
@@ -190,6 +201,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(motoristaToUser(motorista));
       setMotoristaId(motorista.id);
       lastLoadedUserId.current = userId;
+
+      // Atualiza cache para próxima reabertura — motoristaId é estável
+      // (1 user → 1 motorista), então cache não precisa de TTL.
+      try { localStorage.setItem(`sr_motorista_${userId}`, motorista.id); } catch { /* ok */ }
     }
   }, []);
 
@@ -320,6 +335,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [hidratarSessao]);
 
   const logout = useCallback(async () => {
+    // Limpa cache local antes de qualquer coisa — evita que outro usuário
+    // logando no mesmo browser herde rotas/motorista_id da conta anterior.
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('sr_'))
+        .forEach(k => localStorage.removeItem(k));
+    } catch { /* ok */ }
+
     // Limpa estado local IMEDIATAMENTE — não espera round-trip pro servidor.
     // setUser(null) já dispara isAuthenticated=false no AuthGate, que desmonta
     // o RouterProvider e mostra a LoginScreen. UX instantâneo.
