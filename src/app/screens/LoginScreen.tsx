@@ -303,7 +303,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
   /* ── MOBILE layout ──────────────────────────────────────── */
   if (isMobile) {
     return (
-      <div style={{ width: '100%', maxWidth: 480, minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: bg, fontFamily: 'Inter, -apple-system, sans-serif', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
+      <div style={{ width: '100%', maxWidth: 480, height: '100dvh', display: 'flex', flexDirection: 'column', background: bg, fontFamily: 'Inter, -apple-system, sans-serif', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
         <style>{`
           @keyframes auth-spin { to { transform: rotate(360deg); } }
           @keyframes auth-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
