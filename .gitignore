@@ -6,3 +6,4 @@ dist
 # Claude Code — arquivos temporários de sessão
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
+supabase/.temp
