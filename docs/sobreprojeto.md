@@ -44,12 +44,12 @@ O problema central resolvido: motoristas não sabem antecipadamente quais alunos
 - Sonner — notificações toast
 - Vitest + Testing Library — testes
 
-### Backend (a implementar)
+### Backend (já implementado na base atual)
 - Supabase Edge Functions (Deno + TypeScript) — lógica de negócio segura no servidor
 - Supabase PostgreSQL — banco de dados principal do sistema
-- Supabase Auth — autenticação dos motoristas
-- Supabase Realtime — notificações em tempo real para o frontend
-- Evolution API — integração com WhatsApp via protocolo Baileys
+- Supabase Auth — autenticação real dos motoristas
+- Supabase Realtime — atualizações em tempo real no frontend
+- Evolution API — integração com WhatsApp via Edge Functions
 
 ### Hospedagem
 - Vercel — deploy do frontend PWA
@@ -167,13 +167,17 @@ WEBHOOK_SECRET=
 
 ## O que já está pronto
 
-- Frontend PWA completo com dados mockados em `src/app/data/mockData.ts`
-- Camada `src/app/services/` preparada para substituir os mocks por chamadas reais
-- Estrutura de telas: Dashboard, Rotas, Passageiros, WhatsApp, Configurações, Login
+- Frontend PWA com autenticação real via Supabase Auth
+- Camada `src/app/services/` já conectada ao Supabase para rotas, passageiros, dashboard e viagens
+- Estrutura de telas ativa: Dashboard, Rotas, Passageiros, WhatsApp, Configurações, Login, Cadastro e Viagem em andamento
+- Banco com migrations, RLS, Realtime e Edge Functions já versionados no repositório
+- Fluxo de viagem já implementado: iniciar viagem, acompanhar confirmações em tempo real, reenviar confirmação, marcar manualmente e finalizar viagem
+- Integração backend com Evolution API já implementada nas Edge Functions
 
 ## O que falta implementar
 
-- Supabase: criação das tabelas com RLS
-- Edge Functions: `iniciar-viagem`, `webhook-evolution`, `enviar-mensagem`, `automacao-diaria`
-- Integração do frontend: substituir `mockData.ts` pelas chamadas reais ao Supabase
-- Configuração do webhook na Evolution API apontando para a Edge Function
+- Conectar a tela **WhatsApp** aos dados reais de `instancias_whatsapp`, `configuracoes_automacao` e `templates_mensagem`
+- Persistir no backend as ações hoje apenas locais da tela **Configurações**: perfil, senha, turnos, notificações e preferências
+- Implementar telas e consultas de **histórico/relatórios** no frontend
+- Configurar em ambiente real o webhook da Evolution API e o cron da automação diária
+- Completar a camada PWA real com manifest, service worker e instalação offline

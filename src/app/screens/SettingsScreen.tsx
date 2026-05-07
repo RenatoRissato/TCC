@@ -8,7 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { useDailyList } from '../hooks/useDailyList';
-import { getPassengers } from '../services/passengerService';
+import { usePassengers } from '../hooks/usePassengers';
 import { AccordionItem } from '../components/settings/AccordionItem';
 import { StatsSection } from '../components/settings/StatsSection';
 import { PassengersSection } from '../components/settings/PassengersSection';
@@ -30,7 +30,7 @@ export function SettingsScreen() {
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
   const { summary, pending } = useDailyList();
-  const passengers = getPassengers();
+  const { list: passengers } = usePassengers();
 
   const [open, setOpen] = useState<OpenKey>(null);
   const [editProfile, setEditProfile] = useState(false);

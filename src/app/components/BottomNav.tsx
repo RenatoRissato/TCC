@@ -1,23 +1,20 @@
 import { useLocation, useNavigate } from 'react-router';
 import { Home, MapPin, MessageCircle, Settings } from 'lucide-react';
-import { getPassengers } from '../services/passengerService';
-
-const passengers = getPassengers();
 import { useTheme } from '../context/ThemeContext';
-
-const PENDING = passengers.filter(p => p.status === 'pending').length;
-
-const NAV = [
-  { path: '/home',      label: 'Home',      Icon: Home },
-  { path: '/routes',    label: 'Rotas',     Icon: MapPin,         badge: PENDING },
-  { path: '/whatsapp',  label: 'WhatsApp',  Icon: MessageCircle },
-  { path: '/settings',  label: 'Settings',  Icon: Settings },
-];
+import { usePassengers } from '../hooks/usePassengers';
 
 export function BottomNav() {
   const navigate          = useNavigate();
   const { pathname }      = useLocation();
   const { isDark }        = useTheme();
+  const { counts }        = usePassengers();
+
+  const NAV = [
+    { path: '/home',      label: 'Home',      Icon: Home },
+    { path: '/routes',    label: 'Rotas',     Icon: MapPin,         badge: counts.pending },
+    { path: '/whatsapp',  label: 'WhatsApp',  Icon: MessageCircle },
+    { path: '/settings',  label: 'Settings',  Icon: Settings },
+  ];
 
   const navBg     = isDark ? '#0A0D12' : '#212529';
   const navBorder = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)';

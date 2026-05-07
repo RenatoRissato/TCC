@@ -1,20 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { getPassengers, getSummary } from '../app/services/passengerService';
+import { calcularSummary } from '../app/services/passageiroService';
+import type { Passenger } from '../app/types';
 
-describe('passengerService', () => {
-  it('retorna lista com 12 passageiros', () => {
-    expect(getPassengers()).toHaveLength(12);
-  });
+function p(status: Passenger['status']): Passenger {
+  return {
+    id: 'x', rotaId: 'r', name: 'X', initials: 'X',
+    address: '', addressRua: '', addressNumero: '', addressBairro: '', addressCep: '',
+    phone: '', parentName: '',
+    tipoPassageiro: 'escola', instituicao: '', serieSemestre: '', curso: '',
+    status, stopOrder: 1, routes: ['morning'], grade: '',
+  };
+}
 
-  it('getSummary soma corretamente going + absent + pending = total', () => {
-    const list = getPassengers();
-    const s = getSummary(list);
+describe('passageiroService.calcularSummary', () => {
+  it('soma going + absent + pending = total', () => {
+    const list: Passenger[] = [p('going'), p('going'), p('absent'), p('pending')];
+    const s = calcularSummary(list);
     expect(s.going + s.absent + s.pending).toBe(s.total);
     expect(s.total).toBe(list.length);
+    expect(s).toEqual({ going: 2, absent: 1, pending: 1, total: 4 });
   });
 
-  it('getSummary com lista vazia retorna zeros', () => {
-    const s = getSummary([]);
-    expect(s).toEqual({ going: 0, absent: 0, pending: 0, total: 0 });
+  it('lista vazia retorna zeros', () => {
+    expect(calcularSummary([])).toEqual({ going: 0, absent: 0, pending: 0, total: 0 });
   });
 });

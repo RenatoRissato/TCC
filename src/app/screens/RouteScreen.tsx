@@ -1,10 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   Search, X, MapPin, CheckCircle2, XCircle, Clock, Plus, Trash2, Menu,
 } from 'lucide-react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { usePassengers, type PassengerFilter, type PassengerPeriod } from '../hooks/usePassengers';
+import { listarRotas } from '../services/rotaService';
+import type { RotaRow } from '../types/database';
 import { PassengerCard } from '../components/passengers/PassengerCard';
 import { PassengerFilters } from '../components/passengers/PassengerFilters';
 import { PassengerForm } from '../components/passengers/PassengerForm';
@@ -28,9 +31,30 @@ export function RouteScreen() {
   const { isDesktop, isLg, isMd, isXxl } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rotaParam = searchParams.get('rota') ?? 'all';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<PassengerFilter>('all');
-  const [period, setPeriod] = useState<PassengerPeriod>('all');
+  const [period, setPeriod] = useState<PassengerPeriod>(rotaParam);
+  const [rotas, setRotas] = useState<RotaRow[]>([]);
+
+  useEffect(() => {
+    listarRotas().then(setRotas);
+  }, []);
+
+  useEffect(() => {
+    setPeriod((atual) => (atual === rotaParam ? atual : rotaParam));
+  }, [rotaParam]);
+
+  const handlePeriodChange = useCallback((p: PassengerPeriod) => {
+    setPeriod(p);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (p === 'all') next.delete('rota');
+      else next.set('rota', p);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Passenger | null>(null);
   const [delTarget, setDelTarget] = useState<Passenger | null>(null);
@@ -41,7 +65,7 @@ export function RouteScreen() {
   const openEdit = useCallback((p: Passenger) => { setEditing(p); setModal('edit'); }, []);
   const closeModal = () => { setModal(null); setEditing(null); };
 
-  const handleSave = useCallback((form: Parameters<typeof add>[0], id?: number) => {
+  const handleSave = useCallback((form: Parameters<typeof add>[0], id?: string) => {
     if (id !== undefined) edit(id, form); else add(form);
     closeModal();
   }, [add, edit]);
@@ -97,7 +121,8 @@ export function RouteScreen() {
           filter={filter}
           counts={counts}
           paddingX={px}
-          onPeriodChange={setPeriod}
+          rotas={rotas}
+          onPeriodChange={handlePeriodChange}
           onFilterChange={setFilter}
         />
       </div>

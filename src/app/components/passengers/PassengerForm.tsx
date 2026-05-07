@@ -1,22 +1,70 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  User, Phone, Home, BookOpen, MapPin, CheckCircle2,
+  User, Phone, Home, BookOpen, MapPin, Hash, GraduationCap, School,
   AlertCircle, Save, Users, Edit2, X,
 } from 'lucide-react';
 import { FormInput } from '../shared/FormInput';
-import type { Passenger, RouteType } from '../../types';
+import { listarRotas } from '../../services/rotaService';
+import type { RotaRow } from '../../types/database';
+import type { Passenger, TipoPassageiro } from '../../types';
 import type { PassengerFormValues } from '../../hooks/usePassengers';
 
-const BLANK: PassengerFormValues = {
-  name: '', parentName: '', address: '', neighborhood: '',
-  phone: '', grade: '', routes: ['morning'],
-};
+function applyLocalDigits(local: string): string {
+  const d = local.slice(0, 11);
+  if (d.length === 0) return '+55 ';
+  if (d.length <= 2) return `+55 (${d}`;
+  if (d.length <= 7) return `+55 (${d.slice(0, 2)}) ${d.slice(2)}`;
+  return `+55 (${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
 
-const SHIFT_OPTIONS: { key: RouteType; label: string; emoji: string; color: string; time: string }[] = [
-  { key: 'morning',   label: 'Manhã',  emoji: '☀️',  color: '#FFC107', time: '07:15' },
-  { key: 'afternoon', label: 'Tarde',  emoji: '🌤️', color: '#FD7E14', time: '12:30' },
-  { key: 'night',     label: 'Noite',  emoji: '🌙',  color: '#6C5CE7', time: '19:00' },
-];
+// Para carregar número salvo no banco (sem DDI ou com DDI 55)
+function phoneForDisplay(stored: string): string {
+  const digits = stored.replace(/\D/g, '');
+  const local = digits.length >= 12 ? digits.slice(2) : digits;
+  return applyLocalDigits(local);
+}
+
+// Para aplicar máscara enquanto o usuário digita no campo formatado
+function applyPhoneMask(displayValue: string): string {
+  const all = displayValue.replace(/\D/g, '');
+  const local = all.startsWith('55') ? all.slice(2) : all;
+  return applyLocalDigits(local);
+}
+
+const SERIES_FUNDAMENTAL = [
+  '1º Ano', '2º Ano', '3º Ano', '4º Ano', '5º Ano',
+  '6º Ano', '7º Ano', '8º Ano', '9º Ano',
+] as const;
+
+const SERIES_MEDIO = ['1º Médio', '2º Médio', '3º Médio'] as const;
+
+const SEMESTRES = [
+  '1º Semestre', '2º Semestre', '3º Semestre',  '4º Semestre',  '5º Semestre',
+  '6º Semestre', '7º Semestre', '8º Semestre',  '9º Semestre', '10º Semestre',
+] as const;
+
+const FUNDAMENTAL_SET = new Set<string>(SERIES_FUNDAMENTAL);
+
+/**
+ * Regra de negócio: campo de responsável só aparece para Fundamental.
+ * Médio e Faculdade usam o WhatsApp do próprio aluno.
+ */
+function isSerieFundamental(serie: string): boolean {
+  return FUNDAMENTAL_SET.has(serie);
+}
+
+const BLANK: PassengerFormValues = {
+  name: '',
+  tipoPassageiro: 'escola',
+  instituicao: '',
+  serieSemestre: '',
+  curso: '',
+  nomeResponsavel: '',
+  phone: '+55 ',
+  addressRua: '', addressNumero: '', addressBairro: '', addressCep: '',
+  routes: ['morning'],
+  rotaId: undefined,
+};
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -48,47 +96,163 @@ function LoadSpinner() {
   );
 }
 
+interface TipoCardProps {
+  active: boolean;
+  emoji: string;
+  label: string;
+  onClick: () => void;
+}
+
+function TipoCard({ active, emoji, label, onClick }: TipoCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-1.5 flex-1 rounded-[14px] px-3 py-3 cursor-pointer font-sans transition-all min-h-[78px]"
+      style={{
+        background: active ? 'rgba(255,193,7,0.12)' : 'var(--field)',
+        border: `2px solid ${active ? '#FFC107' : 'var(--app-border)'}`,
+      }}
+    >
+      <span className="text-[26px] leading-none">{emoji}</span>
+      <span
+        className="text-[12px] font-extrabold leading-tight text-center"
+        style={{ color: active ? '#B07900' : 'var(--ink)' }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function Dropdown({
+  value, onChange, options, placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  placeholder: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-field border-2 border-app-border rounded-[14px] px-3.5 py-3 text-sm font-bold text-ink outline-none mb-3 font-sans min-h-[52px]"
+    >
+      <option value="" disabled>{placeholder}</option>
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+  );
+}
+
 interface PassengerFormProps {
   editTarget: Passenger | null;
-  onSave: (values: PassengerFormValues, id?: number) => void;
+  onSave: (values: PassengerFormValues, id?: string) => void;
   onClose: () => void;
 }
 
 export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProps) {
   const isEdit = editTarget !== null;
+  const [rotas, setRotas] = useState<RotaRow[]>([]);
   const [form, setForm] = useState<PassengerFormValues>(
     isEdit
       ? {
-          name:         editTarget.name,
-          parentName:   editTarget.parentName,
-          address:      editTarget.address,
-          neighborhood: editTarget.neighborhood,
-          phone:        editTarget.phone,
-          grade:        editTarget.grade,
-          routes:       [...editTarget.routes],
+          name:            editTarget.name,
+          tipoPassageiro:  editTarget.tipoPassageiro,
+          instituicao:     editTarget.instituicao,
+          serieSemestre:   editTarget.serieSemestre,
+          curso:           editTarget.curso,
+          nomeResponsavel: editTarget.parentName,
+          phone:           phoneForDisplay(editTarget.phone),
+          addressRua:      editTarget.addressRua,
+          addressNumero:   editTarget.addressNumero,
+          addressBairro:   editTarget.addressBairro,
+          addressCep:      editTarget.addressCep,
+          routes:          [...editTarget.routes],
+          rotaId:          editTarget.rotaId,
         }
       : { ...BLANK },
   );
   const [errors, setErrors] = useState<Partial<Record<keyof PassengerFormValues, string>>>({});
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    listarRotas().then(rs => {
+      setRotas(rs);
+      if (!isEdit && !form.rotaId && rs.length > 0) {
+        const primeira = rs[0];
+        setForm(f => ({ ...f, rotaId: primeira.id, routes: [primeira.turno] }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const set = (k: keyof PassengerFormValues) => (v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const toggleRoute = (r: RouteType) => {
-    setForm((f) => ({
+  /**
+   * Troca o tipo de passageiro: limpa só os campos exclusivos do tipo
+   * anterior para evitar que dados antigos vazem no JSONB salvo.
+   */
+  const trocarTipo = (tipo: TipoPassageiro) => {
+    setForm(f => ({
       ...f,
-      routes: f.routes.includes(r) ? f.routes.filter((x) => x !== r) : [...f.routes, r],
+      tipoPassageiro: tipo,
+      // Reseta série/semestre porque os domínios são diferentes
+      serieSemestre: '',
+      // Curso só faz sentido em faculdade
+      curso: tipo === 'faculdade' ? f.curso : '',
+      // Responsável só faz sentido em fundamental
+      nomeResponsavel: tipo === 'escola' ? f.nomeResponsavel : '',
+    }));
+    setErrors({});
+  };
+
+  /**
+   * Quando troca a série em "escola": se virar Médio, limpa o
+   * nomeResponsavel (não é mais usado). Mantém o phone porque continua
+   * sendo o número principal — só muda a quem ele pertence.
+   */
+  const trocarSerieEscola = (serie: string) => {
+    setForm(f => ({
+      ...f,
+      serieSemestre: serie,
+      nomeResponsavel: isSerieFundamental(serie) ? f.nomeResponsavel : '',
     }));
   };
 
+  const handlePhoneChange = (v: string) =>
+    setForm(f => ({ ...f, phone: applyPhoneMask(v) }));
+
+  const selecionarRota = (id: string) => {
+    setForm(f => ({ ...f, rotaId: id }));
+  };
+
+  /**
+   * Validação contextual ao tipo + série. Único campo SEMPRE obrigatório
+   * é o phone — a semântica varia, mas o campo existe nos 3 cenários.
+   */
   const validate = () => {
     const e: Partial<Record<keyof PassengerFormValues, string>> = {};
-    if (!form.name.trim()) e.name = 'Nome é obrigatório';
-    if (!form.parentName.trim()) e.parentName = 'Responsável é obrigatório';
-    if (!form.address.trim()) e.address = 'Endereço é obrigatório';
-    if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'WhatsApp inválido';
-    if (form.routes.length === 0) e.routes = 'Selecione ao menos um turno';
+    if (!form.name.trim())         e.name = 'Nome é obrigatório';
+    if (!form.instituicao.trim())  e.instituicao = form.tipoPassageiro === 'faculdade'
+      ? 'Nome da faculdade é obrigatório'
+      : 'Nome da escola é obrigatório';
+    if (!form.serieSemestre)       e.serieSemestre = form.tipoPassageiro === 'faculdade'
+      ? 'Selecione o semestre'
+      : 'Selecione a série';
+    if (form.tipoPassageiro === 'faculdade' && !form.curso.trim()) {
+      e.curso = 'Curso é obrigatório';
+    }
+    if (form.tipoPassageiro === 'escola' && isSerieFundamental(form.serieSemestre)) {
+      if (!form.nomeResponsavel.trim()) e.nomeResponsavel = 'Nome do responsável é obrigatório';
+    }
+    if (form.phone.replace(/\D/g, '').length < 12) e.phone = 'WhatsApp inválido';
+    if (!form.addressRua.trim())    e.addressRua    = 'Rua é obrigatória';
+    if (!form.addressNumero.trim()) e.addressNumero = 'Número é obrigatório';
+    if (!form.addressBairro.trim()) e.addressBairro = 'Bairro é obrigatório';
+    if (!form.addressCep.trim())    e.addressCep    = 'CEP é obrigatório';
+    if (!form.rotaId)               e.routes        = 'Selecione uma rota';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -96,12 +260,27 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    onSave(form, editTarget?.id);
-    setSaving(false);
+    try {
+      await onSave(form, editTarget?.id);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const hasError = Object.keys(errors).length > 0;
+
+  // Derivações de UI condicional
+  const isFaculdade = form.tipoPassageiro === 'faculdade';
+  const isEscola    = form.tipoPassageiro === 'escola';
+  const seriesEscolaOptions = useMemo(
+    () => [...SERIES_FUNDAMENTAL, ...SERIES_MEDIO],
+    [],
+  );
+  const mostrarResponsavelEscola = isEscola && isSerieFundamental(form.serieSemestre);
+  const labelPhone =
+    isFaculdade                          ? 'WhatsApp do Aluno'
+    : mostrarResponsavelEscola           ? 'WhatsApp do Responsável'
+    :                                      'WhatsApp do Aluno';
 
   return (
     <div className="flex flex-col flex-1 min-h-0 font-sans">
@@ -143,49 +322,136 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
           </div>
         )}
 
+        <SectionDivider label="Tipo de Passageiro" />
+        <div className="flex gap-2 mb-4">
+          <TipoCard
+            active={isEscola}
+            emoji="🏫"
+            label="Aluno de Escola"
+            onClick={() => trocarTipo('escola')}
+          />
+          <TipoCard
+            active={isFaculdade}
+            emoji="🎓"
+            label="Estudante de Faculdade"
+            onClick={() => trocarTipo('faculdade')}
+          />
+        </div>
+
         <SectionDivider label="Dados do Aluno" />
         <FormInput label="Nome Completo" icon={User} value={form.name} onChange={set('name')} placeholder="Ex: Ana Beatriz Santos" required />
         {errors.name && <ErrMsg msg={errors.name} />}
-        <FormInput label="Série / Curso" icon={BookOpen} value={form.grade} onChange={set('grade')} placeholder="Ex: 5º Ano ou Engenharia" />
 
-        <SectionDivider label="Responsável" />
-        <FormInput label="Nome do Responsável" icon={User} value={form.parentName} onChange={set('parentName')} placeholder="Ex: Maria Santos" required />
-        {errors.parentName && <ErrMsg msg={errors.parentName} />}
-        <FormInput label="WhatsApp do Responsável" icon={Phone} type="tel" value={form.phone} onChange={set('phone')} placeholder="+55 (11) 99999-0000" required />
+        {isEscola && (
+          <>
+            <FormInput
+              label="Nome da Escola"
+              icon={School}
+              value={form.instituicao}
+              onChange={set('instituicao')}
+              placeholder="Ex: Colégio Santa Maria"
+              required
+            />
+            {errors.instituicao && <ErrMsg msg={errors.instituicao} />}
+
+            <label className="block text-[12px] font-bold text-ink-soft mb-1.5 mt-1">
+              Série / Ano <span className="text-danger">*</span>
+            </label>
+            <Dropdown
+              value={form.serieSemestre}
+              onChange={trocarSerieEscola}
+              options={seriesEscolaOptions}
+              placeholder="Selecione a série..."
+            />
+            {errors.serieSemestre && <ErrMsg msg={errors.serieSemestre} />}
+          </>
+        )}
+
+        {isFaculdade && (
+          <>
+            <FormInput
+              label="Nome da Faculdade"
+              icon={GraduationCap}
+              value={form.instituicao}
+              onChange={set('instituicao')}
+              placeholder="Ex: USP"
+              required
+            />
+            {errors.instituicao && <ErrMsg msg={errors.instituicao} />}
+
+            <FormInput
+              label="Curso"
+              icon={BookOpen}
+              value={form.curso}
+              onChange={set('curso')}
+              placeholder="Ex: Engenharia da Computação"
+              required
+            />
+            {errors.curso && <ErrMsg msg={errors.curso} />}
+
+            <label className="block text-[12px] font-bold text-ink-soft mb-1.5 mt-1">
+              Semestre <span className="text-danger">*</span>
+            </label>
+            <Dropdown
+              value={form.serieSemestre}
+              onChange={set('serieSemestre')}
+              options={SEMESTRES}
+              placeholder="Selecione o semestre..."
+            />
+            {errors.serieSemestre && <ErrMsg msg={errors.serieSemestre} />}
+          </>
+        )}
+
+        <SectionDivider label="Contato" />
+        {mostrarResponsavelEscola && (
+          <>
+            <FormInput
+              label="Nome do Responsável"
+              icon={User}
+              value={form.nomeResponsavel}
+              onChange={set('nomeResponsavel')}
+              placeholder="Ex: Maria Santos"
+              required
+            />
+            {errors.nomeResponsavel && <ErrMsg msg={errors.nomeResponsavel} />}
+          </>
+        )}
+        <FormInput
+          label={labelPhone}
+          icon={Phone}
+          type="tel"
+          value={form.phone}
+          onChange={handlePhoneChange}
+          placeholder="+55 (19) 99999-9999"
+          required
+        />
         {errors.phone && <ErrMsg msg={errors.phone} />}
 
         <SectionDivider label="Endereço de Embarque" />
-        <FormInput label="Endereço" icon={Home} value={form.address} onChange={set('address')} placeholder="Ex: Rua das Flores, 123" required />
-        {errors.address && <ErrMsg msg={errors.address} />}
-        <FormInput label="Bairro" icon={MapPin} value={form.neighborhood} onChange={set('neighborhood')} placeholder="Ex: Jardim América" />
+        <FormInput label="Rua" icon={Home} value={form.addressRua} onChange={set('addressRua')} placeholder="Ex: Rua das Flores" required />
+        {errors.addressRua && <ErrMsg msg={errors.addressRua} />}
+        <FormInput label="Número" icon={Hash} value={form.addressNumero} onChange={set('addressNumero')} placeholder="Ex: 123" required />
+        {errors.addressNumero && <ErrMsg msg={errors.addressNumero} />}
+        <FormInput label="Bairro" icon={MapPin} value={form.addressBairro} onChange={set('addressBairro')} placeholder="Ex: Jardim América" required />
+        {errors.addressBairro && <ErrMsg msg={errors.addressBairro} />}
+        <FormInput label="CEP" icon={MapPin} value={form.addressCep} onChange={set('addressCep')} placeholder="Ex: 01310-100" required />
+        {errors.addressCep && <ErrMsg msg={errors.addressCep} />}
 
-        <SectionDivider label="Turnos" />
-        <p className="text-xs text-ink-soft m-0 mb-2.5">Selecione os turnos que este passageiro utiliza:</p>
-        <div className="flex gap-2 mb-2 flex-wrap">
-          {SHIFT_OPTIONS.map((sh) => {
-            const active = form.routes.includes(sh.key);
-            return (
-              <button
-                key={sh.key}
-                onClick={() => toggleRoute(sh.key)}
-                className="flex items-center gap-2 flex-1 min-w-[100px] rounded-[14px] px-3.5 py-3 cursor-pointer font-sans transition-all"
-                style={{
-                  background: active ? `${sh.color}18` : 'var(--field)',
-                  border: `2px solid ${active ? sh.color : 'var(--app-border)'}`,
-                }}
-              >
-                <span className="text-xl">{sh.emoji}</span>
-                <div className="text-left">
-                  <p className="text-[13px] font-bold m-0" style={{ color: active ? sh.color : 'var(--ink)' }}>
-                    {sh.label}
-                  </p>
-                  <p className="text-[10px] text-ink-muted m-0">{sh.time}</p>
-                </div>
-                {active && <CheckCircle2 size={16} color={sh.color} strokeWidth={2.5} className="ml-auto" />}
-              </button>
-            );
-          })}
-        </div>
+        <SectionDivider label="Rota" />
+        {rotas.length === 0 ? (
+          <p className="text-xs text-warning m-0 mb-3">Nenhuma rota cadastrada. Crie uma rota antes de adicionar passageiros.</p>
+        ) : (
+          <select
+            value={form.rotaId ?? ''}
+            onChange={(e) => selecionarRota(e.target.value)}
+            className="w-full bg-field border-2 border-app-border rounded-[14px] px-3.5 py-3 text-sm font-bold text-ink outline-none mb-3 font-sans min-h-[52px]"
+          >
+            <option value="" disabled>Selecione uma rota...</option>
+            {rotas.map(r => (
+              <option key={r.id} value={r.id}>{r.nome} {r.horario_saida ? `· ${r.horario_saida.slice(0,5)}` : ''}</option>
+            ))}
+          </select>
+        )}
         {errors.routes && <ErrMsg msg={errors.routes} />}
 
         <div className="h-4" />

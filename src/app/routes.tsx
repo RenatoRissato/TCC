@@ -4,6 +4,7 @@ import { DashboardScreen } from './screens/DashboardScreen';
 import { RouteScreen } from './screens/RouteScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { WhatsAppScreen } from './screens/WhatsAppScreen';
+import { LiveTripScreen } from './screens/LiveTripScreen';
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       { path: 'routes',    Component: RouteScreen },
       { path: 'whatsapp',  Component: WhatsAppScreen },
       { path: 'settings',  Component: SettingsScreen },
+      { path: 'viagem/:viagemId', Component: LiveTripScreen },
     ],
   },
 ]);

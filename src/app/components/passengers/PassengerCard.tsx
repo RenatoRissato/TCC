@@ -1,6 +1,6 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import {
-  Navigation, MessageCircle, ChevronDown, MapPin,
+  Navigation, MessageCircle, MapPin,
   CheckCircle2, XCircle, Edit2, Trash2,
 } from 'lucide-react';
 import { Avatar } from '../shared/Avatar';
@@ -13,52 +13,30 @@ const SHIFT_OPTIONS: Record<RouteType, { label: string; emoji: string; color: st
   night:     { label: 'Noite',  emoji: '🌙',  color: '#6C5CE7' },
 };
 
-function MapDropdown({ p }: { p: Passenger }) {
-  const [open, setOpen] = useState(false);
-  const q = encodeURIComponent(`${p.address}, ${p.neighborhood}`);
-  const items = [
-    { emoji: '🗺️', label: 'Waze',        href: `https://waze.com/ul?q=${q}` },
-    { emoji: '📍', label: 'Google Maps', href: `https://maps.google.com/maps?q=${q}` },
-  ];
+function MapsButton({ p }: { p: Passenger }) {
+  const q = encodeURIComponent(p.address);
+  const href = `https://maps.google.com/maps?q=${q}`;
   return (
-    <div className="relative">
-      <button
-        className="btn-ghost touch-scale text-xs min-h-10 px-2.5 py-2"
-        onClick={() => setOpen((v) => !v)}
-        style={{ color: '#2979FF', borderColor: '#2979FF' }}
-        aria-label="Mapa"
-      >
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="touch-scale inline-flex items-center gap-2 rounded-[12px] border px-3 py-2 text-xs font-bold no-underline transition-all min-h-10"
+      style={{
+        color: '#2979FF',
+        borderColor: 'rgba(41,121,255,0.18)',
+        background: 'rgba(41,121,255,0.08)',
+      }}
+      aria-label={`Abrir ${p.name} no Google Maps`}
+    >
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/75 dark:bg-[#0F141A]">
         <Navigation size={15} color="#2979FF" strokeWidth={2} />
-        Mapa
-        <ChevronDown
-          size={12}
-          color="#2979FF"
-          className="transition-transform"
-          style={{ transform: open ? 'rotate(180deg)' : 'none' }}
-        />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-[calc(100%+6px)] left-0 z-50 bg-panel rounded-[14px] overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.22)] border border-app-border min-w-[160px]">
-            {items.map((item, i) => (
-              <a
-                key={item.label}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-2.5 px-4 py-3 no-underline text-ink text-sm font-semibold ${
-                  i > 0 ? 'border-t border-divider' : ''
-                }`}
-              >
-                <span className="text-lg">{item.emoji}</span> {item.label}
-              </a>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span>Google Maps</span>
+        <span className="text-[10px] font-medium text-[#2979FF]/75">Abrir rota</span>
+      </span>
+    </a>
   );
 }
 
@@ -97,7 +75,7 @@ export const PassengerCard = memo(function PassengerCard({
             </p>
           </div>
           <p className="text-[11px] font-medium text-ink-muted m-0 mt-0.5">
-            {p.neighborhood} · {p.grade}
+            {[p.addressBairro, p.grade].filter(Boolean).join(' · ')}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
@@ -160,17 +138,26 @@ export const PassengerCard = memo(function PassengerCard({
 
       <div className="h-px bg-divider mx-4" />
 
-      <div className="flex items-center gap-2.5 px-4 pt-2.5 pb-3">
-        <MapDropdown p={p} />
+      <div className="flex items-center gap-2.5 px-4 pt-3 pb-3.5">
+        <MapsButton p={p} />
         <a
           href={waUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-ghost touch-scale text-xs min-h-10 px-2.5 py-2 no-underline"
-          style={{ color: '#128C7E', borderColor: '#128C7E' }}
+          className="touch-scale inline-flex items-center gap-2 rounded-[12px] border px-3 py-2 text-xs font-bold no-underline transition-all min-h-10"
+          style={{
+            color: '#128C7E',
+            borderColor: 'rgba(18,140,126,0.18)',
+            background: 'rgba(18,140,126,0.08)',
+          }}
         >
-          <MessageCircle size={15} color="#128C7E" strokeWidth={2} />
-          WhatsApp
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/75 dark:bg-[#0F141A]">
+            <MessageCircle size={15} color="#128C7E" strokeWidth={2} />
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span>WhatsApp</span>
+            <span className="text-[10px] font-medium text-[#128C7E]/75">Falar agora</span>
+          </span>
         </a>
         <span className="ml-auto text-[11px] text-ink-muted font-medium">
           {p.parentName.split(' ')[0]}
