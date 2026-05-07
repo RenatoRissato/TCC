@@ -131,6 +131,21 @@ Deno.serve(async (req: Request) => {
     const passageiro: any = (confirmacao as any).passageiros
     const motoristaId: string | undefined = passageiro?.rotas?.motorista_id
 
+    // Notificação in-app para o motorista
+    if (motoristaId && passageiro?.nome_completo) {
+      const acao = tipoConfirmacao === 'nao_vai' ? 'recusou presença' : 'confirmou presença'
+      try {
+        await supabase.from('notificacoes').insert({
+          motorista_id: motoristaId,
+          titulo: 'Resposta recebida',
+          mensagem: `${passageiro.nome_completo} ${acao}`,
+          tipo: 'whatsapp_resposta',
+        })
+      } catch (e) {
+        console.error('Falha ao registrar notificação whatsapp_resposta', e)
+      }
+    }
+
     // Busca instância do motorista (para registrar no log)
     let instanciaId: string | null = null
     if (motoristaId) {

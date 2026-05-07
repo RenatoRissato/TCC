@@ -93,3 +93,18 @@ export interface ConfirmacaoRow {
   criada_em: string;
   respondida_em: string | null;
 }
+
+export type TipoNotificacao =
+  | 'whatsapp_resposta'
+  | 'viagem_iniciada'
+  | 'viagem_finalizada';
+
+export interface NotificacaoRow {
+  id: string;
+  motorista_id: string;
+  titulo: string;
+  mensagem: string;
+  tipo: TipoNotificacao;
+  lida: boolean;
+  criada_em: string;
+}

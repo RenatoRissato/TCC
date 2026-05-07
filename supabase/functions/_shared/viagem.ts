@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { SupabaseClient } from '@supabase/supabase-js'
+import { criarClienteServico } from './auth.ts'
 import {
   evolutionEnviarLista,
   EvolutionResposta,
@@ -297,6 +298,22 @@ export async function processarIniciarViagem(
         erro: envioErro ?? 'Erro desconhecido',
       })
       falhas++
+    }
+  }
+
+  // Notificação in-app — só na primeira vez que a viagem é iniciada.
+  // Usa service role porque INSERT em notificacoes não é exposto ao role authenticated.
+  if (!viagemJaExistia) {
+    try {
+      const servico = criarClienteServico()
+      await servico.from('notificacoes').insert({
+        motorista_id: motoristaId,
+        titulo: 'Viagem iniciada',
+        mensagem: `Rota ${rota.nome} iniciada com ${lista.length} passageiros`,
+        tipo: 'viagem_iniciada',
+      })
+    } catch (e) {
+      console.error('Falha ao registrar notificação viagem_iniciada', e)
     }
   }
 

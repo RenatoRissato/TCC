@@ -1,6 +1,6 @@
 import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
-import { AuthError, getMotorista } from '../_shared/auth.ts'
+import { AuthError, criarClienteServico, getMotorista } from '../_shared/auth.ts'
 
 interface Body {
   viagem_id?: string
@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     // Verifica que a viagem pertence a uma rota do motorista
     const { data: viagem, error: viagemErr } = await supabase
       .from('viagens')
-      .select('id, status, rotas!inner(motorista_id)')
+      .select('id, status, rotas!inner(motorista_id, nome)')
       .eq('id', viagemId)
       .maybeSingle()
 
@@ -48,6 +48,9 @@ Deno.serve(async (req: Request) => {
         403,
       )
     }
+
+    // deno-lint-ignore no-explicit-any
+    const nomeRota: string | undefined = (viagem as any).rotas?.nome
 
     if (viagem.status === 'finalizada') {
       return erroCliente(
@@ -73,6 +76,22 @@ Deno.serve(async (req: Request) => {
       .update({ status: 'finalizada', finalizada_em: finalizadaEm })
       .eq('id', viagemId)
     if (updViagemErr) throw updViagemErr
+
+    // Notificação in-app — service role porque INSERT em notificacoes
+    // não é exposto ao role authenticated
+    try {
+      const servico = criarClienteServico()
+      await servico.from('notificacoes').insert({
+        motorista_id: motorista.id,
+        titulo: 'Viagem finalizada',
+        mensagem: nomeRota
+          ? `Rota ${nomeRota} finalizada`
+          : 'Viagem finalizada',
+        tipo: 'viagem_finalizada',
+      })
+    } catch (e) {
+      console.error('Falha ao registrar notificação viagem_finalizada', e)
+    }
 
     return ok({
       viagem_id: viagemId,

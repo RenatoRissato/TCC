@@ -24,6 +24,8 @@ import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
+import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
+import { useNotificacoes } from '../hooks/useNotificacoes';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
 import { supabase } from '../../lib/supabase';
 
@@ -74,6 +76,13 @@ export function DashboardScreen() {
   const [rotaOtimizandoId, setRotaOtimizandoId] = useState<string | null>(null);
   const [etapaOtimizacaoIndex, setEtapaOtimizacaoIndex] = useState(0);
   const [gerenciarAberto, setGerenciarAberto] = useState(false);
+  const [notificacoesAberto, setNotificacoesAberto] = useState(false);
+  const {
+    lista: notificacoes,
+    naoLidas: notificacoesNaoLidas,
+    marcarComoLida: marcarNotificacaoComoLida,
+    marcarTodasComoLidas: marcarTodasNotificacoesComoLidas,
+  } = useNotificacoes(motoristaId);
 
   const recarregarRotas = useCallback(() => {
     let cancelado = false;
@@ -403,9 +412,17 @@ export function DashboardScreen() {
                 {isDark ? <SunMedium size={20} color="#FFC107" strokeWidth={2} /> : <Moon size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />}
               </button>
             )}
-            <button className="touch-scale relative w-11 h-11 rounded-[14px] bg-white/[0.08] border-0 flex items-center justify-center cursor-pointer" aria-label="Notificações">
+            <button
+              onClick={() => setNotificacoesAberto(true)}
+              className="touch-scale relative w-11 h-11 rounded-[14px] bg-white/[0.08] border-0 flex items-center justify-center cursor-pointer"
+              aria-label={notificacoesNaoLidas > 0 ? `Notificações (${notificacoesNaoLidas} não lidas)` : 'Notificações'}
+            >
               <Bell size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
-              {s.pending > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-warning rounded-full border-[1.5px] border-[#212529]" />}
+              {notificacoesNaoLidas > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-[#212529] bg-pending rounded-full border-[1.5px] border-[#212529]">
+                  {notificacoesNaoLidas > 9 ? '9+' : notificacoesNaoLidas}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -550,6 +567,15 @@ export function DashboardScreen() {
         open={gerenciarAberto}
         onOpenChange={setGerenciarAberto}
         onChanged={recarregarRotas}
+      />
+
+      <NotificacoesPanel
+        open={notificacoesAberto}
+        onOpenChange={setNotificacoesAberto}
+        lista={notificacoes}
+        naoLidas={notificacoesNaoLidas}
+        onMarcarComoLida={marcarNotificacaoComoLida}
+        onMarcarTodasComoLidas={marcarTodasNotificacoesComoLidas}
       />
     </div>
   );
