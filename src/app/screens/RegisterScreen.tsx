@@ -9,8 +9,28 @@ import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 
 interface RegisterScreenProps { onGoLogin: () => void; }
-interface FormState { name: string; email: string; phone: string; password: string; confirm: string; }
-interface FormErrors { name?: string; email?: string; phone?: string; password?: string; confirm?: string; }
+interface FormState {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  confirm: string;
+  plate: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleYear: string;
+}
+interface FormErrors {
+  name?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  confirm?: string;
+  plate?: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleYear?: string;
+}
 
 /* ─── Password strength bar ────────────────────────────────────────── */
 function StrengthBar({ password }: { password: string }) {
@@ -56,6 +76,24 @@ const COUNTRY_CODES = [
   { code: '+52',  flag: '🇲🇽', name: 'México' },
 ];
 
+const VEHICLE_BRANDS = [
+  'Mercedes-Benz',
+  'Fiat',
+  'Renault',
+  'Peugeot',
+  'Citroen',
+  'Volkswagen',
+  'Iveco',
+  'Ford',
+  'Kia',
+  'Hyundai',
+];
+
+const CURRENT_YEAR = new Date().getFullYear();
+const VEHICLE_YEARS = Array.from({ length: CURRENT_YEAR - 1989 }, (_, index) =>
+  String(CURRENT_YEAR - index),
+);
+
 /* Aplica máscara brasileira: (DD) XXXXX-XXXX  ou  (DD) XXXX-XXXX */
 function formatarTelefoneBR(input: string): string {
   const dig = input.replace(/\D/g, '').slice(0, 11);
@@ -64,6 +102,12 @@ function formatarTelefoneBR(input: string): string {
   if (dig.length <= 6) return `(${dig.slice(0, 2)}) ${dig.slice(2)}`;
   if (dig.length <= 10) return `(${dig.slice(0, 2)}) ${dig.slice(2, 6)}-${dig.slice(6)}`;
   return `(${dig.slice(0, 2)}) ${dig.slice(2, 7)}-${dig.slice(7)}`;
+}
+
+function formatarPlacaBR(input: string): string {
+  const raw = input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+  if (raw.length <= 3) return raw;
+  return `${raw.slice(0, 3)}-${raw.slice(3)}`;
 }
 
 /* ─── InputField (top-level — não recriar a cada render!) ─────────── */
@@ -78,6 +122,20 @@ interface InputFieldProps {
   autoComplete?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   rightEl?: React.ReactNode;
+  inputBg: string;
+  inputBdr: string;
+  textPri: string;
+  labelClr: string;
+}
+
+interface SelectFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: string[];
+  placeholder: string;
+  error?: string;
   inputBg: string;
   inputBdr: string;
   textPri: string;
@@ -112,6 +170,60 @@ function InputField({
             {rightEl}
           </div>
         )}
+      </div>
+      {error && (
+        <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#DC3545', fontWeight: 600, margin: '6px 0 8px' }}>
+          <AlertCircle size={12} strokeWidth={2.5} /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SelectField({
+  id, label, value, onChange, options, placeholder, error,
+  inputBg, inputBdr, textPri, labelClr,
+}: SelectFieldProps) {
+  return (
+    <div style={{ marginBottom: error ? 6 : 16 }}>
+      <label htmlFor={id} style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
+        {label}
+      </label>
+      <div style={{ position: 'relative' }}>
+        <select
+          id={id}
+          value={value}
+          onChange={onChange}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            appearance: 'none',
+            WebkitAppearance: 'none',
+            background: inputBg,
+            border: `2px solid ${error ? '#DC3545' : inputBdr}`,
+            borderRadius: 14,
+            padding: '14px 44px 14px 16px',
+            fontSize: 15,
+            fontFamily: 'Inter, sans-serif',
+            color: value ? textPri : '#98A2B3',
+            outline: 'none',
+            minHeight: 52,
+            transition: 'border-color 0.2s, box-shadow 0.2s',
+            cursor: 'pointer',
+          }}
+          onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
+          onBlur={e => { e.currentTarget.style.borderColor = error ? '#DC3545' : inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
+        >
+          <option value="">{placeholder}</option>
+          {options.map(option => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={textPri} strokeWidth="2.5">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
       </div>
       {error && (
         <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#DC3545', fontWeight: 600, margin: '6px 0 8px' }}>
@@ -375,7 +487,17 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
   const { isDark }   = useTheme();
   const { isMobile } = useBreakpoints();
 
-  const [form,        setForm]        = useState<FormState>({ name: '', email: '', phone: '', password: '', confirm: '' });
+  const [form,        setForm]        = useState<FormState>({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirm: '',
+    plate: '',
+    vehicleBrand: '',
+    vehicleModel: '',
+    vehicleYear: '',
+  });
   const [errors,      setErrors]      = useState<FormErrors>({});
   const [showPwd,     setShowPwd]     = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -394,6 +516,10 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     if (!form.name.trim())              e.name     = 'Nome completo é obrigatório';
     if (!form.email.includes('@'))      e.email    = 'Insira um e-mail válido';
     if (form.phone.replace(/\D/g,'').length < 8) e.phone = 'Número de WhatsApp inválido';
+    if (!form.plate.trim()) e.plate = 'Placa e obrigatoria';
+    if (!form.vehicleBrand.trim()) e.vehicleBrand = 'Marca e obrigatoria';
+    if (!form.vehicleModel.trim()) e.vehicleModel = 'Modelo e obrigatorio';
+    if (!form.vehicleYear.trim()) e.vehicleYear = 'Ano e obrigatorio';
     if (form.password.length < 6)      e.password = 'Senha deve ter ao menos 6 caracteres';
     if (form.password !== form.confirm) e.confirm  = 'As senhas não coincidem';
     setErrors(e);
@@ -405,7 +531,16 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     if (!validate()) return;
     setLoading(true);
     setSubmitError(null);
-    const result = await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
+    const result = await register({
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      password: form.password,
+      plate: form.plate,
+      vehicleBrand: form.vehicleBrand,
+      vehicleModel: form.vehicleModel,
+      vehicleYear: form.vehicleYear.trim() ? Number.parseInt(form.vehicleYear, 10) : null,
+    });
     setLoading(false);
 
     if (!result.ok) {
@@ -482,6 +617,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
         </div>
       </div>
 
+      <div style={{ display: 'none' }}>
       {/* Security section */}
       <SectionLabel>Segurança</SectionLabel>
 
@@ -492,6 +628,72 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
       {form.password && <div style={{ marginTop: -10, marginBottom: 16 }}><StrengthBar password={form.password} /></div>}
 
       <InputField {...tokens} id="reg-confirm" type={showConfirm ? 'text' : 'password'} label="Confirmar Senha"
+        placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')}
+        error={errors.confirm} autoComplete="new-password"
+        rightEl={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {form.confirm && form.password === form.confirm && (
+              <CheckCircle2 size={18} color="#198754" strokeWidth={2.5} />
+            )}
+            <EyeBtn show={showConfirm} onClick={() => setShowConfirm(v => !v)} color={textSec} />
+          </div>
+        } />
+
+      <SectionLabel>Dados do VeÃ­culo</SectionLabel>
+
+      <InputField {...tokens} id="reg-plate" label="Placa" placeholder="Ex: ABC-1234"
+        value={form.plate} onChange={set('plate')} autoComplete="off" />
+
+      <SelectField {...tokens} id="reg-brand" label="Marca"
+        value={form.vehicleBrand}
+        onChange={e => setForm(f => ({ ...f, vehicleBrand: e.target.value }))}
+        options={VEHICLE_BRANDS}
+        placeholder="Selecione a marca" />
+
+      <InputField {...tokens} id="reg-model" label="Modelo" placeholder="Ex: Sprinter, Ducato, Trafic"
+        value={form.vehicleModel} onChange={set('vehicleModel')} autoComplete="off" />
+
+      <SelectField {...tokens} id="reg-year" label="Ano"
+        value={form.vehicleYear}
+        onChange={e => setForm(f => ({ ...f, vehicleYear: e.target.value }))}
+        options={VEHICLE_YEARS}
+        placeholder="Selecione o ano" />
+
+      </div>
+
+      <SectionLabel>Dados do Veiculo</SectionLabel>
+
+      <InputField {...tokens} id="reg-plate-visible" label="Placa" placeholder="Ex: ABC-1234 ou BRA-2E19"
+        value={form.plate}
+        onChange={e => { setForm(f => ({ ...f, plate: formatarPlacaBR(e.target.value) })); setErrors(er => ({ ...er, plate: undefined })); }}
+        error={errors.plate} autoComplete="off" />
+
+      <SelectField {...tokens} id="reg-brand-visible" label="Marca"
+        value={form.vehicleBrand}
+        onChange={e => setForm(f => ({ ...f, vehicleBrand: e.target.value }))}
+        options={VEHICLE_BRANDS}
+        placeholder="Selecione a marca"
+        error={errors.vehicleBrand} />
+
+      <InputField {...tokens} id="reg-model-visible" label="Modelo" placeholder="Ex: Sprinter, Ducato, Trafic"
+        value={form.vehicleModel} onChange={set('vehicleModel')} error={errors.vehicleModel} autoComplete="off" />
+
+      <SelectField {...tokens} id="reg-year-visible" label="Ano"
+        value={form.vehicleYear}
+        onChange={e => setForm(f => ({ ...f, vehicleYear: e.target.value }))}
+        options={VEHICLE_YEARS}
+        placeholder="Selecione o ano"
+        error={errors.vehicleYear} />
+
+      <SectionLabel>Seguranca</SectionLabel>
+
+      <InputField {...tokens} id="reg-pw-visible" type={showPwd ? 'text' : 'password'} label="Senha"
+        placeholder="Minimo 6 caracteres" value={form.password} onChange={set('password')}
+        error={errors.password} autoComplete="new-password"
+        rightEl={<EyeBtn show={showPwd} onClick={() => setShowPwd(v => !v)} color={textSec} />} />
+      {form.password && <div style={{ marginTop: -10, marginBottom: 16 }}><StrengthBar password={form.password} /></div>}
+
+      <InputField {...tokens} id="reg-confirm-visible" type={showConfirm ? 'text' : 'password'} label="Confirmar Senha"
         placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')}
         error={errors.confirm} autoComplete="new-password"
         rightEl={

@@ -49,6 +49,8 @@ function motoristaToUser(m: MotoristaRow): User {
     email: m.email,
     phone: m.telefone ?? '',
     cnh: m.cnh,
+    plate: m.placa_van ?? undefined,
+    vehicle: [m.marca_van, m.modelo_van].filter(Boolean).join(' ') || undefined,
   };
 }
 
@@ -126,6 +128,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     const metaName = pickName('nome', 'name', 'full_name', 'display_name');
     const metaPhone = pickName('telefone', 'phone', 'phone_number');
+    const metaCnh = pickName('cnh');
+    const metaPlacaVan = pickName('placa_van');
+    const metaMarcaVan = pickName('marca_van');
+    const metaModeloVan = pickName('modelo_van');
+    const rawAnoVan = meta['ano_van'];
+    const metaAnoVan = typeof rawAnoVan === 'number'
+      ? rawAnoVan
+      : typeof rawAnoVan === 'string' && rawAnoVan.trim()
+        ? Number.parseInt(rawAnoVan.trim(), 10)
+        : null;
     const fallbackName = metaName || session.user.email?.split('@')[0] || 'Motorista';
     setUser(prev => {
       if (prev && prev.id === userId) return prev;
@@ -134,7 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: fallbackName,
         email: session.user.email ?? '',
         phone: metaPhone.replace(/\D/g, ''),
-        cnh: null,
+        cnh: metaCnh || null,
+        plate: metaPlacaVan || undefined,
+        vehicle: [metaMarcaVan, metaModeloVan].filter(Boolean).join(' ') || undefined,
       };
     });
 
@@ -170,7 +184,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const telefone = metaPhone.replace(/\D/g, '') || null;
         const { data: fnData, error: fnError } = await withTimeout(
           supabase.functions.invoke('criar-perfil-motorista', {
-            body: { nome: fallbackName, telefone, cnh: null },
+            body: {
+              nome: fallbackName,
+              telefone,
+              cnh: metaCnh || null,
+              placa_van: metaPlacaVan || null,
+              marca_van: metaMarcaVan || null,
+              modelo_van: metaModeloVan || null,
+              ano_van: Number.isFinite(metaAnoVan) ? metaAnoVan : null,
+            },
           }),
           10000,
         );
@@ -192,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // for de uma versão antiga ou tiver falhado parcialmente, garantimos
       // aqui no primeiro login após registro. Se as rotas já existem,
       // criarRotasPadrao retorna sem inserir.
-      if (motoristaAcabouDeNascer) {
+      if (motoristaAcabouDeNascer || true) {
         console.log('[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para', motorista.id);
         const r = await criarRotasPadrao(motorista.id);
         console.log('[hidratarSessao] criarRotasPadrao resultado:', r);
@@ -266,7 +288,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.auth.signUp({
           email: data.email,
           password: data.password,
-          options: { data: { nome: data.name, telefone: normalizarTelefone(data.phone) } },
+          options: {
+            data: {
+              nome: data.name,
+              telefone: normalizarTelefone(data.phone),
+              cnh: null,
+              placa_van: data.plate?.trim() || null,
+              marca_van: data.vehicleBrand?.trim() || null,
+              modelo_van: data.vehicleModel?.trim() || null,
+              ano_van: data.vehicleYear ?? null,
+            },
+          },
         }),
         10000,
       );
@@ -303,6 +335,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         nome: data.name,
         telefone: normalizarTelefone(data.phone),
         cnh: null,
+        placa_van: data.plate?.trim() || null,
+        marca_van: data.vehicleBrand?.trim() || null,
+        modelo_van: data.vehicleModel?.trim() || null,
+        ano_van: data.vehicleYear ?? null,
       },
     });
     if (fnError) {

@@ -70,4 +70,8 @@ export interface RegisterData {
   email: string;
   phone: string;
   password: string;
+  plate?: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleYear?: number | null;
 }

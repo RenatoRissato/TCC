@@ -295,15 +295,32 @@ interface EdgeFnError {
   detalhes?: unknown;
 }
 
-function extrairErro(error: unknown, fallback = 'Erro inesperado'): EdgeFnError {
+async function extrairErro(error: unknown, fallback = 'Erro inesperado'): Promise<EdgeFnError> {
   if (error && typeof error === 'object') {
     const e = error as { erro?: string; codigo?: string; detalhes?: unknown };
     if (e.erro) {
       return { erro: e.erro, codigo: e.codigo, detalhes: e.detalhes };
     }
-    const ctx = (error as { context?: { json?: () => Promise<EdgeFnError> } }).context;
+    const ctx = (error as {
+      context?: { json?: () => Promise<EdgeFnError>; text?: () => Promise<string> };
+    }).context;
     if (ctx) {
-      console.error('Edge function erro:', error);
+      try {
+        if (typeof ctx.json === 'function') {
+          const payload = await ctx.json();
+          if (payload?.erro) return payload;
+        }
+      } catch {
+        // Se não houver JSON legível, tenta texto logo abaixo.
+      }
+      try {
+        if (typeof ctx.text === 'function') {
+          const texto = await ctx.text();
+          if (texto.trim()) return { erro: texto.trim() };
+        }
+      } catch {
+        // Cai para a mensagem genérica do objeto de erro.
+      }
     }
     const msg = (error as { message?: string }).message;
     if (msg) return { erro: msg };
@@ -312,6 +329,18 @@ function extrairErro(error: unknown, fallback = 'Erro inesperado'): EdgeFnError 
 }
 
 function traduzirErroOtimizarSequencia(error: EdgeFnError): EdgeFnError {
+  if (error.codigo === 'SEM_PASSAGEIROS_PARA_OTIMIZAR') {
+    return {
+      ...error,
+      erro: 'Esta rota ainda não tem passageiros para serem otimizados.',
+    };
+  }
+  if (error.codigo === 'PASSAGEIROS_INSUFICIENTES_PARA_OTIMIZAR') {
+    return {
+      ...error,
+      erro: 'É preciso ter pelo menos 2 passageiros com endereço completo para otimizar esta rota.',
+    };
+  }
   if (error.erro.trim() === 'Failed to fetch') {
     return {
       erro: 'Não foi possível conectar à função de otimização no Supabase. Recarregue a página e tente novamente.',
@@ -668,6 +697,18 @@ export async function otimizarSequenciaPassageirosDaRota(params: {
     'otimizar-sequencia-passageiros',
     { body },
   );
+  const erroDetalhado = error
+    ? await extrairErro(error, 'Falha ao otimizar sequência dos passageiros.')
+    : null;
+  if (erroDetalhado) {
+    throw traduzirErroOtimizarSequencia(erroDetalhado);
+  }
+  if (!data) {
+    throw {
+      erro: 'A função de otimização respondeu vazia. Tente novamente em alguns instantes.',
+      codigo: 'EDGE_FUNCTION_EMPTY_RESPONSE',
+    } as EdgeFnError;
+  }
   if (error) {
     throw traduzirErroOtimizarSequencia(
       extrairErro(error, 'Falha ao otimizar sequência dos passageiros.'),

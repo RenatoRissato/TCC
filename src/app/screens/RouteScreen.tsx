@@ -32,14 +32,19 @@ export function RouteScreen() {
   const { openDrawer } = useNavDrawer();
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const rotaParam = searchParams.get('rota') ?? 'all';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<PassengerFilter>('all');
-  const [period, setPeriod] = useState<PassengerPeriod>(() => searchParams.get('rota') ?? 'all');
+  const [period, setPeriod] = useState<PassengerPeriod>(rotaParam);
   const [rotas, setRotas] = useState<RotaRow[]>([]);
 
   useEffect(() => {
     listarRotas().then(setRotas);
   }, []);
+
+  useEffect(() => {
+    setPeriod((atual) => (atual === rotaParam ? atual : rotaParam));
+  }, [rotaParam]);
 
   const handlePeriodChange = useCallback((p: PassengerPeriod) => {
     setPeriod(p);

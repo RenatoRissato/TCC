@@ -14,6 +14,8 @@
 --      - cria 1 parada de embarque para cada passageiro existente, preservando ordem_na_rota
 -- =========================================================
 
+create extension if not exists "pgcrypto";
+
 -- 1) Novas colunas em `rotas`
 alter table rotas add column if not exists ponto_saida text;
 alter table rotas add column if not exists turno       text not null default 'morning'
@@ -27,7 +29,7 @@ update rotas set turno = 'night'
 
 -- 2) Tabela paradas_rota
 create table if not exists paradas_rota (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   rota_id         uuid not null references rotas(id) on delete cascade,
   ordem           integer not null,
   tipo            text not null check (tipo in ('embarque','destino')),
@@ -54,7 +56,12 @@ where p.status = 'ativo'
   and not exists (
     select 1 from paradas_rota pr
     where pr.rota_id = p.rota_id and pr.passageiro_id = p.id
-  );
+  )
+  and not exists (
+    select 1 from paradas_rota pr
+    where pr.rota_id = p.rota_id and pr.ordem = p.ordem_na_rota
+  )
+on conflict (rota_id, ordem) do nothing;
 
 -- 4) RLS
 alter table paradas_rota enable row level security;

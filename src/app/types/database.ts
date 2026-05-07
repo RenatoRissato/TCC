@@ -13,6 +13,10 @@ export interface MotoristaRow {
   email: string;
   telefone: string | null;
   cnh: string | null;
+  placa_van: string | null;
+  marca_van: string | null;
+  modelo_van: string | null;
+  ano_van: number | null;
   criado_em: string;
 }
 

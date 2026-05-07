@@ -10,7 +10,7 @@ import { useBreakpoints } from '../hooks/useWindowSize';
 import { usePassengers } from '../hooks/usePassengers';
 import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
-import { obterRota, validarRotaParaInicio } from '../services/rotaService';
+import { criarRotasPadrao, obterRota, validarRotaParaInicio } from '../services/rotaService';
 import { listarPassageirosDaRota, otimizarSequenciaPassageirosDaRota } from '../services/passageiroService';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import {
@@ -25,6 +25,7 @@ import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
+import { supabase } from '../../lib/supabase';
 
 const ETAPAS_OTIMIZACAO = [
   'Localizando endereços...',
@@ -81,13 +82,14 @@ export function DashboardScreen() {
         if (cancelado) return;
         const arr = Array.isArray(rc) ? rc : [];
         setRouteConfigs(arr);
-        if (motoristaId) {
-          writeJsonCache(cacheKeys.rotas(motoristaId), arr);
+        const cacheKey = motoristaId ?? user?.id ?? null;
+        if (cacheKey) {
+          writeJsonCache(cacheKeys.rotas(cacheKey), arr);
         }
       })
       .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
     return () => { cancelado = true; };
-  }, [motoristaId]);
+  }, [motoristaId, user?.id]);
 
   const handleIniciarViagem = async (rotaId: string) => {
     setRotaIniciandoId(rotaId);
@@ -161,6 +163,19 @@ export function DashboardScreen() {
   };
 
   const handleOtimizarSequencia = async (rotaId: string) => {
+    const rota = routeConfigsVisiveis.find((rc) => rc.rotaId === rotaId);
+    const totalPassageiros = rota?.passengerCount ?? 0;
+
+    if (totalPassageiros === 0) {
+      toast.info('Esta rota ainda não tem passageiros para serem otimizados.');
+      return;
+    }
+
+    if (totalPassageiros === 1) {
+      toast.info('Adicione pelo menos mais 1 passageiro nesta rota para otimizar a sequência.');
+      return;
+    }
+
     setRotaOtimizandoId(rotaId);
     try {
       const resultado = await otimizarSequenciaPassageirosDaRota({
@@ -225,30 +240,79 @@ export function DashboardScreen() {
   // termina — sem isso, a primeira execução pode rodar antes do JWT estar
   // disponível e voltar lista vazia.
   useEffect(() => {
-    if (!motoristaId) return;
+    if (!user?.id) return;
     let ativo = true;
+    const cacheKey = motoristaId ?? user.id;
 
     // Hidratação otimista: mostra rotas em cache imediatamente para o
     // usuário não ver "Nenhuma rota cadastrada" durante o cold start
     // do free tier (5-15s). Query abaixo revalida e sobrescreve.
     try {
-      const cached = readJsonCache<RouteConfig[]>(cacheKeys.rotas(motoristaId));
+      const cached = readJsonCache<RouteConfig[]>(cacheKeys.rotas(cacheKey));
       if (Array.isArray(cached)) setRouteConfigs(cached);
     } catch { /* cache corrompido — ignora e segue para a query */ }
 
     getRouteConfigs()
-      .then(rc => {
+      .then(async rc => {
         if (!ativo) return;
-        const arr = Array.isArray(rc) ? rc : [];
+        let arr = Array.isArray(rc) ? rc : [];
+        if (arr.length === 0 && motoristaId) {
+          const reparo = await criarRotasPadrao(motoristaId);
+          if (reparo.status === 'criadas' || reparo.status === 'ja_existiam') {
+            const recarregadas = await getRouteConfigs();
+            arr = Array.isArray(recarregadas) ? recarregadas : [];
+          }
+        }
+        if (arr.length === 0 && !motoristaId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const sessionUser = sessionData.session?.user;
+          const meta = (sessionUser?.user_metadata ?? {}) as Record<string, unknown>;
+          const textoMeta = (campo: string) => {
+            const valor = meta[campo];
+            return typeof valor === 'string' && valor.trim() ? valor.trim() : null;
+          };
+          const anoMetaBruto = meta.ano_van;
+          const anoMeta = typeof anoMetaBruto === 'number'
+            ? anoMetaBruto
+            : typeof anoMetaBruto === 'string' && anoMetaBruto.trim()
+              ? Number.parseInt(anoMetaBruto.trim(), 10)
+              : null;
+
+          const payload = {
+            nome: textoMeta('nome') ?? user.name,
+            telefone: textoMeta('telefone') ?? user.phone ?? null,
+            cnh: textoMeta('cnh'),
+            placa_van: textoMeta('placa_van'),
+            marca_van: textoMeta('marca_van'),
+            modelo_van: textoMeta('modelo_van'),
+            ano_van: Number.isFinite(anoMeta) ? anoMeta : null,
+          };
+
+          const { data: fnData, error: fnError } = await supabase.functions.invoke('criar-perfil-motorista', {
+            body: payload,
+          });
+
+          if (!fnError) {
+            const motoristaIdRetornado =
+              (fnData as { motorista?: { id?: string } } | null)?.motorista?.id ?? null;
+            if (motoristaIdRetornado) {
+              await criarRotasPadrao(motoristaIdRetornado);
+            }
+            const recarregadas = await getRouteConfigs();
+            arr = Array.isArray(recarregadas) ? recarregadas : [];
+          } else {
+            console.error('Dashboard autorepair criar-perfil-motorista:', fnError);
+          }
+        }
         setRouteConfigs(arr);
-        writeJsonCache(cacheKeys.rotas(motoristaId), arr);
+        writeJsonCache(cacheKeys.rotas(cacheKey), arr);
       })
       .catch(err => { console.error('getRouteConfigs:', err); /* mantém cache na tela */ });
     getRecentUpdates()
       .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
       .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
     return () => { ativo = false; };
-  }, [motoristaId]);
+  }, [motoristaId, user?.id, user?.name, user?.phone]);
 
   const firstName = user?.name?.split(' ').slice(0, 2).join(' ') ?? 'Motorista';
   const dateStr = time.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -400,20 +464,33 @@ export function DashboardScreen() {
                 style={{
                   gridTemplateColumns: isDesktop
                     ? `repeat(${Math.min(routeConfigsVisiveis.length, 3)}, 1fr)`
-                    : 'repeat(2, 1fr)',
+                    : routeConfigsVisiveis.length === 1
+                        ? '1fr'
+                        : 'repeat(2, 1fr)',
                 }}
               >
-                {routeConfigsVisiveis.map(rc => (
-                  <RouteButton
-                    key={rc.rotaId ?? rc.type}
-                    {...rc}
-                    onClick={() => navigate(`/routes?turno=${rc.type}`)}
-                    onIniciarViagem={handleIniciarViagem}
-                    iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
-                    onOtimizarSequencia={handleOtimizarSequencia}
-                    otimizandoSequencia={rotaOtimizandoId === rc.rotaId}
-                  />
-                ))}
+                {routeConfigsVisiveis.map((rc, idx) => {
+                  const isUltimoImparNoMobile = !isDesktop
+                    && routeConfigsVisiveis.length > 1
+                    && routeConfigsVisiveis.length % 2 === 1
+                    && idx === routeConfigsVisiveis.length - 1;
+
+                  return (
+                    <div
+                      key={rc.rotaId ?? rc.type}
+                      style={isUltimoImparNoMobile ? { gridColumn: '1 / -1' } : undefined}
+                    >
+                      <RouteButton
+                        {...rc}
+                        onClick={() => navigate(rc.rotaId ? `/routes?rota=${rc.rotaId}` : '/routes')}
+                        onIniciarViagem={handleIniciarViagem}
+                        iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
+                        onOtimizarSequencia={handleOtimizarSequencia}
+                        otimizandoSequencia={rotaOtimizandoId === rc.rotaId}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
 

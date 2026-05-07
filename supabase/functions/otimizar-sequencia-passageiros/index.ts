@@ -418,14 +418,20 @@ Deno.serve(async (req: Request) => {
     const passageiros = await buscarPassageirosAtivosDaRota(supabase, rotaId)
     const ordemAntes = passageiros.map((p) => p.nome_completo)
 
-    if (passageiros.length < 2) {
-      return ok({
-        status: 'sem_alteracao',
-        total: passageiros.length,
-        ordemAntes,
-        ordemDepois: ordemAntes,
-        provedor: Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim() ? 'google' : 'osm',
-      })
+    if (passageiros.length === 0) {
+      return erroCliente(
+        'Esta rota ainda não tem passageiros ativos com endereço completo para otimizar.',
+        'SEM_PASSAGEIROS_PARA_OTIMIZAR',
+        400,
+      )
+    }
+
+    if (passageiros.length === 1) {
+      return erroCliente(
+        'Só há 1 passageiro ativo com endereço completo nesta rota. Adicione pelo menos mais 1 para otimizar a sequência.',
+        'PASSAGEIROS_INSUFICIENTES_PARA_OTIMIZAR',
+        400,
+      )
     }
 
     const { indices, provedor } = await solicitarOrdemOtimizada({
