@@ -1662,17 +1662,6 @@ O conjunto de testes foi ampliado para cobrir os utilitários de Maps e a nova d
 | Celular abria o Maps no navegador em vez de privilegiar o app | Mesmo fluxo desktop/mobile | Navegação no mesmo contexto para mobile com link universal do Google Maps |
 
 
-## O que NÃO existe (ainda)
-
-- **Tela WhatsApp ligada ao backend real** — a UI de conexão, QR code, horários e template ainda usa estado local/simulado, embora a integração backend com Evolution API já exista nas Edge Functions
-- **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
-- **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
-- **Internacionalização** — strings hardcoded em PT-BR
-- **Notificações push reais** — apenas UI
-- **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend
----
----
-
 ### Fase 14: Cadastro do Motorista + UX de Rotas + Correção Estrutural do Supabase Remoto (06/05/2026 a 07/05/2026)
 
 Esta fase nasceu de testes reais feitos após a consolidação da otimização de rotas. O foco saiu do "motor da viagem" e foi para os pontos de entrada e consistência operacional do sistema: **cadastro de novos motoristas**, **experiência visual do login/cadastro**, **filtros mais naturais entre Dashboard e tela de Rotas**, e principalmente a descoberta de que o **banco remoto do Supabase estava atrasado em relação ao código local**.
@@ -1959,3 +1948,14 @@ Isso foi importante porque essa fase não tratou apenas de UX; ela mexeu em **fo
 | Campo de placa era livre e inconsistente | Ausência de máscara/normalização | Placeholder guiado + formatação automática |
 | Usuários antigos tinham rotas; usuários novos não | Banco remoto do Supabase estava atrasado em relação ao código atual | Push das migrations remotas + ajustes de compatibilidade legada |
 | Edge Function não reparava rotas quando o motorista já existia | Retorno antecipado antes da garantia das rotas padrão | Function tornou-se realmente idempotente |
+
+
+## O que NÃO existe (ainda)
+
+- **Tela WhatsApp ligada ao backend real** — a UI de conexão, QR code, horários e template ainda usa estado local/simulado, embora a integração backend com Evolution API já exista nas Edge Functions
+- **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
+- **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
+- **Internacionalização** — strings hardcoded em PT-BR
+- **Notificações push reais** — apenas UI
+- **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend
+---
