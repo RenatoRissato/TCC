@@ -1671,3 +1671,291 @@ O conjunto de testes foi ampliado para cobrir os utilitários de Maps e a nova d
 - **Notificações push reais** — apenas UI
 - **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend
 ---
+---
+
+### Fase 14: Cadastro do Motorista + UX de Rotas + Correção Estrutural do Supabase Remoto (06/05/2026 a 07/05/2026)
+
+Esta fase nasceu de testes reais feitos após a consolidação da otimização de rotas. O foco saiu do "motor da viagem" e foi para os pontos de entrada e consistência operacional do sistema: **cadastro de novos motoristas**, **experiência visual do login/cadastro**, **filtros mais naturais entre Dashboard e tela de Rotas**, e principalmente a descoberta de que o **banco remoto do Supabase estava atrasado em relação ao código local**.
+
+O resultado foi uma combinação de melhorias de UX e um ajuste estrutural importante: o fluxo de usuário novo voltou a ficar compatível com o estado atual do frontend e das Edge Functions.
+
+---
+
+#### 14.1 — Tela de Rotas integrada com o clique do Dashboard
+
+Foi ajustada a navegação entre a home e a tela `Rotas & Passageiros` para que o clique em um card de rota no Dashboard deixe a rota correspondente **pré-selecionada** no topo da tela de rotas.
+
+**Problema anterior:**
+- o Dashboard navegava com `?turno=...`
+- a tela de rotas esperava `?rota=...`
+- o usuário era levado para a listagem geral, sem filtro consistente
+
+**Correção aplicada:**
+- `DashboardScreen.tsx` passou a navegar com `rotaId` real
+- `RouteScreen.tsx` passou a sincronizar o estado interno com o query param `rota`
+
+**Resultado:**
+- ao tocar/clicar numa rota na home, a tela de rotas já abre com essa rota selecionada
+- a lista passa a mostrar apenas os passageiros daquela rota, funcionando como um filtro contextual
+
+---
+
+#### 14.2 — Card de passageiro simplificado: apenas Google Maps
+
+Na tela de rotas, o menu de mapa do card do passageiro foi simplificado.
+
+**Antes:**
+- havia um dropdown com `Waze` e `Google Maps`
+- criava um passo extra sem ganho prático relevante no fluxo principal do motorista
+
+**Depois:**
+- `PassengerCard.tsx` passou a exibir uma ação direta de `Google Maps`
+- `Waze` foi removido da UI
+- os CTAs inferiores foram redesenhados para um visual mais limpo, mais coerente com o sistema e com menos ruído cognitivo
+
+**Resultado:** o fluxo do motorista fica mais objetivo e alinhado ao uso predominante do app.
+
+---
+
+#### 14.3 — Mensagens de validação mais humanas na otimização de rota
+
+Durante o uso do botão de otimização, alguns erros técnicos do backend ainda escapavam para a interface em cenários simples, como rota sem passageiros.
+
+**Tratamento aplicado:**
+- validação antecipada no Dashboard com base em `passengerCount`
+- reforço de validação na Edge Function `otimizar-sequencia-passageiros`
+- leitura mais inteligente do erro retornado para exibir frases de negócio em vez de mensagens genéricas
+
+**Mensagens adicionadas:**
+- `Esta rota ainda não tem passageiros para serem otimizados.`
+- `Adicione pelo menos mais 1 passageiro nesta rota para otimizar a sequência.`
+- `É preciso ter pelo menos 2 passageiros ativos para otimizar a sequência.`
+
+**Resultado:** a otimização deixou de "parecer quebrada" em rotas vazias e passou a se explicar melhor para o usuário.
+
+---
+
+#### 14.4 — Grid responsivo das rotas no mobile
+
+O layout dos cards de rota na home mobile foi refinado para eliminar a sensação de grid "quebrado" quando a quantidade de rotas era ímpar.
+
+**Comportamento final implementado:**
+- `1 rota`: ocupa a largura total
+- `2 rotas`: ficam meio a meio
+- `3 rotas`: duas na primeira linha + a terceira ocupando a linha inteira
+- qualquer último card ímpar fecha a linha completa
+
+**Arquivo principal:**
+- `DashboardScreen.tsx`
+
+**Resultado:** a home mobile ficou visualmente mais equilibrada e intencional, especialmente em contas novas ou em setups com poucas rotas ativas.
+
+---
+
+#### 14.5 — Login refinado: sem Google, card centralizado e footer mobile limpo
+
+A tela de login foi simplificada para refletir o fluxo real do produto.
+
+**Ajustes feitos:**
+- remoção do botão `Entrar com Google`
+- centralização vertical do card de login no desktop
+- remoção do bloco escuro excedente no rodapé mobile
+
+**Arquivo principal:**
+- `LoginScreen.tsx`
+
+**Resultado:** o login passou a ter foco completo em e-mail/senha e uma apresentação mais limpa tanto no desktop quanto no mobile.
+
+---
+
+#### 14.6 — Cadastro do motorista expandido com dados do veículo
+
+O cadastro do motorista deixou de ser apenas identidade + senha e passou a incluir também os dados do veículo usados na operação.
+
+**Campos adicionados ao fluxo de registro:**
+- `placa_van`
+- `marca_van`
+- `modelo_van`
+- `ano_van`
+
+**SQL/Migration criada:**
+- `supabase/migrations/20260506000000_motoristas_dados_veiculo.sql`
+
+**Tipos atualizados:**
+- `src/app/types/database.ts`
+- `src/app/types/index.ts`
+
+**Auth e backend:**
+- `AuthContext.tsx` passou a enviar os novos campos no `signUp` e na chamada da Edge Function
+- `supabase/functions/criar-perfil-motorista/index.ts` passou a receber e persistir esses dados
+
+**Observação importante:** a coluna `cnh` permaneceu no banco por compatibilidade histórica, mas deixou de ser o centro do fluxo visível de cadastro nessa etapa.
+
+---
+
+#### 14.7 — Reorganização do formulário de cadastro e obrigatoriedade dos campos visíveis
+
+O formulário de `RegisterScreen.tsx` foi reorganizado com foco em clareza e conversão.
+
+**Mudanças de UX aplicadas:**
+- `Senha` e `Confirmar Senha` passaram para o fim do fluxo
+- a seção de dados do veículo foi colocada antes da segurança final
+- `CNH` foi removida da parte visível do formulário
+- todos os campos que permaneceram no cadastro passaram a ser obrigatórios
+
+**Campos obrigatórios visíveis finais:**
+- Nome
+- E-mail
+- WhatsApp
+- Placa
+- Marca
+- Modelo
+- Ano
+- Senha
+- Confirmar Senha
+
+**Resultado:** o cadastro ficou mais coerente com a coleta operacional realmente necessária para abrir a conta e operar a van.
+
+---
+
+#### 14.8 — Marca e ano convertidos para seletores
+
+Para reduzir erro de digitação e padronizar dados no banco, `Marca` e `Ano` deixaram de ser inputs livres.
+
+**Marca (`select`):**
+- Mercedes-Benz
+- Fiat
+- Renault
+- Peugeot
+- Citroen
+- Volkswagen
+- Iveco
+- Ford
+- Kia
+- Hyundai
+
+**Ano (`select`):**
+- lista gerada dinamicamente do ano atual até 1990
+
+**Resultado:** os dados do veículo passaram a ser mais consistentes e mais fáceis de tratar no backend e em futuras telas administrativas.
+
+---
+
+#### 14.9 — Campo de placa com placeholder orientativo e formatação automática
+
+O campo `Placa` recebeu o mesmo cuidado de orientação que já existia no telefone de contato.
+
+**Aprimoramentos:**
+- placeholder mais claro:
+  - `Ex: ABC-1234 ou BRA-2E19`
+- normalização automática em maiúsculas
+- inserção automática do hífen após as 3 primeiras letras
+
+**Exemplos:**
+- `abc1234` → `ABC-1234`
+- `bra2e19` → `BRA-2E19`
+
+**Resultado:** o cadastro de placa ficou mais guiado, mais profissional e com menos chance de formato inconsistente.
+
+---
+
+#### 14.10 — Usuários novos sem rotas: descoberta da causa raiz estrutural
+
+Após as mudanças no cadastro, surgiu um sintoma persistente: **usuários antigos viam normalmente as 3 rotas iniciais, mas usuários criados agora não recebiam essas rotas**.
+
+No primeiro momento parecia um bug exclusivo do fluxo `AuthContext`/Dashboard. No entanto, ao investigar o projeto remoto no Supabase, foi descoberto um problema mais profundo:
+
+**Causa raiz real:**
+- o projeto remoto `fbrepsmavjeokfucppio` estava com o schema **atrasado** em relação ao código local
+- várias migrations locais ainda não haviam sido aplicadas no banco remoto
+- isso incluía justamente a migration:
+  - `20260506000000_motoristas_dados_veiculo.sql`
+- como o backend novo já tentava salvar `placa_van`, `marca_van`, `modelo_van` e `ano_van`, o fluxo de criação de motorista para usuários novos ficava incompatível com o schema real do banco
+
+**Sinal claro encontrado:**
+- a API remota respondeu que `motoristas.placa_van` não existia
+
+**Impacto prático:**
+- contas antigas continuavam funcionais porque já tinham perfil/rotas criados antes
+- contas novas entravam no fluxo novo, mas batiam em um banco remoto desatualizado
+
+---
+
+#### 14.11 — Push das migrations remotas e correção de compatibilidade legada
+
+Para alinhar o remoto ao estado real da aplicação, foi executado `supabase db push` no projeto vinculado. Durante esse processo apareceram incompatibilidades históricas em migrations antigas, que precisaram ser corrigidas.
+
+**Correções feitas nas migrations:**
+
+**`20260430000000_paradas_rota.sql`**
+- passou a criar/extender dependência usando `pgcrypto`
+- substituiu `uuid_generate_v4()` por `gen_random_uuid()`
+- backfill tornado mais tolerante a dados legados
+- inserção passou a ignorar conflitos de ordem (`on conflict do nothing`) quando necessário
+
+**`20260501010000_observacoes_jsonb.sql`**
+- passou a converter `observacoes` para `jsonb` apenas quando a coluna ainda não estiver nesse tipo
+- ficou compatível com bancos que já estavam parcialmente evoluídos manualmente
+
+**Resultado final:**
+- o histórico de migrations remoto foi alinhado ao local
+- o schema do banco passou a refletir o estado esperado pelo frontend e pelas Edge Functions atuais
+
+---
+
+#### 14.12 — `criar-perfil-motorista` reforçada para perfil novo e perfil parcialmente criado
+
+A Edge Function `criar-perfil-motorista` foi fortalecida para ficar realmente idempotente.
+
+**Antes:**
+- se o motorista já existisse, a function retornava cedo
+- isso impedia o reparo automático das rotas padrão em alguns cenários de criação parcial
+
+**Depois:**
+- mesmo quando o `motorista` já existe, a function ainda chama a rotina de garantia das rotas padrão
+- a criação das 3 rotas (`Manhã`, `Tarde`, `Noite`) virou uma rotina compartilhada e idempotente dentro da function
+
+**Resultado:** perfis parcialmente criados ou contas abertas durante janelas de inconsistência passaram a poder se auto-reparar no primeiro login/refresh.
+
+---
+
+#### 14.13 — Fallbacks adicionais no AuthContext e no Dashboard
+
+Além do backend, o frontend também recebeu mecanismos extras de autorreparo.
+
+**`AuthContext.tsx`:**
+- reforço do fallback que garante `criarRotasPadrao(motorista.id)` após hidratação do perfil
+
+**`DashboardScreen.tsx`:**
+- quando a tela recebe `0` rotas, tenta reparar o cenário
+- se a Edge Function retornar um `motorista.id`, a home ainda tenta semear rotas localmente antes de reconsultar
+
+**Resultado:** o sistema ficou mais resiliente tanto para contas novas quanto para contas criadas em estado inconsistente.
+
+---
+
+#### 14.14 — Testes e validação operacional
+
+Ao final desta etapa:
+- `npm test` permaneceu verde com **9 testes passando**
+- `npm run build` permaneceu funcional
+- a Edge Function `criar-perfil-motorista` foi redeployada
+- o banco remoto do Supabase foi sincronizado com as migrations locais
+
+Isso foi importante porque essa fase não tratou apenas de UX; ela mexeu em **formulário, auth, banco, migrations, Edge Functions e autorreparo de dados**.
+
+---
+
+#### Bugs/edge-cases tratados na Fase 14
+
+| Caso | Causa | Tratamento |
+|---|---|---|
+| Clicar na rota da home não filtrava a tela de rotas corretamente | Dashboard passava `turno`; RouteScreen esperava `rota` | Navegação passou a usar `rotaId` real e query param compatível |
+| Card do passageiro tinha opção de Waze desnecessária | Menu de mapa excessivo para o fluxo principal | Simplificação para ação direta de Google Maps |
+| Otimização exibia erro técnico em rota sem passageiros | Falta de mensagens de negócio na borda do fluxo | Validações no Dashboard e na Edge Function com frases mais humanas |
+| Layout mobile das rotas ficava "quebrado" com quantidade ímpar | Grid não tratava bem o último card | Último card ímpar passou a ocupar a largura total |
+| Login ainda mostrava entrada com Google sem uso real | UI desatualizada em relação ao backend disponível | Remoção do botão e refinamento visual |
+| Cadastro de motorista não coletava dados operacionais da van | Fluxo antigo focado só em identificação + senha | Inclusão de placa, marca, modelo e ano |
+| Campo de placa era livre e inconsistente | Ausência de máscara/normalização | Placeholder guiado + formatação automática |
+| Usuários antigos tinham rotas; usuários novos não | Banco remoto do Supabase estava atrasado em relação ao código atual | Push das migrations remotas + ajustes de compatibilidade legada |
+| Edge Function não reparava rotas quando o motorista já existia | Retorno antecipado antes da garantia das rotas padrão | Function tornou-se realmente idempotente |
