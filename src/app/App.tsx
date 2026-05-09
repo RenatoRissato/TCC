@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RouterProvider } from 'react-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -11,6 +11,10 @@ type AuthView = 'login' | 'register';
 function AuthGate() {
   const { isAuthenticated } = useAuth();
   const [view, setView] = useState<AuthView>('login');
+
+  useEffect(() => {
+    if (!isAuthenticated) setView('login');
+  }, [isAuthenticated]);
 
   if (isAuthenticated) {
     return <RouterProvider router={router} />;

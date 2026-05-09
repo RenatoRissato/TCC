@@ -43,3 +43,22 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* Select nativo — popup de opções respeita o tema da app.
+   Problema: classes como text-ink (branco no dark) são herdadas pelos
+   <option>, resultando em texto branco sobre fundo branco do popup.
+   Solução: forçar color-scheme + cores explícitas em select e option. */
+html select {
+  color-scheme: light;
+}
+html.dark select {
+  color-scheme: dark;
+}
+html select option {
+  background-color: #ffffff;
+  color: #212529;
+}
+html.dark select option {
+  background-color: #1c2128;
+  color: #f0f2f5;
+}
