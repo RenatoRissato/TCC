@@ -55,6 +55,9 @@ export interface Summary {
   total: number;
 }
 
+export type SomAlerta = 'default' | 'chime' | 'bell' | 'ding' | 'none';
+export type IdiomaApp = 'pt-BR' | 'en' | 'es';
+
 export interface User {
   id: string;
   name: string;
@@ -63,6 +66,16 @@ export interface User {
   cnh: string | null;
   plate?: string;
   vehicle?: string;
+  // Veículo desnormalizado (para o ProfileEditModal editar peça por peça)
+  vehicleBrand?: string | null;
+  vehicleModel?: string | null;
+  vehicleYear?: number | null;
+  // Preferências persistidas em motoristas (migration 20260509)
+  notifWhatsApp?: boolean;
+  notifPush?: boolean;
+  notifPendentes?: boolean;
+  somAlerta?: SomAlerta;
+  idioma?: IdiomaApp;
 }
 
 export interface RegisterData {

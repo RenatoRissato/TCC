@@ -55,15 +55,11 @@ async function chamar(
 }
 
 export async function evolutionVerificarConexao(): Promise<boolean> {
-  try {
-    const data = await chamar(
-      `/instance/connectionState/${EVOLUTION_INSTANCE}`,
-      'GET',
-    )
-    return data?.instance?.state === 'open'
-  } catch (_) {
-    return false
-  }
+  const data = await chamar(
+    `/instance/connectionState/${EVOLUTION_INSTANCE}`,
+    'GET',
+  )
+  return data?.instance?.state === 'open'
 }
 
 export async function evolutionEnviarTexto(

@@ -34,11 +34,6 @@ export function SettingsScreen() {
 
   const [open, setOpen] = useState<OpenKey>(null);
   const [editProfile, setEditProfile] = useState(false);
-  const [notifWA, setNotifWA] = useState(true);
-  const [notifPush, setNotifPush] = useState(true);
-  const [notifPending, setNotifPending] = useState(false);
-  const [alertSound, setAlertSound] = useState('default');
-  const [language, setLanguage] = useState('pt-BR');
 
   const toggle = (id: string) => setOpen((prev) => (prev === id ? null : (id as OpenKey)));
   const px = isDesktop ? 36 : isMd ? 24 : 16;
@@ -98,12 +93,7 @@ export function SettingsScreen() {
           subtitle="Alertas do WhatsApp, push e sons"
           accent="#F59E0B"
         >
-          <NotificationsSection
-            notifWA={notifWA} setNotifWA={setNotifWA}
-            notifPush={notifPush} setNotifPush={setNotifPush}
-            notifPending={notifPending} setNotifPending={setNotifPending}
-            alertSound={alertSound} setAlertSound={setAlertSound}
-          />
+          <NotificationsSection />
         </AccordionItem>
 
         <AccordionItem
@@ -116,7 +106,6 @@ export function SettingsScreen() {
         >
           <PreferencesSection
             isDark={isDark} toggleTheme={toggleTheme}
-            language={language} setLanguage={setLanguage}
           />
         </AccordionItem>
 

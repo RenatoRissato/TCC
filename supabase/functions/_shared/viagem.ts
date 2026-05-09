@@ -42,8 +42,25 @@ interface TemplateAtivo {
   opcoes: OpcaoTemplate[]
 }
 
+const TIME_ZONE_BR = 'America/Sao_Paulo'
+
+export function dataBrasilISO(date = new Date()): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE_BR,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const get = (type: string) =>
+    partes.find((p) => p.type === type)?.value ?? ''
+
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+
 function formatarDataBR(date = new Date()): string {
   return date.toLocaleDateString('pt-BR', {
+    timeZone: TIME_ZONE_BR,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -109,6 +126,7 @@ export async function processarIniciarViagem(
   supabase: SupabaseClient,
   motoristaId: string,
   rotaId: string,
+  options: { dataViagem?: string } = {},
 ): Promise<ResumoViagem> {
   // 1. Verifica rota
   const { data: rota, error: rotaErr } = await supabase
@@ -125,7 +143,7 @@ export async function processarIniciarViagem(
   }
 
   // 2. Tenta criar viagem; se já existir (rota_id + data), busca a existente
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = options.dataViagem ?? dataBrasilISO()
   let viagemJaExistia = false
 
   const { data: viagemNova, error: insertErr } = await supabase

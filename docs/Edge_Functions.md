@@ -358,10 +358,20 @@ Helper que extrai e valida o motorista da requisição.
 **Autenticação:** NÃO usa JWT. Chamada interna via `SUPABASE_SERVICE_ROLE_KEY`.
 
 **Como configurar o cron no Supabase:**
+
+O job deve rodar a cada 5 minutos. A funÃ§Ã£o filtra internamente o horÃ¡rio de envio de cada motorista e tambÃ©m aplica `horario_limite_resposta`, marcando pendentes como ausentes quando o limite passa.
+
+O projeto versiona a migration `supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql`. Ela tenta ler o secret `smartroutes_cron_secret` do Supabase Vault. Se o secret ainda nÃ£o existir, rode uma vez:
+
+```sql
+select public.configurar_cron_automacao_diaria_5min('SEU_CRON_SECRET');
+```
+
+SQL manual equivalente:
 ```sql
 select cron.schedule(
   'automacao-diaria-smartroute',
-  '0 6 * * 1-5',  -- segunda a sexta às 6h (UTC-3 = 9h Brasília)
+  '*/5 * * * *',
   $$
   select net.http_post(
     url := 'https://SEU_PROJECT_ID.supabase.co/functions/v1/automacao-diaria',

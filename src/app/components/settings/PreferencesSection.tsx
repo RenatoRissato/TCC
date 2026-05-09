@@ -1,14 +1,41 @@
-import { Moon, SunMedium, Globe } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Moon, SunMedium, Globe, Save } from 'lucide-react';
 import { Toggle } from '../shared/Toggle';
+import { Spinner } from '../whatsapp/Spinner';
+import { useAuth } from '../../context/AuthContext';
+import { atualizarPreferenciasMotorista } from '../../services/motoristaService';
+import type { IdiomaApp } from '../../types';
 
 interface PreferencesSectionProps {
   isDark: boolean;
   toggleTheme: () => void;
-  language: string;
-  setLanguage: (v: string) => void;
 }
 
-export function PreferencesSection({ isDark, toggleTheme, language, setLanguage }: PreferencesSectionProps) {
+export function PreferencesSection({ isDark, toggleTheme }: PreferencesSectionProps) {
+  const { user, motoristaId, recarregarMotorista } = useAuth();
+  const [idioma, setIdioma] = useState<IdiomaApp>(user?.idioma ?? 'pt-BR');
+  const [salvando, setSalvando] = useState(false);
+
+  const handleSalvar = async () => {
+    if (!motoristaId) {
+      toast.error('Perfil do motorista não carregado.');
+      return;
+    }
+    setSalvando(true);
+    const r = await atualizarPreferenciasMotorista({
+      motoristaId,
+      idioma,
+    });
+    setSalvando(false);
+    if (!r.ok) {
+      toast.error('Não foi possível salvar.', { description: r.erro });
+      return;
+    }
+    await recarregarMotorista();
+    toast.success('Preferências salvas.');
+  };
+
   return (
     <>
       <div
@@ -42,8 +69,8 @@ export function PreferencesSection({ isDark, toggleTheme, language, setLanguage 
         Idioma do Aplicativo
       </label>
       <select
-        value={language}
-        onChange={(e) => setLanguage(e.target.value)}
+        value={idioma}
+        onChange={(e) => setIdioma(e.target.value as IdiomaApp)}
         className="w-full box-border bg-field border-2 border-field-border rounded-xl px-3 py-2.5 text-sm font-medium text-ink outline-none font-sans cursor-pointer min-h-[46px]"
       >
         <option value="pt-BR">🇧🇷 Português – PT-BR</option>
@@ -53,6 +80,17 @@ export function PreferencesSection({ isDark, toggleTheme, language, setLanguage 
       <p className="text-[11px] text-ink-muted m-0 mt-2">
         * Alterações de idioma aplicadas no próximo login.
       </p>
+
+      <button
+        onClick={handleSalvar}
+        disabled={salvando}
+        className="mt-4 w-full flex items-center justify-center gap-2 border-0 rounded-[14px] py-3 px-6 text-sm font-bold cursor-pointer min-h-[50px] font-sans transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+        style={{ background: 'var(--pending)', color: '#212529' }}
+      >
+        {salvando
+          ? <><Spinner size={17} />Salvando...</>
+          : <><Save size={17} strokeWidth={2.5} />Salvar Preferências</>}
+      </button>
     </>
   );
 }

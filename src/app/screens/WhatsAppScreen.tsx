@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, BarChart3 } from 'lucide-react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { useWhatsApp } from '../hooks/useWhatsApp';
@@ -7,56 +7,129 @@ import { ConnectionStatus } from '../components/whatsapp/ConnectionStatus';
 import { ScheduleCard } from '../components/whatsapp/ScheduleCard';
 import { TemplateEditor } from '../components/whatsapp/TemplateEditor';
 
+function StatPill({ valor, rotulo, cor }: { valor: number; rotulo: string; cor: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center bg-panel rounded-2xl border-[1.5px] border-panel-border px-3 py-2.5 min-w-[88px]"
+    >
+      <span className="text-lg font-extrabold leading-none" style={{ color: cor }}>
+        {valor}
+      </span>
+      <span className="text-[10px] font-bold text-ink-soft mt-1 uppercase tracking-[0.04em]">
+        {rotulo}
+      </span>
+    </div>
+  );
+}
+
 export function WhatsAppScreen() {
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
   const wa = useWhatsApp();
   const px = isDesktop ? 32 : isMd ? 24 : 16;
 
+  const desabilitarSalvarConfig = !wa.instancia;
+  const desabilitarSalvarTemplate = !wa.template;
+
   return (
     <div className="bg-surface min-h-full transition-colors duration-300">
       <WhatsAppHeader
-        connected={wa.connected} isLg={isLg} paddingX={px}
+        connected={wa.conectado} isLg={isLg} paddingX={px}
         onOpenDrawer={openDrawer}
       />
 
       <div style={{ padding: `20px ${px}px 32px` }}>
+        {wa.erro && (
+          <div className="mb-4 flex items-start gap-2.5 bg-danger/10 border-[1.5px] border-danger/30 rounded-xl px-3.5 py-3">
+            <AlertTriangle size={18} className="text-danger shrink-0 mt-px" strokeWidth={2.5} />
+            <p className="text-[13px] font-semibold text-danger m-0">{wa.erro}</p>
+          </div>
+        )}
+
+        {wa.estatisticas && (
+          <section className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <BarChart3 size={14} className="text-ink-soft" strokeWidth={2.5} />
+              <span className="text-[11px] font-bold text-ink-soft uppercase tracking-[0.06em]">
+                Mensagens últimos 7 dias
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              <StatPill valor={wa.estatisticas.total}     rotulo="Total"     cor="#FFC107" />
+              <StatPill valor={wa.estatisticas.enviadas}  rotulo="Enviadas"  cor="#2979FF" />
+              <StatPill valor={wa.estatisticas.entregues} rotulo="Entregues" cor="#198754" />
+              <StatPill valor={wa.estatisticas.recebidas} rotulo="Recebidas" cor="#25D366" />
+              <StatPill valor={wa.estatisticas.falhas}    rotulo="Falhas"    cor="#DC3545" />
+            </div>
+          </section>
+        )}
+
         {isDesktop ? (
           <div className="grid grid-cols-2 gap-6 items-start">
             <div>
               <ConnectionStatus
-                connected={wa.connected} connecting={wa.connecting}
-                showQR={wa.showQR} onToggle={wa.toggleConnection}
+                instancia={wa.instancia}
+                conectado={wa.conectado}
+                verificandoConexao={wa.verificandoConexao}
+                onVerificar={wa.verificarConexao}
               />
             </div>
             <div className="flex flex-col gap-5">
               <ScheduleCard
-                morning={wa.morning} afternoon={wa.afternoon} night={wa.night}
-                onMorning={wa.setMorning} onAfternoon={wa.setAfternoon} onNight={wa.setNight}
-                saved={wa.schedSaved} onSave={wa.saveSchedule}
+                envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
+                horarioEnvioAuto={wa.horarioEnvioAuto}
+                horarioLimiteResp={wa.horarioLimiteResp}
+                onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
+                onHorarioEnvioChange={wa.setHorarioEnvioAuto}
+                onHorarioLimiteChange={wa.setHorarioLimiteResp}
+                salvando={wa.salvandoConfig}
+                onSalvar={wa.salvarHorarios}
+                desabilitado={desabilitarSalvarConfig}
               />
               <TemplateEditor
-                template={wa.template} onChange={wa.setTemplate}
-                onReset={wa.resetTemplate} onSave={wa.saveTemplate}
-                saved={wa.tmplSaved}
+                cabecalho={wa.cabecalhoEdit}
+                rodape={wa.rodapeEdit}
+                opcoes={wa.opcoesEdit}
+                onCabecalhoChange={wa.setCabecalhoEdit}
+                onRodapeChange={wa.setRodapeEdit}
+                onOpcaoChange={wa.editarOpcao}
+                onReset={wa.resetarTemplate}
+                onSave={wa.salvarTemplateAtual}
+                salvando={wa.salvandoTemplate}
+                desabilitado={desabilitarSalvarTemplate}
               />
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-5">
             <ConnectionStatus
-              connected={wa.connected} connecting={wa.connecting}
-              showQR={wa.showQR} onToggle={wa.toggleConnection}
+              instancia={wa.instancia}
+              conectado={wa.conectado}
+              verificandoConexao={wa.verificandoConexao}
+              onVerificar={wa.verificarConexao}
             />
             <ScheduleCard
-              morning={wa.morning} afternoon={wa.afternoon} night={wa.night}
-              onMorning={wa.setMorning} onAfternoon={wa.setAfternoon} onNight={wa.setNight}
-              saved={wa.schedSaved} onSave={wa.saveSchedule}
+              envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
+              horarioEnvioAuto={wa.horarioEnvioAuto}
+              horarioLimiteResp={wa.horarioLimiteResp}
+              onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
+              onHorarioEnvioChange={wa.setHorarioEnvioAuto}
+              onHorarioLimiteChange={wa.setHorarioLimiteResp}
+              salvando={wa.salvandoConfig}
+              onSalvar={wa.salvarHorarios}
+              desabilitado={desabilitarSalvarConfig}
             />
             <TemplateEditor
-              template={wa.template} onChange={wa.setTemplate}
-              onReset={wa.resetTemplate} onSave={wa.saveTemplate}
-              saved={wa.tmplSaved}
+              cabecalho={wa.cabecalhoEdit}
+              rodape={wa.rodapeEdit}
+              opcoes={wa.opcoesEdit}
+              onCabecalhoChange={wa.setCabecalhoEdit}
+              onRodapeChange={wa.setRodapeEdit}
+              onOpcaoChange={wa.editarOpcao}
+              onReset={wa.resetarTemplate}
+              onSave={wa.salvarTemplateAtual}
+              salvando={wa.salvandoTemplate}
+              desabilitado={desabilitarSalvarTemplate}
             />
           </div>
         )}
@@ -68,7 +141,8 @@ export function WhatsAppScreen() {
               Como funciona o Bot?
             </p>
             <p className="text-xs text-ink-soft m-0 leading-[1.6]">
-              O SmartRoutes envia mensagens automáticas via WhatsApp Web API. Os responsáveis respondem com <strong>1</strong> (Vai) ou <strong>2</strong> (Não vai), e o app atualiza a lista de rota em tempo real.
+              O SmartRoutes envia mensagens automáticas via WhatsApp Web API. Os responsáveis respondem com
+              <strong> 1 </strong> a <strong>4</strong> conforme as opções acima, e o app atualiza a lista de rota em tempo real.
             </p>
           </div>
         </div>

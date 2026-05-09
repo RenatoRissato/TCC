@@ -62,7 +62,17 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verifica conexão WhatsApp
-    const conectado = await evolutionVerificarConexao()
+    let conectado = false
+    try {
+      conectado = await evolutionVerificarConexao()
+    } catch (e) {
+      return erroCliente(
+        'Nao foi possivel consultar a Evolution API. Verifique os secrets e o servidor WhatsApp.',
+        'EVOLUTION_INDISPONIVEL',
+        503,
+        { detalhes: e instanceof Error ? e.message : String(e) },
+      )
+    }
     if (!conectado) {
       return erroCliente(
         'WhatsApp não está conectado. Reconecte para enviar mensagens.',

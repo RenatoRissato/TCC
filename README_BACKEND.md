@@ -109,12 +109,40 @@ curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE_NAME" \
   }'
 ```
 
-### 7. Configurar cron job (no SQL Editor do Supabase)
+### 7. Configurar cron job (a cada 5 minutos)
+
+O cron precisa rodar com frequencia porque a Edge Function `automacao-diaria`
+faz duas tarefas:
+
+- dispara mensagens quando o horario configurado do motorista entra na janela;
+- aplica `horario_limite_resposta`, marcando pendentes como ausentes.
+
+O projeto ja inclui a migration:
+
+```text
+supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql
+```
+
+Ela agenda `automacao-diaria` a cada 5 minutos usando `pg_cron` + `pg_net`.
+Para nao versionar segredo, salve o `CRON_SECRET` no Supabase Vault antes de
+rodar as migrations:
+
+```sql
+select vault.create_secret('SEU_CRON_SECRET', 'smartroutes_cron_secret');
+```
+
+Se a migration ja tiver sido aplicada sem o secret no Vault, rode uma vez:
+
+```sql
+select public.configurar_cron_automacao_diaria_5min('SEU_CRON_SECRET');
+```
+
+SQL equivalente manual:
 
 ```sql
 select cron.schedule(
   'automacao-diaria-smartroute',
-  '*/15 * * * *',  -- a cada 15 minutos; a função filtra pelo horário configurado de cada motorista
+  '*/5 * * * *',
   $$
   select net.http_post(
     url := 'https://SEU_PROJECT_REF.supabase.co/functions/v1/automacao-diaria',
