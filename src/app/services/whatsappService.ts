@@ -14,6 +14,77 @@ export interface WhatsAppEstado {
   opcoes: OpcaoRespostaRow[];
 }
 
+/**
+ * Serializa qualquer valor desconhecido em string utilizável em UI/toast.
+ * Garante que objetos arbitrários nunca virem "[object Object]" — usa
+ * JSON.stringify com replacer anti-circular como último recurso.
+ */
+export function serializarErroSeguro(valor: unknown, fallback = 'Erro desconhecido'): string {
+  if (valor == null) return fallback;
+  if (typeof valor === 'string') return valor.trim() || fallback;
+  if (valor instanceof Error) return valor.message || fallback;
+  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
+  if (typeof valor === 'object') {
+    // Tenta extrair campo de mensagem comum primeiro
+    const obj = valor as Record<string, unknown>;
+    const candidatoMsg = obj.message ?? obj.erro ?? obj.error ?? obj.detalhes;
+    if (typeof candidatoMsg === 'string' && candidatoMsg.trim()) {
+      return candidatoMsg.trim();
+    }
+    try {
+      const seen = new WeakSet<object>();
+      return JSON.stringify(valor, (_k, v) => {
+        if (typeof v === 'object' && v !== null) {
+          if (seen.has(v)) return '[circular]';
+          seen.add(v);
+        }
+        return v;
+      });
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+async function extrairErroEdgeFunction(
+  error: unknown,
+  fallback = 'Falha ao chamar a Edge Function.',
+): Promise<string> {
+  if (error && typeof error === 'object') {
+    const ctx = (error as { context?: Response }).context;
+    if (ctx) {
+      try {
+        const clone = ctx.clone();
+        const contentType = clone.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const body = await clone.json();
+          const mensagem = body?.erro ?? body?.message ?? body?.error;
+          const detalhes = body?.detalhes;
+          if (mensagem && detalhes) {
+            const detalhesTexto = serializarErroSeguro(detalhes, '');
+            return detalhesTexto
+              ? `${mensagem} (${detalhesTexto})`
+              : String(mensagem);
+          }
+          if (mensagem) return serializarErroSeguro(mensagem, fallback);
+        }
+        const texto = await clone.text();
+        if (texto.trim()) return texto.trim();
+      } catch {
+        // Mantem fallback abaixo.
+      }
+    }
+
+    const msg = (error as { message?: string }).message;
+    if (msg && msg !== 'Edge Function returned a non-2xx status code') {
+      return msg;
+    }
+  }
+
+  return serializarErroSeguro(error, fallback);
+}
+
 export const OPCOES_PADRAO: Array<{
   numero: number;
   texto_exibido: string;
@@ -212,7 +283,7 @@ export async function verificarConexaoWhatsApp(): Promise<{
       body: {},
     });
     if (error) {
-      return { ok: false, erro: error.message };
+      return { ok: false, erro: await extrairErroEdgeFunction(error, 'Falha ao verificar conexão.') };
     }
     return {
       ok: true,
@@ -221,9 +292,107 @@ export async function verificarConexaoWhatsApp(): Promise<{
       evolutionDisponivel: data?.evolution_disponivel !== false,
     };
   } catch (err) {
+    return { ok: false, erro: serializarErroSeguro(err) };
+  }
+}
+
+export interface QrCodeResposta {
+  ok: boolean;
+  instancia?: InstanciaWhatsAppRow;
+  conectado?: boolean;
+  jaConectado?: boolean;
+  qr?: string | null;
+  pairingCode?: string | null;
+  expiraEmSegundos?: number;
+  erro?: string;
+}
+
+export async function solicitarQrCode(): Promise<QrCodeResposta> {
+  try {
+    const { data, error } = await supabase.functions.invoke('qr-code-whatsapp', {
+      body: {},
+    });
+    if (error) {
+      return { ok: false, erro: await extrairErroEdgeFunction(error, 'Falha ao gerar QR Code.') };
+    }
     return {
-      ok: false,
-      erro: err instanceof Error ? err.message : String(err),
+      ok: true,
+      instancia: data?.instancia as InstanciaWhatsAppRow,
+      conectado: !!data?.conectado,
+      jaConectado: !!data?.ja_conectado,
+      qr: data?.qr ?? null,
+      pairingCode: data?.pairing_code ?? null,
+      expiraEmSegundos: data?.expira_em_segundos ?? 60,
     };
+  } catch (err) {
+    return { ok: false, erro: serializarErroSeguro(err) };
+  }
+}
+
+export interface StatusResposta {
+  ok: boolean;
+  instancia?: InstanciaWhatsAppRow;
+  conectado?: boolean;
+  status?: 'conectado' | 'desconectado' | 'conectando' | 'aguardando_qr';
+  evolutionDisponivel?: boolean;
+  erro?: string;
+}
+
+export async function consultarStatusWhatsApp(): Promise<StatusResposta> {
+  try {
+    const { data, error } = await supabase.functions.invoke('status-whatsapp', {
+      body: {},
+    });
+    if (error) return { ok: false, erro: await extrairErroEdgeFunction(error, 'Falha ao consultar status.') };
+    return {
+      ok: true,
+      instancia: data?.instancia as InstanciaWhatsAppRow,
+      conectado: !!data?.conectado,
+      status: data?.status,
+      evolutionDisponivel: data?.evolution_disponivel !== false,
+    };
+  } catch (err) {
+    return { ok: false, erro: serializarErroSeguro(err) };
+  }
+}
+
+export async function desconectarWhatsApp(): Promise<StatusResposta> {
+  try {
+    const { data, error } = await supabase.functions.invoke('desconectar-whatsapp', {
+      body: {},
+    });
+    if (error) {
+      return { ok: false, erro: await extrairErroEdgeFunction(error, 'Falha ao desconectar WhatsApp.') };
+    }
+    return {
+      ok: true,
+      instancia: data?.instancia as InstanciaWhatsAppRow,
+      conectado: false,
+      status: 'desconectado',
+      evolutionDisponivel: true,
+    };
+  } catch (err) {
+    return { ok: false, erro: serializarErroSeguro(err) };
+  }
+}
+
+export async function registrarWebhookEvolution(): Promise<{
+  ok: boolean;
+  url?: string;
+  eventos?: string[];
+  erro?: string;
+}> {
+  try {
+    const { data, error } = await supabase.functions.invoke('registrar-webhook', {
+      body: {},
+    });
+    if (error) return { ok: false, erro: await extrairErroEdgeFunction(error, 'Falha ao registrar webhook.') };
+    return {
+      ok: true,
+      url: data?.url,
+      eventos: data?.eventos,
+    };
+  } catch (err) {
+    return { ok: false, erro: serializarErroSeguro(err) };
   }
 }

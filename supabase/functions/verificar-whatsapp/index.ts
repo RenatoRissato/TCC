@@ -6,7 +6,10 @@ import {
   criarClienteServico,
   getMotorista,
 } from '../_shared/auth.ts'
-import { evolutionVerificarConexao } from '../_shared/evolution.ts'
+import {
+  evolutionFetchInstanceInfo,
+  evolutionVerificarConexao,
+} from '../_shared/evolution.ts'
 
 // Consulta o estado real da conexão na Evolution API e atualiza
 // instancias_whatsapp.status_conexao para refletir a realidade.
@@ -24,10 +27,15 @@ Deno.serve(async (req: Request) => {
     const { motorista } = await getMotorista(req)
 
     let conectado = false
+    let numeroConta: string | null = null
+    let nomeContaWA: string | null = null
     let evolutionDisponivel = true
     let erroEvolution: string | null = null
     try {
-      conectado = await evolutionVerificarConexao()
+      const info = await evolutionFetchInstanceInfo()
+      numeroConta = info.numero
+      nomeContaWA = info.nome
+      conectado = info.state === 'open' || (!info.state && await evolutionVerificarConexao())
     } catch (e) {
       evolutionDisponivel = false
       erroEvolution = e instanceof Error ? e.message : String(e)
@@ -42,12 +50,19 @@ Deno.serve(async (req: Request) => {
     const patch: Record<string, unknown> = { status_conexao: novoStatus }
     if (conectado) {
       patch.data_ultima_conexao = new Date().toISOString()
+      if (numeroConta) patch.numero_conta = numeroConta
+      if (nomeContaWA) patch.nome_conta_wa = nomeContaWA
     }
 
     const { data: instancia, error: updErr } = await servico
       .from('instancias_whatsapp')
-      .update(patch)
-      .eq('motorista_id', motorista.id)
+      .upsert(
+        {
+          motorista_id: motorista.id,
+          ...patch,
+        },
+        { onConflict: 'motorista_id' },
+      )
       .select('*')
       .maybeSingle()
 

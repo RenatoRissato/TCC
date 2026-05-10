@@ -6,6 +6,7 @@ import { WhatsAppHeader } from '../components/whatsapp/WhatsAppHeader';
 import { ConnectionStatus } from '../components/whatsapp/ConnectionStatus';
 import { ScheduleCard } from '../components/whatsapp/ScheduleCard';
 import { TemplateEditor } from '../components/whatsapp/TemplateEditor';
+import { QrCodeModal } from '../components/whatsapp/QrCodeModal';
 
 function StatPill({ valor, rotulo, cor }: { valor: number; rotulo: string; cor: string }) {
   return (
@@ -71,7 +72,11 @@ export function WhatsAppScreen() {
                 instancia={wa.instancia}
                 conectado={wa.conectado}
                 verificandoConexao={wa.verificandoConexao}
+                solicitandoQr={wa.solicitandoQr}
+                desconectando={wa.desconectando}
                 onVerificar={wa.verificarConexao}
+                onConectar={wa.abrirConexao}
+                onDesconectar={wa.desconectarConexao}
               />
             </div>
             <div className="flex flex-col gap-5">
@@ -106,7 +111,11 @@ export function WhatsAppScreen() {
               instancia={wa.instancia}
               conectado={wa.conectado}
               verificandoConexao={wa.verificandoConexao}
+              solicitandoQr={wa.solicitandoQr}
+              desconectando={wa.desconectando}
               onVerificar={wa.verificarConexao}
+              onConectar={wa.abrirConexao}
+              onDesconectar={wa.desconectarConexao}
             />
             <ScheduleCard
               envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
@@ -147,6 +156,16 @@ export function WhatsAppScreen() {
           </div>
         </div>
       </div>
+
+      <QrCodeModal
+        open={wa.qrAberto}
+        qr={wa.qrCode}
+        pairingCode={wa.pairingCode}
+        expirandoEm={wa.expirandoEm}
+        solicitando={wa.solicitandoQr}
+        onGerarNovo={wa.gerarNovoQr}
+        onFechar={wa.fecharQr}
+      />
     </div>
   );
 }

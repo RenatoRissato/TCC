@@ -19,7 +19,19 @@ export function erroCliente(
 }
 
 export function erroServidor(err: unknown): Response {
-  const detalhes = err instanceof Error ? err.message : String(err)
+  let detalhes: string
+  if (err instanceof Error) {
+    detalhes = err.message
+  } else if (err && typeof err === 'object') {
+    try {
+      detalhes = JSON.stringify(err)
+    } catch {
+      detalhes = String(err)
+    }
+  } else {
+    detalhes = String(err)
+  }
+
   return new Response(
     JSON.stringify({ erro: 'Erro interno do servidor', detalhes }),
     { status: 500, headers: jsonHeaders },

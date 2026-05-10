@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import {
+  desconectarWhatsApp,
   EstatisticasMensagens,
   obterConfiguracaoAutomacao,
   obterEstatisticasMensagens,
@@ -10,6 +11,7 @@ import {
   OPCOES_PADRAO,
   salvarConfiguracaoAutomacao,
   salvarTemplate,
+  solicitarQrCode,
   verificarConexaoWhatsApp,
 } from '../services/whatsappService';
 import type {
@@ -23,6 +25,20 @@ export interface OpcaoTemplateState {
   numero: number;
   texto_exibido: string;
   tipo_confirmacao: OpcaoRespostaRow['tipo_confirmacao'];
+}
+
+// Liga/desliga logs de depuração via localStorage. Útil para o usuário
+// inspecionar o fluxo de QR no DevTools sem rebuild — basta rodar:
+//   localStorage.setItem('debug:whatsapp', '1')
+function debug(rotulo: string, payload?: unknown) {
+  try {
+    if (typeof window !== 'undefined' && localStorage.getItem('debug:whatsapp')) {
+      // eslint-disable-next-line no-console
+      console.debug(`[useWhatsApp] ${rotulo}`, payload);
+    }
+  } catch {
+    // localStorage indisponível — segue silencioso
+  }
 }
 
 function ordenarOpcoesNaUI(opcoes: OpcaoRespostaRow[]): OpcaoTemplateState[] {
@@ -46,6 +62,17 @@ export function useWhatsApp() {
   const [verificandoConexao, setVerificandoConexao] = useState(false);
   const [salvandoConfig,  setSalvandoConfig]  = useState(false);
   const [salvandoTemplate, setSalvandoTemplate] = useState(false);
+  const [desconectando, setDesconectando] = useState(false);
+
+  // Estado do fluxo de QR Code
+  const [qrAberto, setQrAberto] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [solicitandoQr, setSolicitandoQr] = useState(false);
+  const [expirandoEm, setExpirandoEm] = useState<number>(0);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const expiraTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollDeadlineRef = useRef<number>(0);
 
   const [instancia,    setInstancia]    = useState<InstanciaWhatsAppRow | null>(null);
   const [configuracao, setConfiguracao] = useState<ConfiguracaoAutomacaoRow | null>(null);
@@ -86,8 +113,38 @@ export function useWhatsApp() {
     setLoading(true);
     setErro(null);
     try {
-      const inst = await obterInstancia(motoristaId);
-      setInstancia(inst);
+      const statusAtual = await verificarConexaoWhatsApp();
+      debug('carregar:verificarConexaoWhatsApp', statusAtual);
+
+      const inst = statusAtual.ok && statusAtual.instancia
+        ? statusAtual.instancia
+        : await obterInstancia(motoristaId);
+
+      // Anti-race: se já tínhamos uma instância na memória mais "recente"
+      // (criada/atualizada depois do que veio aqui), preserva ela. Isso
+      // protege contra `verificar-whatsapp` chegando depois do polling do
+      // QR ou do webhook ter atualizado o estado para 'conectado'.
+      setInstancia((prev) => {
+        if (!inst) return prev ?? null;
+        if (!prev) return inst;
+        // Não regride 'conectado' → 'desconectado' por carregar tardio se
+        // o retorno do servidor não confirma desconexão real.
+        const prevTs = prev.data_ultima_conexao
+          ? Date.parse(prev.data_ultima_conexao)
+          : 0;
+        const newTs = inst.data_ultima_conexao
+          ? Date.parse(inst.data_ultima_conexao)
+          : 0;
+        if (
+          prev.status_conexao === 'conectado' &&
+          inst.status_conexao !== 'conectado' &&
+          prevTs >= newTs
+        ) {
+          debug('carregar:preservando_instancia_anterior', { prev, inst });
+          return prev;
+        }
+        return inst;
+      });
 
       const cfgPromise = inst
         ? obterConfiguracaoAutomacao(inst.id)
@@ -124,6 +181,7 @@ export function useWhatsApp() {
     setVerificandoConexao(true);
     try {
       const r = await verificarConexaoWhatsApp();
+      debug('verificarConexao', r);
       if (r.ok && r.instancia) {
         setInstancia(r.instancia);
         if (r.conectado) {
@@ -229,6 +287,176 @@ export function useWhatsApp() {
 
   const conectado = instancia?.status_conexao === 'conectado';
 
+  // ---- Fluxo de QR Code ----
+  // Importante: polling e contagem regressiva são timers SEPARADOS.
+  // Iniciar o polling não pode parar a contagem (essa foi a causa de o
+  // contador ficar travado em 60s — `iniciarPolling` chamava `pararPolling`
+  // logo após `iniciarContagemRegressiva` ter ligado o timer de expiração).
+  const pararPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  const pararContagemRegressiva = useCallback(() => {
+    if (expiraTimerRef.current) {
+      clearInterval(expiraTimerRef.current);
+      expiraTimerRef.current = null;
+    }
+  }, []);
+
+  const pararTudoQr = useCallback(() => {
+    pararPolling();
+    pararContagemRegressiva();
+  }, [pararPolling, pararContagemRegressiva]);
+
+  const fecharQr = useCallback(() => {
+    pararTudoQr();
+    setQrAberto(false);
+    setQrCode(null);
+    setPairingCode(null);
+    setExpirandoEm(0);
+  }, [pararTudoQr]);
+
+  const consultarStatusQr = useCallback(async () => {
+    const r = await verificarConexaoWhatsApp();
+    debug('consultarStatusQr', r);
+    if (r.ok && r.instancia) {
+      setInstancia(r.instancia);
+      if (r.conectado) {
+        pararTudoQr();
+        setQrAberto(false);
+        setQrCode(null);
+        setPairingCode(null);
+        setExpirandoEm(0);
+        toast.success('WhatsApp conectado.', {
+          description: r.instancia.numero_conta
+            ? `Conta vinculada: ${r.instancia.numero_conta}`
+            : undefined,
+        });
+        return true;
+      }
+    }
+    return false;
+  }, [pararTudoQr]);
+
+  // Polling: a cada 3s consulta status-whatsapp; encerra ao conectar
+  // ou quando o deadline (90s a partir de abrirConexao) expirar.
+  const iniciarPolling = useCallback(() => {
+    pararPolling();
+    pollDeadlineRef.current = Date.now() + 90_000;
+    void consultarStatusQr();
+    pollIntervalRef.current = setInterval(async () => {
+      if (Date.now() > pollDeadlineRef.current) {
+        pararPolling();
+        return;
+      }
+      await consultarStatusQr();
+    }, 3000);
+  }, [pararPolling, consultarStatusQr]);
+
+  const iniciarContagemRegressiva = useCallback((segundos: number) => {
+    if (expiraTimerRef.current) clearInterval(expiraTimerRef.current);
+    setExpirandoEm(segundos);
+    const fim = Date.now() + segundos * 1000;
+    expiraTimerRef.current = setInterval(() => {
+      const restante = Math.max(0, Math.ceil((fim - Date.now()) / 1000));
+      setExpirandoEm(restante);
+      if (restante <= 0 && expiraTimerRef.current) {
+        clearInterval(expiraTimerRef.current);
+        expiraTimerRef.current = null;
+      }
+    }, 500);
+  }, []);
+
+  const abrirConexao = useCallback(async () => {
+    if (solicitandoQr) return;
+    setSolicitandoQr(true);
+    setQrAberto(true);
+    const r = await solicitarQrCode();
+    debug('abrirConexao:solicitarQrCode', r);
+    setSolicitandoQr(false);
+    if (r.ok && (r.jaConectado || r.conectado) && r.instancia) {
+      setInstancia(r.instancia);
+      setQrAberto(false);
+      setQrCode(null);
+      setPairingCode(null);
+      setExpirandoEm(0);
+      toast.success('WhatsApp ja esta conectado.', {
+        description: r.instancia.numero_conta
+          ? `Conta vinculada: ${r.instancia.numero_conta}`
+          : undefined,
+      });
+      return;
+    }
+    if (!r.ok || (!r.qr && !r.pairingCode)) {
+      const conectadoAgora = await consultarStatusQr();
+      if (conectadoAgora) return;
+      toast.error('Não foi possível gerar o QR Code.', { description: r.erro });
+      setQrAberto(false);
+      return;
+    }
+    if (r.instancia) setInstancia(r.instancia);
+    setQrCode(r.qr ?? null);
+    setPairingCode(r.pairingCode ?? null);
+    iniciarContagemRegressiva(r.expiraEmSegundos ?? 60);
+    iniciarPolling();
+  }, [solicitandoQr, consultarStatusQr, iniciarContagemRegressiva, iniciarPolling]);
+
+  const gerarNovoQr = useCallback(async () => {
+    if (solicitandoQr) return;
+    setSolicitandoQr(true);
+    const r = await solicitarQrCode();
+    debug('gerarNovoQr:solicitarQrCode', r);
+    setSolicitandoQr(false);
+    if (r.ok && (r.jaConectado || r.conectado) && r.instancia) {
+      setInstancia(r.instancia);
+      fecharQr();
+      toast.success('WhatsApp ja esta conectado.', {
+        description: r.instancia.numero_conta
+          ? `Conta vinculada: ${r.instancia.numero_conta}`
+          : undefined,
+      });
+      return;
+    }
+    if (!r.ok || (!r.qr && !r.pairingCode)) {
+      const conectadoAgora = await consultarStatusQr();
+      if (conectadoAgora) return;
+      toast.error('Falha ao gerar novo QR.', { description: r.erro });
+      return;
+    }
+    if (r.instancia) setInstancia(r.instancia);
+    setQrCode(r.qr ?? null);
+    setPairingCode(r.pairingCode ?? null);
+    iniciarContagemRegressiva(r.expiraEmSegundos ?? 60);
+    if (!pollIntervalRef.current) iniciarPolling();
+  }, [solicitandoQr, consultarStatusQr, iniciarContagemRegressiva, iniciarPolling, fecharQr]);
+
+  const desconectarConexao = useCallback(async () => {
+    if (desconectando) return;
+    setDesconectando(true);
+    const r = await desconectarWhatsApp();
+    debug('desconectarConexao', r);
+    setDesconectando(false);
+
+    if (!r.ok) {
+      toast.error('Nao foi possivel desconectar o WhatsApp.', {
+        description: r.erro,
+      });
+      return;
+    }
+
+    if (r.instancia) setInstancia(r.instancia);
+    fecharQr();
+    toast.success('WhatsApp desconectado.');
+  }, [desconectando, fecharQr]);
+
+  // Cleanup de timers ao desmontar
+  useEffect(() => {
+    return () => pararTudoQr();
+  }, [pararTudoQr]);
+
   return {
     // estado base
     loading,
@@ -257,10 +485,22 @@ export function useWhatsApp() {
     salvandoConfig,
     salvandoTemplate,
     verificandoConexao,
+    desconectando,
     salvarHorarios,
     salvarTemplateAtual,
     resetarTemplate,
     verificarConexao,
+    desconectarConexao,
     recarregar: carregar,
+
+    // QR Code
+    qrAberto,
+    qrCode,
+    pairingCode,
+    solicitandoQr,
+    expirandoEm,
+    abrirConexao,
+    gerarNovoQr,
+    fecharQr,
   };
 }
