@@ -25,6 +25,9 @@ export interface Passenger {
   instituicao: string;
   serieSemestre: string;
   curso: string;
+  // Confirmação do dia (se houver) — usado pelo botão "Reenviar" para chamar
+  // a Edge Function reenviar-confirmacao. null quando não há viagem hoje.
+  confirmacaoId?: string | null;
 }
 
 export interface WhatsAppUpdate {

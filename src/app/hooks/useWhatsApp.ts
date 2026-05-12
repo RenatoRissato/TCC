@@ -441,7 +441,7 @@ export function useWhatsApp() {
     setDesconectando(false);
 
     if (!r.ok) {
-      toast.error('Nao foi possivel desconectar o WhatsApp.', {
+      toast.error('Não foi possível desconectar o WhatsApp.', {
         description: r.erro,
       });
       return;
@@ -449,7 +449,16 @@ export function useWhatsApp() {
 
     if (r.instancia) setInstancia(r.instancia);
     fecharQr();
-    toast.success('WhatsApp desconectado.');
+
+    // Aviso vem quando a Evolution recusou o logout mas a sessão local foi
+    // marcada como desconectada mesmo assim. Mostra como info, não erro.
+    if (r.aviso) {
+      toast('WhatsApp desconectado localmente.', {
+        description: 'A Evolution não respondeu o logout — reconecte para sincronizar.',
+      });
+    } else {
+      toast.success('WhatsApp desconectado.');
+    }
   }, [desconectando, fecharQr]);
 
   // Cleanup de timers ao desmontar

@@ -203,17 +203,29 @@ export async function obterRota(id: string): Promise<RotaRow | null> {
 export interface ValidacaoRota {
   valido: boolean;
   erro?: string;
+  /**
+   * Código curto da falha — permite que a UI customize o tom da mensagem
+   * (ex: 'todos_nao_vao' merece um info/aviso, não um erro vermelho).
+   */
+  codigo?:
+    | 'rota_nao_encontrada'
+    | 'sem_ponto_saida'
+    | 'sem_destino'
+    | 'sem_passageiros'
+    | 'todos_nao_vao'
+    | 'erro_consulta';
 }
 
 /**
  * Valida se a rota está pronta para iniciar uma viagem.
- * Verifica em ordem: ponto de saída, destino final, passageiros ativos.
+ * Verifica em ordem: ponto de saída, destino final, passageiros ativos,
+ * e — se já houver viagem do dia — se ainda sobra alguém que vai embarcar.
  * Retorna na primeira falha — o motorista corrige um problema por vez.
  */
 export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRota> {
   const rota = await obterRota(rotaId);
   if (!rota) {
-    return { valido: false, erro: 'Rota não encontrada.' };
+    return { valido: false, erro: 'Rota não encontrada.', codigo: 'rota_nao_encontrada' };
   }
 
   // 1) Ponto de saída — pelo menos rua precisa estar preenchida
@@ -221,6 +233,7 @@ export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRo
   if (!temPontoSaida) {
     return {
       valido: false,
+      codigo: 'sem_ponto_saida',
       erro: "Configure o ponto de saída da van antes de iniciar. Clique em 'Gerenciar Rotas' para editar.",
     };
   }
@@ -231,25 +244,73 @@ export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRo
   if (!temDestino) {
     return {
       valido: false,
+      codigo: 'sem_destino',
       erro: "Adicione pelo menos um destino final na rota. Clique em 'Gerenciar Rotas' para editar.",
     };
   }
 
   // 3) Pelo menos um passageiro ativo
-  const { count, error } = await supabase
+  const { data: paxAtivos, error: paxErr } = await supabase
     .from('passageiros')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('rota_id', rotaId)
     .eq('status', 'ativo');
-  if (error) {
-    console.error('validarRotaParaInicio[passageiros]:', error);
-    return { valido: false, erro: 'Não foi possível validar a rota. Tente novamente.' };
+  if (paxErr) {
+    console.error('validarRotaParaInicio[passageiros]:', paxErr);
+    return { valido: false, erro: 'Não foi possível validar a rota. Tente novamente.', codigo: 'erro_consulta' };
   }
-  if (!count || count === 0) {
+  const ids = (paxAtivos ?? []).map(p => p.id);
+  if (ids.length === 0) {
     return {
       valido: false,
+      codigo: 'sem_passageiros',
       erro: 'Nenhum passageiro cadastrado nesta rota. Adicione passageiros antes de iniciar a viagem.',
     };
+  }
+
+  // 4) Se já existe viagem do dia, verifica se ainda sobra ALGUÉM que vai
+  //    embarcar. Caso todos os passageiros tenham respondido "Não vai" ou
+  //    estejam ausentes, não faz sentido sair: o motorista perderia o tempo
+  //    rodando pra ninguém. Mostramos um aviso amigável e abortamos antes
+  //    de abrir o Google Maps.
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { data: viagem } = await supabase
+    .from('viagens')
+    .select('id')
+    .eq('rota_id', rotaId)
+    .eq('data', hoje)
+    .maybeSingle();
+
+  if (viagem?.id) {
+    const { data: confs, error: confsErr } = await supabase
+      .from('confirmacoes')
+      .select('passageiro_id, status, tipo_confirmacao')
+      .eq('viagem_id', viagem.id)
+      .in('passageiro_id', ids);
+    if (confsErr) {
+      console.error('validarRotaParaInicio[confirmacoes]:', confsErr);
+      return { valido: false, erro: 'Não foi possível validar a rota. Tente novamente.', codigo: 'erro_consulta' };
+    }
+
+    // Só rola "todos não vão" quando temos confirmação de TODOS os ativos
+    // (uma por passageiro) e nenhuma delas indica que o aluno vai.
+    if ((confs ?? []).length === ids.length && confs!.length > 0) {
+      const todosRecusaram = confs!.every((c) => {
+        const status = (c as { status: string }).status;
+        const tipo = (c as { tipo_confirmacao: string | null }).tipo_confirmacao;
+        return (
+          status === 'ausente' ||
+          (status === 'confirmado' && tipo === 'nao_vai')
+        );
+      });
+      if (todosRecusaram) {
+        return {
+          valido: false,
+          codigo: 'todos_nao_vao',
+          erro: 'Todos os alunos desta rota responderam que NÃO vão hoje (opção 4). Não há motivo para iniciar a viagem.',
+        };
+      }
+    }
   }
 
   return { valido: true };

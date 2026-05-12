@@ -154,27 +154,61 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = payload?.data
+
+    // Ignora mensagens enviadas pelo próprio bot (fromMe=true).
+    // Sem esse check, as mensagens de saída (sendText e respostas automáticas)
+    // que voltam pelo webhook seriam interpretadas como resposta do passageiro.
+    if (data?.key?.fromMe === true) {
+      return ok({ ignorado: true, motivo: 'mensagem enviada pelo próprio bot' })
+    }
+
+    const supabase = criarClienteServico()
+
+    // ---- Identificar tipo de resposta ----
+    // (1) Texto puro com dígito 1-4 (novo modelo: sendText com opções numeradas)
+    // (2) listResponseMessage (modelo antigo, mantido por compat — pode parar
+    //     de funcionar quando o Baileys/WhatsApp restringir listas)
+    let numero: string | null = null
+    let confirmacaoIdFromRow: string | null = null
+    let conteudoEntrada: string | null = null
+
     const listResp = data?.message?.listResponseMessage
-    if (!listResp) {
-      return ok({ ignorado: true, motivo: 'mensagem não é resposta de lista' })
+    if (listResp) {
+      const selectedRowId: string | undefined =
+        listResp?.singleSelectReply?.selectedRowId
+      if (selectedRowId) {
+        const idx = selectedRowId.indexOf('_')
+        if (idx > 0) {
+          numero = selectedRowId.slice(0, idx)
+          confirmacaoIdFromRow = selectedRowId.slice(idx + 1)
+          conteudoEntrada = listResp?.title ?? null
+        }
+      }
     }
 
-    const selectedRowId: string | undefined =
-      listResp?.singleSelectReply?.selectedRowId
-    if (!selectedRowId) {
-      return ok({ ignorado: true, motivo: 'sem selectedRowId' })
+    if (!numero) {
+      // Tenta texto puro
+      const textoPuro: string | undefined =
+        data?.message?.conversation ??
+        data?.message?.extendedTextMessage?.text
+      if (textoPuro && typeof textoPuro === 'string') {
+        // Aceita: "1", "1.", "1 ", "1 - Ida e volta", "  1  ", etc.
+        // Pega o primeiro dígito 1-4 que apareça no início, possivelmente
+        // depois de algum espaço/caractere comum.
+        const match = textoPuro.trim().match(/^([1-4])\b/)
+        if (match) {
+          numero = match[1]
+          conteudoEntrada = textoPuro
+        }
+      }
     }
 
-    const idx = selectedRowId.indexOf('_')
-    if (idx <= 0) {
-      return erroCliente(
-        'Formato de rowId inválido',
-        'ROW_ID_INVALIDO',
-        400,
-      )
+    if (!numero) {
+      return ok({
+        ignorado: true,
+        motivo: 'mensagem não é resposta de confirmação (sem dígito 1-4 e sem listResponse)',
+      })
     }
-    const numero = selectedRowId.slice(0, idx)
-    const confirmacaoId = selectedRowId.slice(idx + 1)
 
     const tipoConfirmacao = NUMERO_PARA_TIPO[numero]
     if (!tipoConfirmacao) {
@@ -185,24 +219,68 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const supabase = criarClienteServico()
+    // ---- Resolver qual confirmação esta resposta atualiza ----
+    // Caso (1) listResponse → usamos o confirmacaoId que veio embutido no rowId
+    // Caso (2) texto puro → buscamos a confirmação pendente mais recente do
+    //          passageiro identificado pelo número de telefone do remetente
+    let confirmacao: any = null
 
-    // Busca confirmação + dados do passageiro
-    const { data: confirmacao, error: confErr } = await supabase
-      .from('confirmacoes')
-      .select(
-        'id, status, viagem_id, passageiro_id, passageiros(id, nome_completo, telefone_responsavel, rota_id, rotas(motorista_id))',
-      )
-      .eq('id', confirmacaoId)
-      .maybeSingle()
+    if (confirmacaoIdFromRow) {
+      const { data: c, error: cErr } = await supabase
+        .from('confirmacoes')
+        .select(
+          'id, status, viagem_id, passageiro_id, passageiros(id, nome_completo, telefone_responsavel, rota_id, rotas(motorista_id))',
+        )
+        .eq('id', confirmacaoIdFromRow)
+        .maybeSingle()
+      if (cErr) throw cErr
+      confirmacao = c
+    } else {
+      // Texto puro — busca pelo telefone do remetente
+      const remoteJid: string | undefined = data?.key?.remoteJid
+      const telefoneRemetente = remoteJid
+        ? remoteJid.split('@')[0].replace(/\D/g, '')
+        : ''
+      if (!telefoneRemetente) {
+        return ok({ ignorado: true, motivo: 'sem telefone de remetente identificável' })
+      }
 
-    if (confErr) throw confErr
+      const { data: pax, error: paxErr } = await supabase
+        .from('passageiros')
+        .select(
+          'id, nome_completo, telefone_responsavel, rota_id, rotas(motorista_id)',
+        )
+        .eq('telefone_responsavel', telefoneRemetente)
+        .eq('status', 'ativo')
+        .maybeSingle()
+      if (paxErr) throw paxErr
+      if (!pax) {
+        return ok({
+          ignorado: true,
+          motivo: `remetente ${telefoneRemetente} não é passageiro ativo`,
+        })
+      }
+
+      // Pega a confirmação pendente mais recente desse passageiro
+      const { data: confPendente, error: cErr } = await supabase
+        .from('confirmacoes')
+        .select(
+          'id, status, viagem_id, passageiro_id, passageiros(id, nome_completo, telefone_responsavel, rota_id, rotas(motorista_id))',
+        )
+        .eq('passageiro_id', pax.id)
+        .eq('status', 'pendente')
+        .order('criada_em', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (cErr) throw cErr
+      confirmacao = confPendente
+    }
+
     if (!confirmacao) {
-      return erroCliente(
-        'Confirmação não encontrada',
-        'CONFIRMACAO_NAO_ENCONTRADA',
-        404,
-      )
+      return ok({
+        ignorado: true,
+        motivo: 'sem confirmação pendente correspondente a esta resposta',
+      })
     }
 
     if (confirmacao.status !== 'pendente') {
@@ -257,15 +335,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // Registra a mensagem recebida
-    const conteudoEntrada =
-      listResp?.title ?? `Resposta: ${tipoConfirmacao} (opção ${numero})`
+    const conteudoFinal =
+      conteudoEntrada ?? `Resposta: ${tipoConfirmacao} (opção ${numero})`
     const whatsappMsgId: string | null = data?.key?.id ?? null
 
     await supabase.from('mensagens').insert({
       instancia_whatsapp_id: instanciaId,
       passageiro_id: passageiro?.id ?? null,
       confirmacao_id: confirmacao.id,
-      conteudo: String(conteudoEntrada),
+      conteudo: String(conteudoFinal),
       direcao: 'entrada',
       tipo: 'resposta_confirmacao',
       status_envio: 'entregue',

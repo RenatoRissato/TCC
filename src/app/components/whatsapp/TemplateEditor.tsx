@@ -3,7 +3,7 @@ import { SLabel } from './SLabel';
 import { Spinner } from './Spinner';
 import type { OpcaoTemplateState } from '../../hooks/useWhatsApp';
 
-const VARIAVEIS = ['{nome_passageiro}', '{data_formatada}'];
+const VARIAVEIS = ['{saudacao}', '{nome_passageiro}', '{data_formatada}'];
 
 interface TemplateEditorProps {
   cabecalho: string;
@@ -64,7 +64,7 @@ export function TemplateEditor({
               onChange={(e) => onCabecalhoChange(e.target.value)}
               rows={3}
               className="w-full box-border bg-field border-2 border-field-border rounded-[14px] px-4 py-3 text-[13px] font-sans text-ink outline-none resize-y leading-[1.6] min-h-[80px] focus:border-whatsapp"
-              placeholder="Olá {nome_passageiro}, vai usar a van em {data_formatada}?"
+              placeholder="{saudacao}! {nome_passageiro} vai usar a van em {data_formatada}?"
             />
           </label>
 

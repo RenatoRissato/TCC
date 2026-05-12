@@ -11,6 +11,7 @@ import { useConfirmacoesRealtime } from '../hooks/useConfirmacoesRealtime';
 import { useFinalizarViagem, useReenviarConfirmacao } from '../hooks/useViagem';
 import { buscarViagem, marcarConfirmacaoManual } from '../services/viagemService';
 import { BottomSheetModal } from '../components/shared/BottomSheetModal';
+import { statusUIDaConfirmacao, type StatusUI } from '../utils/confirmacaoStatus';
 import type { ConfirmacaoComPassageiro } from '../hooks/useConfirmacoesRealtime';
 import type { RotaRow, StatusConfirmacao, TipoConfirmacao, ViagemRow } from '../types/database';
 
@@ -21,10 +22,12 @@ const TIPO_LABEL: Record<TipoConfirmacao, string> = {
   nao_vai: 'Não vai',
 };
 
-const STATUS_META: Record<StatusConfirmacao, { label: string; color: string; bg: string; Icon: typeof CheckCircle2 }> = {
-  confirmado: { label: 'Confirmado', color: '#198754', bg: 'rgba(25,135,84,0.12)', Icon: CheckCircle2 },
-  ausente:    { label: 'Ausente',    color: '#DC3545', bg: 'rgba(220,53,69,0.12)', Icon: XCircle },
-  pendente:   { label: 'Pendente',   color: '#FD7E14', bg: 'rgba(253,126,20,0.12)', Icon: Clock },
+// Metadados pelo status EFETIVO de UI — leva em conta `tipo_confirmacao`.
+// "Confirmado + nao_vai" e "ausente" caem em `nao_vai_hoje` (vermelho).
+const STATUS_UI_META: Record<StatusUI, { label: string; color: string; bg: string; Icon: typeof CheckCircle2 }> = {
+  vai:          { label: 'Vai hoje',      color: '#198754', bg: 'rgba(25,135,84,0.12)',  Icon: CheckCircle2 },
+  nao_vai_hoje: { label: 'Não vai hoje',  color: '#DC3545', bg: 'rgba(220,53,69,0.12)',  Icon: XCircle },
+  pendente:     { label: 'Pendente',      color: '#FD7E14', bg: 'rgba(253,126,20,0.12)', Icon: Clock },
 };
 
 function iniciais(nome: string): string {
@@ -39,7 +42,8 @@ interface PassageiroRowProps {
 }
 
 function ConfirmacaoRowItem({ c, onReenviar, onAbrirManual, reenviando }: PassageiroRowProps) {
-  const meta = STATUS_META[c.status];
+  const statusUI = statusUIDaConfirmacao(c.status, c.tipo_confirmacao);
+  const meta = STATUS_UI_META[statusUI];
   const nome = c.passageiros?.nome_completo ?? '—';
   const tipoLabel = c.tipo_confirmacao ? TIPO_LABEL[c.tipo_confirmacao] : null;
 
@@ -188,9 +192,18 @@ export function LiveTripScreen() {
     [confirmacoes],
   );
 
+  // Contagem baseada no status EFETIVO de UI:
+  //   - vai            (status='confirmado' + tipo ∈ ida_e_volta/somente_ida/somente_volta)
+  //   - nao_vai_hoje   (status='ausente' OU 'confirmado' + tipo='nao_vai')
+  //   - pendente       (sem resposta)
   const contagem = useMemo(() => {
-    const r = { confirmado: 0, ausente: 0, pendente: 0, total: confirmacoes.length };
-    for (const c of confirmacoes) r[c.status]++;
+    const r = { vai: 0, nao_vai: 0, pendente: 0, total: confirmacoes.length };
+    for (const c of confirmacoes) {
+      const ui = statusUIDaConfirmacao(c.status, c.tipo_confirmacao);
+      if (ui === 'vai') r.vai++;
+      else if (ui === 'nao_vai_hoje') r.nao_vai++;
+      else r.pendente++;
+    }
     return r;
   }, [confirmacoes]);
 
@@ -264,10 +277,10 @@ export function LiveTripScreen() {
 
         <div className="grid grid-cols-4 gap-2">
           {[
-            { n: contagem.confirmado, l: 'CONFIRMADOS', c: '#4ADE80' },
-            { n: contagem.ausente,    l: 'AUSENTES',    c: '#FF6B7A' },
-            { n: contagem.pendente,   l: 'PENDENTES',   c: '#FD7E14' },
-            { n: contagem.total,      l: 'TOTAL',       c: '#FFC107' },
+            { n: contagem.vai,      l: 'VÃO',       c: '#4ADE80' },
+            { n: contagem.nao_vai,  l: 'NÃO VÃO',   c: '#FF6B7A' },
+            { n: contagem.pendente, l: 'PENDENTES', c: '#FD7E14' },
+            { n: contagem.total,    l: 'TOTAL',     c: '#FFC107' },
           ].map(({ n, l, c }) => (
             <div key={l} className="flex flex-col items-center bg-white/[0.05] rounded-[14px] py-2.5">
               <span className="text-2xl font-black leading-none" style={{ color: c }}>{n}</span>

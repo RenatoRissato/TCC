@@ -356,7 +356,16 @@ export async function consultarStatusWhatsApp(): Promise<StatusResposta> {
   }
 }
 
-export async function desconectarWhatsApp(): Promise<StatusResposta> {
+export interface DesconectarResposta extends StatusResposta {
+  /**
+   * Aviso (não erro) quando o backend conseguiu marcar como desconectado
+   * localmente mas a Evolution recusou o `instance/logout`. O usuário fica
+   * livre para reconectar; a sessão remota pode estar inconsistente.
+   */
+  aviso?: string;
+}
+
+export async function desconectarWhatsApp(): Promise<DesconectarResposta> {
   try {
     const { data, error } = await supabase.functions.invoke('desconectar-whatsapp', {
       body: {},
@@ -370,6 +379,9 @@ export async function desconectarWhatsApp(): Promise<StatusResposta> {
       conectado: false,
       status: 'desconectado',
       evolutionDisponivel: true,
+      aviso: typeof data?.evolution_aviso === 'string'
+        ? data.evolution_aviso
+        : undefined,
     };
   } catch (err) {
     return { ok: false, erro: serializarErroSeguro(err) };
@@ -396,3 +408,7 @@ export async function registrarWebhookEvolution(): Promise<{
     return { ok: false, erro: serializarErroSeguro(err) };
   }
 }
+
+// Reenvio de confirmação: usar `reenviarConfirmacao` exportado por
+// `viagemService.ts` (ou o hook `useReenviarConfirmacao` em `useViagem.ts`).
+// Esses já existiam antes desta feature — não duplicar aqui.

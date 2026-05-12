@@ -2,9 +2,8 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { criarClienteServico } from './auth.ts'
 import {
-  evolutionEnviarLista,
+  evolutionEnviarTexto,
   EvolutionResposta,
-  OpcaoLista,
 } from './evolution.ts'
 
 export interface ResultadoEnvio {
@@ -67,14 +66,40 @@ function formatarDataBR(date = new Date()): string {
   })
 }
 
-function aplicarVariaveis(
+/**
+ * Retorna a saudação adequada para o horário atual em Brasília:
+ *   - 00h às 11h59 → "Bom dia"
+ *   - 12h às 17h59 → "Boa tarde"
+ *   - 18h às 23h59 → "Boa noite"
+ *
+ * Exportada porque é usada também em `reenviar-confirmacao` (mesmo cálculo,
+ * sem duplicar a lógica de timezone).
+ */
+export function obterSaudacaoBrasil(date = new Date()): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE_BR,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hora = parseInt(
+    partes.find((p) => p.type === 'hour')?.value ?? '0',
+    10,
+  )
+  if (hora < 12) return 'Bom dia'
+  if (hora < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+export function aplicarVariaveis(
   texto: string,
   passageiroNome: string,
   data: string,
+  saudacao: string,
 ): string {
   return texto
     .replaceAll('{nome_passageiro}', passageiroNome)
     .replaceAll('{data_formatada}', data)
+    .replaceAll('{saudacao}', saudacao)
 }
 
 async function buscarTemplateAtivo(
@@ -203,6 +228,10 @@ export async function processarIniciarViagem(
   const template = await buscarTemplateAtivo(supabase, motoristaId)
   const instanciaId = await buscarInstanciaWhatsApp(supabase, motoristaId)
   const dataFmt = formatarDataBR()
+  // Saudação calculada UMA vez no momento do disparo. Se uma viagem começar
+  // 11:58 e o último passageiro só receber às 12:01, todos veem "Bom dia"
+  // — consistente, ninguém recebe metade da turma com saudação diferente.
+  const saudacao = obterSaudacaoBrasil()
 
   // 6. Para cada passageiro: confirmação + envio
   const resultados: ResultadoEnvio[] = []
@@ -244,41 +273,60 @@ export async function processarIniciarViagem(
       confirmacaoId = confNova.id
     }
 
-    // Monta mensagem
+    // Monta mensagem em TEXTO PURO com as opções numeradas no corpo.
+    // Decisão arquitetural: trocamos sendList por sendText porque o Baileys
+    // (servidor Evolution) tem bugs intermitentes na codificação de mensagens
+    // interativas ("TypeError: this.isZero is not a function"), e o WhatsApp
+    // restringe cada vez mais botões/listas para APIs não-oficiais. Texto
+    // puro funciona em qualquer versão e nunca é bloqueado.
     const cabecalho = aplicarVariaveis(
       template.cabecalho,
       pax.nome_completo,
       dataFmt,
+      saudacao,
     )
-    const rodape = aplicarVariaveis(template.rodape, pax.nome_completo, dataFmt)
-    const titulo = `Van Escolar — ${rota.nome}`
+    const rodape = aplicarVariaveis(
+      template.rodape,
+      pax.nome_completo,
+      dataFmt,
+      saudacao,
+    )
 
-    const rows: OpcaoLista[] = template.opcoes.map((o) => ({
-      title: o.texto_exibido,
-      description: `${pax.nome_completo} — ${o.texto_exibido}`,
-      rowId: `${o.numero}_${confirmacaoId}`,
-    }))
+    const corpoLegivel = [
+      cabecalho,
+      '',
+      'Responda com o número da opção desejada:',
+      ...template.opcoes.map((o) => `${o.numero} - ${o.texto_exibido}`),
+      '',
+      rodape,
+    ].join('\n')
 
     let resp: EvolutionResposta | null = null
     let envioErro: string | null = null
     try {
-      resp = await evolutionEnviarLista(
-        pax.telefone_responsavel,
-        titulo,
-        cabecalho,
-        rodape,
-        rows,
+      resp = await evolutionEnviarTexto(pax.telefone_responsavel, corpoLegivel)
+      console.log(
+        '[processarIniciarViagem] sendText OK',
+        JSON.stringify({
+          passageiro: pax.nome_completo,
+          telefone: pax.telefone_responsavel,
+          rota: rota.nome,
+          whatsapp_message_id: resp?.key?.id ?? null,
+        }),
       )
     } catch (e) {
       envioErro = e instanceof Error ? e.message : String(e)
+      console.error(
+        '[processarIniciarViagem] sendText FALHOU',
+        JSON.stringify({
+          passageiro: pax.nome_completo,
+          telefone: pax.telefone_responsavel,
+          rota: rota.nome,
+          rota_id: rotaId,
+          erro: envioErro,
+        }),
+      )
     }
-
-    // Conteúdo legível para o log
-    const corpoLegivel = [
-      cabecalho,
-      ...template.opcoes.map((o) => `${o.numero} - ${o.texto_exibido}`),
-      rodape,
-    ].join('\n')
 
     if (resp && !envioErro) {
       await supabase.from('mensagens').insert({

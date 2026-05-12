@@ -103,11 +103,22 @@ export function DashboardScreen() {
   const handleIniciarViagem = async (rotaId: string) => {
     setRotaIniciandoId(rotaId);
     try {
-      // 1) Validação de pré-requisitos: ponto de saída, destinos e passageiros
-      // ativos. Falha → toast e abortamos antes de abrir qualquer aba.
+      // 1) Validação de pré-requisitos: ponto de saída, destinos, passageiros
+      // ativos, e (se houver viagem do dia) se ainda sobra alguém indo.
+      // Qualquer falha → toast e abortamos antes de abrir qualquer aba.
       const validacao = await validarRotaParaInicio(rotaId);
       if (!validacao.valido) {
-        toast.error(validacao.erro ?? 'Rota inválida para iniciar viagem.');
+        // Cenário "todos responderam Não vai" não é erro do motorista —
+        // é o sistema fazendo o favor de poupar uma viagem perdida.
+        // Mostra como toast informativo (neutro) em vez de erro vermelho.
+        if (validacao.codigo === 'todos_nao_vao') {
+          toast(validacao.erro ?? 'Nenhum aluno embarca hoje nesta rota.', {
+            description: 'Os responsáveis responderam "Não vai hoje" (opção 4) para todos. Não é necessário iniciar a viagem.',
+            duration: 6000,
+          });
+        } else {
+          toast.error(validacao.erro ?? 'Rota inválida para iniciar viagem.');
+        }
         return;
       }
 

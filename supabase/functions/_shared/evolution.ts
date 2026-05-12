@@ -225,13 +225,15 @@ export async function evolutionEnviarLista(
   rodape: string,
   rows: OpcaoLista[],
 ): Promise<EvolutionResposta> {
+  // Evolution v2 mudou o nome do campo: antes era `values`, agora é `sections`.
+  // Confirmado via 400 Bad Request: "instance requires property sections".
   return await chamar(`/message/sendList/${EVOLUTION_INSTANCE}`, 'POST', {
     number: telefone,
     title: titulo,
     description: descricao,
     buttonText: 'Responder',
     footerText: rodape,
-    values: [
+    sections: [
       {
         title: 'Opções',
         rows,

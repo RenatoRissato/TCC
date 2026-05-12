@@ -28,16 +28,43 @@ interface EdgeFnError {
   detalhes?: unknown;
 }
 
-function extrairErro(error: unknown, fallback = 'Erro inesperado'): EdgeFnError {
-  // supabase.functions.invoke wrapeia o body do erro em error.context
+/**
+ * Extrai a mensagem real de erro retornada pela Edge Function.
+ *
+ * Sem isso, `error.message` traz só a string genérica do SDK
+ * ("Edge Function returned a non-2xx status code") que confunde o usuário.
+ * A mensagem útil está no body JSON da Response em `error.context`.
+ */
+async function extrairErro(error: unknown, fallback = 'Erro inesperado'): Promise<EdgeFnError> {
   if (error && typeof error === 'object') {
-    const ctx = (error as { context?: { json?: () => Promise<EdgeFnError> } }).context;
+    const ctx = (error as { context?: Response }).context;
     if (ctx) {
-      // Não esperamos await aqui — devolvemos uma mensagem padrão e logamos detalhes
-      console.error('Edge function erro:', error);
+      try {
+        const clone = ctx.clone();
+        const contentType = clone.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const body = await clone.json();
+          const mensagem = body?.erro ?? body?.message ?? body?.error;
+          if (mensagem) {
+            return {
+              erro: String(mensagem),
+              codigo: typeof body?.codigo === 'string' ? body.codigo : undefined,
+              detalhes: body?.detalhes,
+            };
+          }
+        } else {
+          const texto = await clone.text();
+          if (texto.trim()) return { erro: texto.trim() };
+        }
+      } catch (parseErr) {
+        console.error('extrairErro: falhou ao parsear response body', parseErr);
+      }
     }
+
     const msg = (error as { message?: string }).message;
-    if (msg) return { erro: msg };
+    if (msg && msg !== 'Edge Function returned a non-2xx status code') {
+      return { erro: msg };
+    }
   }
   return { erro: fallback };
 }
@@ -47,7 +74,7 @@ export async function iniciarViagem(rotaId: string): Promise<IniciarViagemResult
     'iniciar-viagem',
     { body: { rota_id: rotaId } },
   );
-  if (error) throw extrairErro(error, 'Falha ao iniciar viagem');
+  if (error) throw await extrairErro(error, 'Falha ao iniciar viagem');
   if (!data) throw { erro: 'Resposta vazia da função iniciar-viagem' };
   return data;
 }
@@ -57,7 +84,7 @@ export async function finalizarViagem(viagemId: string): Promise<FinalizarViagem
     'finalizar-viagem',
     { body: { viagem_id: viagemId } },
   );
-  if (error) throw extrairErro(error, 'Falha ao finalizar viagem');
+  if (error) throw await extrairErro(error, 'Falha ao finalizar viagem');
   if (!data) throw { erro: 'Resposta vazia da função finalizar-viagem' };
   return data;
 }
@@ -67,7 +94,7 @@ export async function reenviarConfirmacao(confirmacaoId: string): Promise<Reenvi
     'reenviar-confirmacao',
     { body: { confirmacao_id: confirmacaoId } },
   );
-  if (error) throw extrairErro(error, 'Falha ao reenviar confirmação');
+  if (error) throw await extrairErro(error, 'Falha ao reenviar confirmação');
   if (!data) throw { erro: 'Resposta vazia da função reenviar-confirmacao' };
   return data;
 }
