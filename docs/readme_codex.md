@@ -29,10 +29,11 @@ O sistema é voltado para motoristas de vans escolares e tem como objetivo autom
 - Não apagar arquivos sem autorização
 
 ## Documentos importantes
-- docs/PROJETO_historico.md
-- docs/requisitos_resumido.md
-- docs/diagrama_arquitetura.md
-- docs/Edge_Functions.md
-- docs/evolution_api.md
-- docs/banco.md
-- docs/sobreprojeto.md
+- docs/PROJETO_historico.md — fases do projeto e decisões arquiteturais (incluindo a Fase 15 que cobre o fluxo real de WhatsApp, cron multi-pass e status UI unificado)
+- docs/requisitos_resumido.md — regras de negócio (RN66+ cobrem cron multi-pass, RN71 cobre `{saudacao}`, RN72 cobre status UI unificado)
+- docs/diagrama_arquitetura.md — fluxo principal (sendText, cron multi-pass)
+- docs/Edge_Functions.md — todas as 13 Edge Functions, payloads, códigos de erro
+- docs/evolution_api.md — endpoints da Evolution (sendText como padrão; sendList legado documentado)
+- docs/banco.md — schema, histórico de migrations, regra `confirmado + nao_vai` ≠ "VAI"
+- docs/Cron_Automacao.md — instalação do `pg_cron` + cenários multi-pass
+- docs/sobreprojeto.md — visão geral, variáveis disponíveis, estado atual

@@ -8,28 +8,30 @@ O frontend chama as funções via `supabase.functions.invoke('nome-da-funcao', {
 
 ---
 
-## Estrutura de arquivos a criar
+## Estrutura de arquivos
 
 ```
 supabase/functions/
 ├── _shared/
 │   ├── cors.ts               → headers CORS reutilizáveis
+│   ├── responses.ts          → helpers `ok()`, `erroCliente()`, `erroServidor()`
+│   ├── auth.ts               → JWT helper + criarClienteUsuario / criarClienteServico
 │   ├── evolution.ts          → cliente HTTP da Evolution API
-│   └── auth.ts               → helper para validar JWT e buscar motorista
-├── criar-perfil-motorista/
-│   └── index.ts              → chamada após primeiro login
-├── iniciar-viagem/
-│   └── index.ts              → cria viagem + dispara WhatsApp
-├── finalizar-viagem/
-│   └── index.ts              → finaliza viagem + popula histórico
-├── webhook-evolution/
-│   └── index.ts              → recebe respostas do WhatsApp
-├── enviar-mensagem/
-│   └── index.ts              → envio manual avulso
-├── reenviar-confirmacao/
-│   └── index.ts              → reenvia mensagem para quem não respondeu
-└── automacao-diaria/
-    └── index.ts              → cron job de envio automático
+│   └── viagem.ts             → processarIniciarViagem + helpers compartilhados
+│                                (aplicarVariaveis, obterSaudacaoBrasil)
+├── criar-perfil-motorista/   → chamada após primeiro login
+├── iniciar-viagem/           → cria viagem + dispara mensagens
+├── finalizar-viagem/         → finaliza viagem + popula histórico
+├── webhook-evolution/        → recebe respostas + eventos de conexão do WhatsApp
+├── enviar-mensagem/          → envio manual avulso
+├── reenviar-confirmacao/     → reenvia mensagem para quem não respondeu
+├── automacao-diaria/         → cron job multi-pass (envio inicial + reenvio)
+├── qr-code-whatsapp/         → gera/retorna QR Code da instância
+├── status-whatsapp/          → polling de status (atualiza instancias_whatsapp)
+├── verificar-whatsapp/       → snapshot rápido do estado da Evolution
+├── desconectar-whatsapp/     → logout resiliente (força local mesmo se Evolution recusar)
+├── registrar-webhook/        → registra a URL do webhook na Evolution (idempotente)
+└── otimizar-sequencia-passageiros/ → reordena passageiros via algoritmo
 ```
 
 ---
@@ -43,9 +45,10 @@ Injetadas automaticamente pelo Supabase — não precisam ser configuradas:
 
 Devem ser configuradas via `supabase secrets set`:
 - `EVOLUTION_API_URL` — URL base da Evolution API (ex: https://evolution.railway.app)
-- `EVOLUTION_API_KEY` — chave de acesso da Evolution API
+- `EVOLUTION_API_KEY` — chave de acesso da Evolution API (token da instância, não a chave global)
 - `EVOLUTION_INSTANCE_NAME` — nome da instância configurada na Evolution API
 - `WEBHOOK_SECRET` — segredo para validar que o webhook veio da Evolution API
+- `CRON_SECRET` — segredo para o cron job `pg_cron` chamar `automacao-diaria`
 
 ---
 
@@ -176,13 +179,18 @@ Helper que extrai e valida o motorista da requisição.
 5. Insere em `listas_diarias` com `viagem_id`
 6. Busca todos os passageiros `ativos` da rota, ordenados por `ordem_na_rota`
 7. Para cada passageiro:
-   - Insere em `confirmacoes` com `viagem_id`, `passageiro_id`, `status = 'pendente'`
+   - Insere/recupera em `confirmacoes` com `viagem_id`, `passageiro_id`, `status = 'pendente'`
    - Busca o template ativo do motorista e as opções de resposta ativas
-   - Monta o texto da mensagem usando `cabecalho` + nome do passageiro + opções numeradas + `rodape`
-   - Chama `evolutionEnviarLista()` com `rowId` no formato `{numero}_{confirmacao_id}` para cada opção
-   - Se o envio der erro, registra em `mensagens` com `status_envio = 'falha'` e continua para o próximo passageiro
+   - Aplica variáveis `{nome_passageiro}`, `{data_formatada}` e `{saudacao}` no cabeçalho e rodapé
+   - Monta o corpo TEXTO PURO (sendText) com as opções numeradas no corpo — **não** usa mais `sendList`/`evolutionEnviarLista` (decisão arquitetural: Baileys tem bugs em mensagens de lista; texto puro nunca é bloqueado pelo WhatsApp)
+   - Chama `evolutionEnviarTexto(telefone, corpo)`
+   - Se o envio der erro, registra em `mensagens` com `status_envio = 'falha'` e segue para o próximo passageiro (log explícito via `console.error '[processarIniciarViagem] sendText FALHOU'`)
    - Se o envio der certo, insere em `mensagens` com `tipo = 'confirmacao_diaria'`, `status_envio = 'enviada'`, `direcao = 'saida'`, `whatsapp_message_id` retornado pela Evolution API
-8. Retorna o resumo
+8. Cria notificação `viagem_iniciada` para o motorista (primeira vez no dia)
+9. Retorna o resumo
+
+A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
+`automacao-diaria` (cron) sem duplicação.
 
 **Retorna:**
 ```json
@@ -239,47 +247,42 @@ Helper que extrai e valida o motorista da requisição.
 
 ## Função: webhook-evolution
 
-**Quando é chamada:** Evolution API faz POST nessa URL quando um responsável responde no WhatsApp.
+**Quando é chamada:** Evolution API faz POST nessa URL quando recebe uma resposta no WhatsApp **e** quando muda o estado da conexão (QR Code / open / close).
 
 **Autenticação:** NÃO usa JWT. Valida o header `x-webhook-secret` contra `WEBHOOK_SECRET`.
 
 **URL configurada na Evolution API:**
 `https://SEU_PROJECT_ID.supabase.co/functions/v1/webhook-evolution`
 
-**Recebe no body:** payload padrão da Evolution API (evento `messages.upsert`).
+**Eventos tratados:**
+- `messages.upsert` — resposta do responsável (fluxo de confirmação)
+- `qrcode.updated` — Evolution emitiu novo QR; marca `status_conexao = 'aguardando_qr'`
+- `connection.update` — `state=open` marca `conectado` + persiste `numero_conta`/`nome_conta_wa` (extraídos do payload); `state=close|refused` marca `desconectado`; `connecting` marca `conectando`
 
-**O que faz:**
-1. Valida que `req.headers.get('x-webhook-secret') === WEBHOOK_SECRET` — se não, retorna 401
-2. Extrai o campo `event` do payload — se não for `messages.upsert`, retorna 200 com `{ ignorado: true }`
-3. Verifica se a mensagem é do tipo `listResponseMessage` — se não for, ignora
-4. Extrai o `selectedRowId` da resposta — formato esperado: `{numero}_{confirmacao_id}` (ex: `1_uuid-da-confirmacao`)
-5. Separa o número e o `confirmacao_id` pelo underscore
-6. Busca a confirmação — se não encontrar, retorna 404
-7. Se o status já não for `pendente`, ignora (evita processamento duplicado)
-8. Mapeia o número para o `tipo_confirmacao`:
+**O que faz para `messages.upsert`:**
+1. Valida `x-webhook-secret`; se inválido retorna 401
+2. Ignora mensagens enviadas pelo próprio bot (`data.key.fromMe === true`)
+3. Tenta extrair o "número de opção" de **duas fontes**, nesta ordem:
+   - **Texto puro** com dígito 1-4 no início — `data.message.conversation` ou `data.message.extendedTextMessage.text` (fluxo atual: o bot envia `sendText` com opções numeradas no corpo, o pai responde "1", "2", "1 - Ida e volta" etc.). Regex: `^([1-4])\b`
+   - **`listResponseMessage`** com `selectedRowId` no formato legado `{numero}_{confirmacao_id}` — mantido por compatibilidade, mas o sistema não envia mais via `sendList`
+4. Mapeia o número para o `tipo_confirmacao`:
    - `1` → `ida_e_volta`
    - `2` → `somente_ida`
    - `3` → `somente_volta`
    - `4` → `nao_vai`
-9. Atualiza `confirmacoes` com `status = 'confirmado'`, `tipo_confirmacao`, `origem = 'whatsapp'`, `respondida_em = now()`
-10. Insere em `mensagens` com `tipo = 'resposta_confirmacao'`, `direcao = 'entrada'`, o conteúdo da resposta e o `whatsapp_message_id`
-11. Envia mensagem de confirmação de volta para o responsável via `evolutionEnviarTexto()` — texto diferente conforme `tipo_confirmacao`:
+5. **Resolve qual confirmação atualizar:**
+   - Se veio do listResponseMessage, usa o `confirmacao_id` embutido no `rowId`
+   - Se veio do texto puro, busca o passageiro pelo telefone do remetente e pega a **última confirmação pendente** dele
+6. Se o status já não for `pendente`, ignora (evita processamento duplicado)
+7. Atualiza `confirmacoes` com `status = 'confirmado'`, `tipo_confirmacao`, `origem = 'whatsapp'`, `respondida_em = now()`
+8. Cria notificação `whatsapp_resposta` para o motorista
+9. Insere em `mensagens` com `tipo = 'resposta_confirmacao'`, `direcao = 'entrada'`
+10. Envia mensagem de retorno automática:
     - `ida_e_volta` / `somente_ida` / `somente_volta` → "Confirmado! {nome} estará aguardando a van. Bom dia!"
     - `nao_vai` → "Entendido! {nome} não vai hoje. Obrigado por avisar."
-12. Insere essa mensagem de retorno em `mensagens` com `direcao = 'saida'`
-13. Usa `SUPABASE_SERVICE_ROLE_KEY` para todas as operações no banco (sem restrição de RLS, pois não há JWT de usuário)
+11. Tudo usa `SUPABASE_SERVICE_ROLE_KEY` (sem JWT do usuário)
 
-**Retorna:**
-```json
-{
-  "sucesso": true,
-  "confirmacao_id": "uuid",
-  "status": "confirmado",
-  "tipo": "ida_e_volta"
-}
-```
-
-**Importante:** O Supabase Realtime notifica o frontend automaticamente quando `confirmacoes` é atualizado — nenhuma lógica extra necessária.
+**Importante:** O Supabase Realtime notifica o frontend automaticamente quando `confirmacoes` ou `instancias_whatsapp` são atualizadas — nenhuma lógica extra necessária.
 
 ---
 
@@ -353,53 +356,53 @@ Helper que extrai e valida o motorista da requisição.
 
 ## Função: automacao-diaria
 
-**Quando é chamada:** cron job — chamada automaticamente pelo Supabase no horário configurado pelo motorista.
+**Quando é chamada:** cron job — chamada automaticamente pelo Supabase **a cada minuto** (o filtro de horário fica dentro da função).
 
-**Autenticação:** NÃO usa JWT. Chamada interna via `SUPABASE_SERVICE_ROLE_KEY`.
+**Autenticação:** NÃO usa JWT. Valida `x-cron-secret`.
 
-**Como configurar o cron no Supabase:**
+**Como configurar o cron:** ver [`docs/Cron_Automacao.md`](Cron_Automacao.md) e o arquivo cole-no-Dashboard `supabase/sql/cron_automacao.sql`. Resumo: `pg_cron` + `pg_net.http_post` com schedule `* * * * *` (todo minuto).
 
-O job deve rodar a cada 5 minutos. A funÃ§Ã£o filtra internamente o horÃ¡rio de envio de cada motorista e tambÃ©m aplica `horario_limite_resposta`, marcando pendentes como ausentes quando o limite passa.
-
-O projeto versiona a migration `supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql`. Ela tenta ler o secret `smartroutes_cron_secret` do Supabase Vault. Se o secret ainda nÃ£o existir, rode uma vez:
-
-```sql
-select public.configurar_cron_automacao_diaria_5min('SEU_CRON_SECRET');
+**Body opcional (testes manuais):**
+```json
+{
+  "ignorar_horario": true,
+  "motorista_id": "uuid-do-motorista"
+}
 ```
 
-SQL manual equivalente:
-```sql
-select cron.schedule(
-  'automacao-diaria-smartroute',
-  '*/5 * * * *',
-  $$
-  select net.http_post(
-    url := 'https://SEU_PROJECT_ID.supabase.co/functions/v1/automacao-diaria',
-    headers := '{"Content-Type": "application/json", "x-cron-secret": "SEU_CRON_SECRET"}'::jsonb,
-    body := '{}'::jsonb
-  )
-  $$
-);
-```
+- `motorista_id` restringe o disparo a um único motorista
+- `ignorar_horario: true` exige `motorista_id` (salvaguarda contra disparo em massa); sem ele retorna 400 `MOTORISTA_ID_OBRIGATORIO`
 
 **O que faz:**
 1. Valida o header `x-cron-secret`
-2. Busca todos os motoristas com `envio_automatico_ativo = true` em `configuracoes_automacao`
-3. Verifica se o `horario_envio_automatico` corresponde à hora atual (tolerância de ±5 minutos)
+2. Busca todos os motoristas com `envio_automatico_ativo = true` em `configuracoes_automacao` (com `instancias_whatsapp` joined)
+3. Aplica filtro `motorista_id` se passado
 4. Para cada motorista elegível:
-   - Busca todas as rotas ativas do motorista
-   - Para cada rota, verifica se já existe uma viagem para hoje — se sim, pula
-   - Chama a lógica de `iniciar-viagem` internamente (sem HTTP, chamada direta da função)
-5. Registra sucesso ou falha em `log_mensagens` para cada motorista processado
+   - Se passou do `horario_limite_resposta`, marca pendentes do dia como `ausente` **antes** do loop de rotas
+   - Verifica se a hora atual em `America/Sao_Paulo` bate **exatamente** com `horario_envio_automatico` (comparação `hh:mm === hh:mm`, sem janela de tolerância). Se não bate e não veio `ignorar_horario`, registra `cenario=fora_da_janela` e segue
+   - Para cada rota ativa, decide o **cenário**:
+     - **Cenário 1 — rota nova**: não existe viagem hoje → chama `processarIniciarViagem` (cria viagem + confirmações pendentes + envia para todos)
+     - **Cenário 2 — viagem existe**: chama `processarReenvioPendentes` que busca confirmações `pendente` e reenvia apenas para esses (incrementa `mensagens.tentativas`)
+     - **Cenário 2b — sem pendentes**: viagem existe mas todas confirmações já foram respondidas → encerra silenciosamente
+5. Cada cenário emite log nominal: `cenario=rota_iniciada`, `cenario=reenvio_pendentes`, `cenario=sem_pendentes`, `cenario=fora_da_janela`
+6. Acumula contadores por motorista e devolve em `detalhes[]`
 
 **Retorna:**
 ```json
 {
-  "processados": 3,
+  "processados": 1,
   "com_erro": 0,
-  "detalhes": [
-    { "motorista_id": "uuid", "rotas_iniciadas": 2 }
-  ]
+  "timezone": "America/Sao_Paulo",
+  "horario_atual_local": "07:00",
+  "data_local": "2026-05-12",
+  "detalhes": [{
+    "motorista_id": "uuid",
+    "rotas_iniciadas": 1,
+    "pendentes_reenviados": 3,
+    "rotas_sem_pendentes": 2,
+    "pendentes_marcados_ausentes": 0,
+    "erros": []
+  }]
 }
 ```
 
@@ -438,6 +441,73 @@ Códigos de erro padronizados:
 - `CONFIRMACAO_JA_RESPONDIDA` — tentativa de reenviar para quem já respondeu
 - `WHATSAPP_DESCONECTADO` — instância não está conectada
 - `WEBHOOK_INVALIDO` — secret do webhook não confere
+- `MOTORISTA_ID_OBRIGATORIO` — `ignorar_horario=true` sem `motorista_id` (salvaguarda do cron)
+- `INSTANCIA_NAO_ENCONTRADA` — `instancias_whatsapp` ausente para o motorista
+- `EVOLUTION_SEM_QR` — `instance/connect` não retornou QR Code
+- `EVOLUTION_LOGOUT_FALHOU` — Evolution recusou logout (mas a função força desconexão local mesmo assim)
+- `SECRETS_AUSENTES` — `SUPABASE_URL`/`WEBHOOK_SECRET` faltando nos secrets
+
+---
+
+## Função: qr-code-whatsapp
+
+**Quando é chamada:** motorista clica em "Conectar WhatsApp" na tela WhatsApp.
+
+**Autenticação:** JWT obrigatório.
+
+**O que faz:**
+1. Se a instância já está `open` na Evolution, atualiza `instancias_whatsapp` para `conectado` e responde `{ ja_conectado: true }` (UI fecha o modal e mostra "Conectado")
+2. Caso contrário, chama `GET /instance/connect/{instance}` na Evolution, com até 6 tentativas (intervalo de 2s) — algumas versões do Baileys demoram a emitir QR
+3. Aceita base64 direto ou texto QR (renderiza com `qrcode` se vier só texto)
+4. Atualiza `instancias_whatsapp.status_conexao = 'aguardando_qr'`
+5. Retorna `{ qr: data-url, pairing_code, expira_em_segundos: 60 }`
+
+---
+
+## Função: status-whatsapp
+
+**Quando é chamada:** polling do frontend a cada 3s enquanto o modal de QR está aberto.
+
+**Autenticação:** JWT obrigatório.
+
+**O que faz:**
+1. Lê o `status_conexao` atual de `instancias_whatsapp` (preserva `aguardando_qr` quando Evolution responde estado nulo)
+2. Consulta `instance/fetchInstances` (com fallback para `instance/connectionState`)
+3. Mapeia `state` → `status_conexao` (open → conectado, connecting → conectando, close/refused/null → desconectado)
+4. Upsert em `instancias_whatsapp` com `numero_conta`, `nome_conta_wa`, `data_ultima_conexao` quando conectado
+5. Retorna `{ instancia, conectado, status, evolution_disponivel, erro_evolution }`
+
+---
+
+## Função: verificar-whatsapp
+
+**Quando é chamada:** snapshot rápido do estado da Evolution. Fonte de verdade principal usada pelo polling do QR e pelo botão "Verificar Conexão".
+
+**Autenticação:** JWT obrigatório.
+
+**O que faz:** mesma lógica de mapeamento de `status-whatsapp`, porém otimizado para resposta rápida — usado em hot path (polling 3s). Atualiza `instancias_whatsapp` via service role.
+
+---
+
+## Função: desconectar-whatsapp
+
+**Quando é chamada:** motorista clica no botão de desconectar.
+
+**Autenticação:** JWT obrigatório (POST ou DELETE).
+
+**Comportamento resiliente:** tenta `DELETE /instance/logout/{instance}` na Evolution. **Independente da Evolution responder OK ou erro**, força o estado local para `desconectado` com `numero_conta=null, nome_conta_wa=null`. Se a Evolution falhou, retorna `evolution_aviso` para o frontend mostrar um toast informativo (não erro vermelho).
+
+---
+
+## Função: registrar-webhook
+
+**Quando é chamada:** one-shot pelo motorista (ou via terminal) para registrar/atualizar a URL e os eventos do webhook na Evolution API.
+
+**Autenticação:** JWT obrigatório.
+
+**Body opcional:** `{ "eventos": ["MESSAGES_UPSERT", "QRCODE_UPDATED", "CONNECTION_UPDATE"] }`. Sem body, usa o padrão `EVENTOS_WEBHOOK_PADRAO` exportado por `_shared/evolution.ts` (lista exatamente esses 3 eventos).
+
+**O que faz:** chama `POST /webhook/set/{instance}` na Evolution com `webhook_by_events: true`, `webhook_base64: false`, URL apontando para `webhook-evolution` e header `x-webhook-secret`.
 
 ---
 
@@ -521,10 +591,16 @@ export function useConfirmacoes(viagemId: string) {
 
 | Função | Chamada por | Autenticação | Propósito |
 |---|---|---|---|
-| `criar-perfil-motorista` | Frontend (primeiro login) | JWT | Cria motorista + dados iniciais |
-| `iniciar-viagem` | Frontend (botão iniciar) | JWT | Cria viagem + dispara WhatsApp |
+| `criar-perfil-motorista` | Frontend (primeiro login) | JWT | Cria motorista + dados iniciais (instância, template, opções, 3 rotas padrão) |
+| `iniciar-viagem` | Frontend (botão iniciar) | JWT | Cria viagem + envia mensagens via sendText |
 | `finalizar-viagem` | Frontend (botão finalizar) | JWT | Finaliza viagem + marca ausentes |
-| `webhook-evolution` | Evolution API | Webhook secret | Processa respostas do WhatsApp |
+| `webhook-evolution` | Evolution API | Webhook secret | Processa respostas (texto/listResponse) + eventos de conexão |
 | `enviar-mensagem` | Frontend (envio manual) | JWT | Mensagem avulsa para responsável |
-| `reenviar-confirmacao` | Frontend (botão reenviar) | JWT | Reenvia para quem não respondeu |
-| `automacao-diaria` | Cron job Supabase | Cron secret | Inicia rotas automaticamente |
+| `reenviar-confirmacao` | Frontend (botão reenviar) | JWT | Reenvia mensagem para confirmação ainda pendente |
+| `automacao-diaria` | Cron pg_cron | Cron secret | Multi-pass: cria viagem nova OU reenvia só pendentes |
+| `qr-code-whatsapp` | Frontend (Conectar WhatsApp) | JWT | Gera/retorna QR Code e marca `aguardando_qr` |
+| `status-whatsapp` | Frontend (polling) | JWT | Polling do estado da Evolution, atualiza `instancias_whatsapp` |
+| `verificar-whatsapp` | Frontend (botão Verificar) | JWT | Snapshot rápido do estado da conexão |
+| `desconectar-whatsapp` | Frontend (botão Desconectar) | JWT | Logout resiliente (força local mesmo se Evolution falhar) |
+| `registrar-webhook` | One-shot do motorista | JWT | (Re)registra webhook na Evolution com 3 eventos |
+| `otimizar-sequencia-passageiros` | Frontend (botão Otimizar) | JWT | Reordena `ordem_na_rota` via algoritmo |

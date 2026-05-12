@@ -3,16 +3,50 @@
 ## O que faz
 
 A Edge Function `automacao-diaria` precisa ser disparada repetidamente para
-verificar quais motoristas têm horário de envio automático configurado para o
-momento atual. A função tem timezone `America/Sao_Paulo` e janela de tolerância
-de ±5 minutos, então rodar **uma vez por minuto** é o que garante que cada
-horário cadastrado caia dentro de pelo menos uma execução.
+verificar quais motoristas têm horário de envio automático para o momento
+atual. A função usa timezone `America/Sao_Paulo` e **comparação exata** de
+hora:minuto (sem tolerância), então o cron deve rodar **uma vez por minuto** —
+assim cada horário cadastrado é coberto exatamente quando o relógio bate.
 
 A função sozinha já filtra:
 - motoristas com `configuracoes_automacao.envio_automatico_ativo = false` → ignora
 - rotas com `status != 'ativa'` → ignora
-- viagens já criadas para o dia → não duplica
 - motoristas sem `horario_envio_automatico` → ignora
+- viagens já criadas para o dia → **NÃO duplica e ainda reenvia apenas para
+  passageiros com confirmação pendente** (multi-pass; ver "Cenários" abaixo)
+
+## Cenários cobertos pela função
+
+A `automacao-diaria` opera em três cenários conforme o estado da rota no dia:
+
+| Estado da rota hoje | O que a função faz | Log |
+|---|---|---|
+| Sem viagem hoje | Cria viagem + envia mensagem para **todos** os passageiros ativos | `cenario=rota_iniciada` |
+| Viagem existe, pendentes > 0 | Reenvia mensagem **só** para confirmações `pendente` | `cenario=reenvio_pendentes` |
+| Viagem existe, todos respondidos | Não faz nada | `cenario=sem_pendentes` |
+| Horário não bate com o configurado | Não roda o loop da rota | `cenario=fora_da_janela` |
+
+Após passar do `horario_limite_resposta`, pendentes são marcados como
+**ausentes ANTES** do loop. O cenário 2 então acha 0 pendentes e encerra
+silenciosamente — após o limite, ninguém recebe reenvio.
+
+## Parâmetros opcionais no body
+
+O cron padrão chama sem body (processa todos os motoristas filtrando por
+horário). Para testes manuais ou disparos restritos:
+
+```json
+{
+  "ignorar_horario": true,
+  "motorista_id": "uuid-do-motorista"
+}
+```
+
+- **`motorista_id`** — restringe o disparo a um único motorista. Útil quando
+  o app dispara em nome do usuário logado (multi-tenant).
+- **`ignorar_horario: true`** — pula a checagem de hora exata. **Exige
+  `motorista_id`** — sem ele, retorna 400 `MOTORISTA_ID_OBRIGATORIO`. É uma
+  salvaguarda contra disparo em massa acidental durante testes.
 
 ## Como ativar (2 minutos)
 
@@ -48,8 +82,33 @@ order by start_time desc
 limit 10;
 ```
 
-`status = 'succeeded'` significa que o `pg_net.http_post` foi disparado. Para ver
-o que a Edge Function fez, abra **Edge Functions → automacao-diaria → Logs**.
+`status = 'succeeded'` significa que o `pg_net.http_post` foi disparado. Para
+ver o que a Edge Function fez, abra **Edge Functions → automacao-diaria →
+Logs**. As linhas com prefixo `[automacao-diaria]` mostram qual cenário foi
+executado em cada chamada (rota_iniciada, reenvio_pendentes, sem_pendentes,
+fora_da_janela).
+
+## Forma da resposta
+
+A Edge Function retorna JSON com contadores por motorista:
+
+```json
+{
+  "processados": 1,
+  "com_erro": 0,
+  "timezone": "America/Sao_Paulo",
+  "horario_atual_local": "07:00",
+  "data_local": "2026-05-12",
+  "detalhes": [{
+    "motorista_id": "f9be...",
+    "rotas_iniciadas": 1,
+    "pendentes_reenviados": 3,
+    "rotas_sem_pendentes": 2,
+    "pendentes_marcados_ausentes": 0,
+    "erros": []
+  }]
+}
+```
 
 ## Rollback
 

@@ -10,17 +10,17 @@ Este arquivo é a referência de requisitos para implementação. Leia antes de 
 
 | Módulo | RF | Prioridade | Complexidade | Status |
 |---|---|---|---|---|
-| Autenticação | RF01, RF02 | Alta | Média | Implementar |
-| Gestão de rotas | RF18 | Alta | Baixa | Implementar |
-| Gestão de passageiros | RF03, RF04, RF05, RF06, RF17 | Alta | Baixa/Média | Implementar |
-| Lista diária | RF07, RF08 | Alta | Alta | Implementar |
-| Templates de mensagem | RF09 | Alta | Média | Implementar |
-| Integração WhatsApp | RF10, RF11, RF12 | Alta/Média | Alta | Implementar via Edge Functions |
-| Automação de envio | RF19 | Alta | Alta | Implementar via cron job Supabase |
-| Visualização de rota | RF13 | Média | Média | Implementar |
-| Histórico de presenças | RF14 | Média | Média | Opcional |
-| Dashboard | RF15 | Média | Baixa | Opcional |
-| Logout | RF16 | Alta | Baixa | Implementar |
+| Autenticação | RF01, RF02 | Alta | Média | ✅ Implementado |
+| Gestão de rotas | RF18 | Alta | Baixa | ✅ Implementado |
+| Gestão de passageiros | RF03, RF04, RF05, RF06, RF17 | Alta | Baixa/Média | ✅ Implementado |
+| Lista diária | RF07, RF08 | Alta | Alta | ✅ Implementado |
+| Templates de mensagem | RF09 | Alta | Média | ✅ Implementado (com `{saudacao}`) |
+| Integração WhatsApp | RF10, RF11, RF12 | Alta/Média | Alta | ✅ Implementado (QR real, sendText, webhook completo) |
+| Automação de envio | RF19 | Alta | Alta | ✅ Implementado (cron multi-pass, horário exato) |
+| Visualização de rota | RF13 | Média | Média | ✅ Implementado (LiveTripScreen + Maps) |
+| Histórico de presenças | RF14 | Média | Média | 🟡 Dados em `historico_presenca`, falta tela |
+| Dashboard | RF15 | Média | Baixa | ✅ Implementado |
+| Logout | RF16 | Alta | Baixa | ✅ Implementado |
 
 ---
 
@@ -66,18 +66,28 @@ Este arquivo é a referência de requisitos para implementação. Leia antes de 
 - **RN24** — Cada motorista tem seu próprio template (criado automaticamente na conta)
 - **RN25** — Template padrão aplicado automaticamente ao criar conta (via `criar_dados_iniciais_motorista`)
 - **RN26** — As 4 opções do template sempre existem. Não podem ser removidas, apenas renomeadas
-- **RN27** — Substituir `{nome_passageiro}` e `{data_formatada}` antes de enviar qualquer mensagem
+- **RN27** — Substituir `{saudacao}`, `{nome_passageiro}` e `{data_formatada}` antes de enviar qualquer mensagem. A substituição acontece **na Edge Function**, nunca no frontend
 - **RN28** — Alterações no template afetam apenas mensagens enviadas a partir daquele momento
+- **RN71** — `{saudacao}` é calculada conforme horário em `America/Sao_Paulo`:
+  00h–11h59 → "Bom dia"; 12h–17h59 → "Boa tarde"; 18h–23h59 → "Boa noite".
+  Calculada **uma vez** por viagem para todos os passageiros receberem a mesma
 
-**Template padrão:**
+**Template padrão (cabeçalho):**
 ```
-Boa noite, {nome_passageiro}!
-Confirme o transporte escolar de amanhã ({data_formatada}):
-1 - Vou na ida e na volta
-2 - Vou apenas na ida
-3 - Vou apenas na volta
-4 - Não vou hoje
-Por favor, responda até 20h.
+{saudacao}! Confirmação de presença na van escolar para hoje.
+```
+
+**Corpo final montado na Edge Function:**
+```
+Bom dia! Confirmação de presença na van escolar para hoje.
+
+Responda com o número da opção desejada:
+1 - Ida e volta
+2 - Somente ida
+3 - Somente volta
+4 - Não vai hoje
+
+Aguardo sua resposta. Obrigado!
 ```
 
 ### WhatsApp e mensagens
@@ -93,27 +103,53 @@ Por favor, responda até 20h.
 - **RN46** — Uma instância WhatsApp por motorista
 - **RN47** — Instância persistida pela Evolution API (não precisa reconectar ao reiniciar)
 
-### Mensagem de lista interativa (sendList)
+### Mensagem de confirmação (sendText puro)
 
-- **Usar `sendList` da Evolution API** — não enviar texto simples com números
-- Responsável **toca** em uma opção da lista — não precisa digitar nada
-- Resposta identificada pelo `rowId` no formato `{numero}_{confirmacao_id}` (ex: `1_uuid-da-confirmacao`)
-- Ao receber webhook, extrair o `rowId`, separar no underscore e mapear:
+Decisão arquitetural: o sistema migrou de `sendList` para `sendText` porque o
+Baileys/Evolution v2 ficou instável com mensagens de lista (bugs `isZero` e
+restrição do WhatsApp para APIs não-Business). Detalhes em
+[docs/evolution_api.md](evolution_api.md#3-enviar-confirmação-de-presença-texto-puro).
+
+- **Usar `sendText` da Evolution API** com as 4 opções numeradas no corpo
+- Responsável **digita** o número da opção (1, 2, 3 ou 4)
+- Webhook aceita variações: `"1"`, `"1 - Ida e volta"`, `"1."`, etc.
+  Regex: `^([1-4])\b` no início do texto trimado
+- Ao receber webhook, mapear o dígito:
   - `1` → `ida_e_volta`
   - `2` → `somente_ida`
   - `3` → `somente_volta`
   - `4` → `nao_vai`
+- A confirmação a atualizar é resolvida pelo **telefone do remetente** →
+  passageiro → última confirmação `pendente` daquele passageiro
+- O webhook ainda aceita `listResponseMessage` legado (com `rowId` no
+  formato `{numero}_{confirmacao_id}`) caso `sendList` seja reativado no
+  futuro
 - **RN43** — Uma mensagem de confirmação de retorno por resposta válida recebida
 - **RN44** — Respostas após o horário limite são aceitas mas geram alerta
+- **RN72** — `confirmado + nao_vai` é semanticamente igual a `ausente` na UI:
+  ambos viram `nao_vai_hoje` via `statusUIDaConfirmacao()` e o aluno é
+  excluído do trajeto do Google Maps
 
 ### Automação de envio (diferencial principal)
 
-- **RN66** — Cada rota tem seu próprio horário de envio configurado em `configuracoes_automacao`
+- **RN66** — Cada motorista tem seu próprio `horario_envio_automatico` em
+  `configuracoes_automacao`. O `pg_cron` global dispara a cada minuto e a
+  Edge Function `automacao-diaria` decide quais motoristas processar por
+  comparação **exata** de hora:minuto em `America/Sao_Paulo` (sem janela
+  de tolerância)
 - **RN67** — Horários configuráveis entre 05:00 e 22:00 apenas
 - **RN68** — Envio automático só para passageiros ativos da rota
 - **RN69** — Se WhatsApp desconectado no horário, alertar motorista em vez de falhar silenciosamente
 - **RN70** — Motorista não precisa abrir o app para o envio ocorrer (cron job roda no servidor)
-- Não criar viagem duplicada se já existir uma para aquela rota no dia
+- **RN73** — Cron **multi-pass**: se a viagem do dia ainda não existe →
+  cria + envia para todos. Se já existe → reenvia mensagem apenas para
+  confirmações com `status='pendente'` (não duplica para quem já respondeu)
+- **RN74** — Após `horario_limite_resposta`, pendentes viram `ausente`
+  **antes** do loop de rotas → reenvio não acha ninguém e encerra
+  silenciosamente. Após o limite, ninguém recebe reenvio
+- **RN75** — Salvaguarda contra disparo em massa: quando a UI/teste passa
+  `ignorar_horario=true`, `motorista_id` é obrigatório (400
+  `MOTORISTA_ID_OBRIGATORIO` se ausente)
 
 ### Configuração e monitoramento WhatsApp
 
@@ -210,19 +246,33 @@ Por favor, responda até 20h.
 ## Fluxos principais — sequência de operações
 
 ### Fluxo automático (principal)
-1. Cron job dispara no horário configurado por rota
-2. Edge Function `automacao-diaria` verifica rotas com `envio_automatico_ativo = true`
-3. Para cada rota elegível sem viagem no dia: cria `viagem` + `confirmacoes` (uma por passageiro ativo)
-4. Chama Evolution API com `sendList` para cada passageiro
-5. Responsável toca na opção no WhatsApp
-6. Evolution API chama webhook `webhook-evolution`
-7. Edge Function atualiza `confirmacoes.status` e `tipo_confirmacao`
-8. Supabase Realtime notifica o PWA — lista atualiza ao vivo
+1. Cron `pg_cron` dispara a Edge Function `automacao-diaria` a cada minuto
+2. `automacao-diaria` busca motoristas com `envio_automatico_ativo = true` cuja
+   `horario_envio_automatico` bate **exatamente** com o minuto atual em São Paulo
+3. Para cada rota ativa do motorista:
+   - **Sem viagem hoje**: cria `viagem` + `confirmacoes pendentes` + envia
+     `sendText` para cada passageiro ativo via Evolution API
+   - **Com viagem hoje**: reenvia `sendText` apenas para confirmações
+     `pendente` (cenário multi-pass)
+4. Responsável digita o número da opção no WhatsApp
+5. Evolution API chama webhook `webhook-evolution`
+6. Edge Function identifica passageiro pelo telefone, atualiza
+   `confirmacoes.status` e `tipo_confirmacao`, envia mensagem de retorno automática
+7. Supabase Realtime notifica o PWA — lista atualiza ao vivo
+8. Notificação `whatsapp_resposta` aparece no sino do dashboard
 
 ### Fluxo manual (complementar)
 1. Motorista aperta "Iniciar rota" no PWA
-2. Frontend chama Edge Function `iniciar-viagem`
-3. A partir daqui: mesmo que o fluxo automático (passos 3–8 acima)
+2. Frontend valida via `validarRotaParaInicio` (ponto de saída, destinos,
+   passageiros ativos, e se TODOS ainda não recusaram). Se todos disseram
+   "não vai hoje", bloqueia abrir o Maps e mostra toast informativo
+3. Frontend chama Edge Function `iniciar-viagem`
+4. A partir daqui: mesmo que o fluxo automático (passos 3–8 acima)
+
+### Botão Reenviar manual
+1. Motorista vê passageiro pendente no PassengerCard
+2. Aperta "Reenviar" → `reenviar-confirmacao` faz pre-flight de conexão e
+   reenvia via `sendText` incrementando `mensagens.tentativas`
 
 ### Fallback sem WhatsApp
 1. WhatsApp desconectado → sistema alerta motorista

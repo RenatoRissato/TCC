@@ -49,12 +49,27 @@ Esta é a camada mais importante do ponto de vista de segurança:
 
 O fluxo central do sistema ocorre em seis etapas:
 
-1. **Motorista inicia a rota** no PWA, acionando o botão de início de viagem.
-2. **Edge Function `iniciar-viagem`** é chamada pelo frontend. Ela cria o registro da viagem no banco, busca os passageiros ativos da rota e chama a Evolution API com as credenciais protegidas.
-3. **Evolution API envia a mensagem de lista** para o WhatsApp de cada responsável, com opções numeradas de 1 a 4 para confirmação.
-4. **Responsável responde** tocando em uma das opções na mensagem recebida.
-5. **Edge Function `webhook-evolution`** recebe a resposta via webhook da Evolution API, valida o secret de autenticação e atualiza o status da confirmação no banco de dados.
-6. **Supabase Realtime** notifica o frontend instantaneamente, atualizando a lista de confirmações no PWA do motorista sem necessidade de recarregar a página.
+1. **Motorista inicia a rota** no PWA (manual) **ou** o cron `pg_cron`
+   dispara `automacao-diaria` no horário configurado.
+2. **Edge Function `iniciar-viagem` / `automacao-diaria`** é chamada. Cria o
+   registro da viagem no banco, busca os passageiros ativos da rota e
+   monta a mensagem aplicando as variáveis `{saudacao}`, `{nome_passageiro}`
+   e `{data_formatada}`.
+3. **Evolution API envia mensagem de texto puro** (`sendText`) para o
+   WhatsApp de cada responsável, com as 4 opções numeradas no corpo. A
+   credencial da Evolution fica protegida no servidor.
+4. **Responsável responde** com o dígito 1-4 no WhatsApp (texto livre).
+5. **Edge Function `webhook-evolution`** recebe a resposta via webhook da
+   Evolution API, valida o `x-webhook-secret`, identifica o passageiro
+   pelo telefone do remetente, atualiza `confirmacoes.status` e
+   `tipo_confirmacao`, e envia uma mensagem de retorno automática.
+6. **Supabase Realtime** notifica o frontend instantaneamente, atualizando
+   a lista de confirmações no PWA do motorista e disparando notificação
+   in-app no sino do dashboard.
+
+> Em chamadas subsequentes ao cron no mesmo dia, a `automacao-diaria` não
+> recria a viagem — ela **reenvia apenas para confirmações pendentes**
+> (cenário multi-pass). Quem já respondeu não recebe mensagem duplicada.
 
 ---
 
