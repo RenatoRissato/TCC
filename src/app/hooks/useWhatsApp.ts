@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { listarRotas } from '../services/rotaService';
 import {
   desconectarWhatsApp,
   EstatisticasMensagens,
@@ -18,6 +19,7 @@ import type {
   ConfiguracaoAutomacaoRow,
   InstanciaWhatsAppRow,
   OpcaoRespostaRow,
+  RotaRow,
   TemplateMensagemRow,
 } from '../types/database';
 
@@ -86,6 +88,9 @@ export function useWhatsApp() {
 
   const [envioAutomaticoAtivo, setEnvioAutomaticoAtivo] = useState(false);
   const [horarioEnvioAuto,     setHorarioEnvioAuto]     = useState('');
+  const [routeMode, setRouteMode] = useState<'all' | 'specific'>('all');
+  const [routeId, setRouteId] = useState('');
+  const [rotasAutomacao, setRotasAutomacao] = useState<RotaRow[]>([]);
   const [estatisticas, setEstatisticas] = useState<EstatisticasMensagens | null>(null);
 
   // Hidrata o estado editável a partir dos dados do banco.
@@ -103,6 +108,9 @@ export function useWhatsApp() {
     setConfiguracao(cfg);
     setEnvioAutomaticoAtivo(!!cfg?.envio_automatico_ativo);
     setHorarioEnvioAuto((cfg?.horario_envio_automatico ?? '').slice(0, 5));
+    const modo = cfg?.route_mode === 'specific' ? 'specific' : 'all';
+    setRouteMode(modo);
+    setRouteId(modo === 'specific' ? (cfg?.route_id ?? '') : '');
   }, []);
 
   const carregar = useCallback(async () => {
@@ -150,13 +158,16 @@ export function useWhatsApp() {
       const statsPromise = inst
         ? obterEstatisticasMensagens(inst.id, 7)
         : Promise.resolve(null);
+      const rotasPromise = listarRotas();
 
-      const [cfg, { template: tpl, opcoes }, stats] = await Promise.all([
+      const [cfg, { template: tpl, opcoes }, stats, rotas] = await Promise.all([
         cfgPromise,
         tplPromise,
         statsPromise,
+        rotasPromise,
       ]);
 
+      setRotasAutomacao(rotas);
       aplicarConfigNoEditor(cfg);
       aplicarTemplateNoEditor(tpl, opcoes);
       setEstatisticas(stats);
@@ -205,12 +216,26 @@ export function useWhatsApp() {
       toast.error('Instância WhatsApp não encontrada para salvar.');
       return;
     }
+    if (envioAutomaticoAtivo && routeMode === 'specific' && !routeId) {
+      toast.error('Selecione uma rota para o envio automatico.');
+      return;
+    }
+    if (
+      envioAutomaticoAtivo &&
+      routeMode === 'specific' &&
+      !rotasAutomacao.some((rota) => rota.id === routeId)
+    ) {
+      toast.error('A rota selecionada nao esta mais ativa.');
+      return;
+    }
     setSalvandoConfig(true);
     try {
       const atualizado = await salvarConfiguracaoAutomacao({
         instanciaId: instancia.id,
         envioAutomaticoAtivo,
         horarioEnvioAutomatico: horarioEnvioAuto || null,
+        routeMode,
+        routeId: routeMode === 'specific' ? routeId : null,
       });
       if (atualizado) {
         aplicarConfigNoEditor(atualizado);
@@ -225,6 +250,9 @@ export function useWhatsApp() {
     instancia,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
+    routeMode,
+    routeId,
+    rotasAutomacao,
     aplicarConfigNoEditor,
   ]);
 
@@ -477,10 +505,15 @@ export function useWhatsApp() {
     opcoesEdit,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
+    routeMode,
+    routeId,
+    rotasAutomacao,
     setCabecalhoEdit,
     setRodapeEdit,
     setEnvioAutomaticoAtivo,
     setHorarioEnvioAuto,
+    setRouteMode,
+    setRouteId,
     editarOpcao,
 
     // ações

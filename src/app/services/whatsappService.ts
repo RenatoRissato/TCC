@@ -128,6 +128,8 @@ export interface SalvarConfiguracaoInput {
   instanciaId: string;
   envioAutomaticoAtivo: boolean;
   horarioEnvioAutomatico: string | null;
+  routeMode: 'all' | 'specific';
+  routeId: string | null;
 }
 
 export async function salvarConfiguracaoAutomacao(
@@ -139,6 +141,8 @@ export async function salvarConfiguracaoAutomacao(
       envio_automatico_ativo:    input.envioAutomaticoAtivo,
       horario_envio_automatico:  input.horarioEnvioAutomatico,
       horario_limite_resposta:   null,
+      route_mode:                input.routeMode,
+      route_id:                  input.routeMode === 'specific' ? input.routeId : null,
     })
     .eq('instancia_whatsapp_id', input.instanciaId)
     .select('*')

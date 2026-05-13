@@ -44,6 +44,8 @@ export interface ConfiguracaoAutomacaoRow {
   envio_automatico_ativo: boolean;
   horario_envio_automatico: string | null;
   horario_limite_resposta: string | null;
+  route_mode: 'all' | 'specific';
+  route_id: string | null;
   saudacao_personalizada: string | null;
   max_tentativas_envio: number;
   intervalo_tentativas: number;

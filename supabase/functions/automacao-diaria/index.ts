@@ -307,7 +307,7 @@ Deno.serve(async (req: Request) => {
     const { data: configs, error: cfgErr } = await supabase
       .from('configuracoes_automacao')
       .select(
-        'id, horario_envio_automatico, instancia_whatsapp_id, instancias_whatsapp(motorista_id)',
+        'id, horario_envio_automatico, route_mode, route_id, instancia_whatsapp_id, instancias_whatsapp(motorista_id)',
       )
       .eq('envio_automatico_ativo', true)
 
@@ -331,15 +331,38 @@ Deno.serve(async (req: Request) => {
       const motoristaId: string | undefined = (cfg as any).instancias_whatsapp
         ?.motorista_id
       const horario: string | null = cfg.horario_envio_automatico
+      const routeMode: 'all' | 'specific' =
+        cfg.route_mode === 'specific' ? 'specific' : 'all'
+      const routeId: string | null =
+        typeof cfg.route_id === 'string' && cfg.route_id.trim()
+          ? cfg.route_id.trim()
+          : null
       if (!motoristaId) continue
 
       // Busca rotas ativas do motorista (precisamos do nome também para os logs
       // de cenário e do reenvio).
-      const { data: rotas, error: rotasErr } = await supabase
+      let rotasQuery = supabase
         .from('rotas')
         .select('id, nome')
         .eq('motorista_id', motoristaId)
         .eq('status', 'ativa')
+
+      if (routeMode === 'specific') {
+        if (!routeId) {
+          comErro++
+          detalhes.push({
+            motorista_id: motoristaId,
+            rotas_iniciadas: 0,
+            pendentes_reenviados: 0,
+            rotas_sem_pendentes: 0,
+            erros: [{ rota_id: '-', erro: 'Configuracao de envio automatico sem rota selecionada.' }],
+          })
+          continue
+        }
+        rotasQuery = rotasQuery.eq('id', routeId)
+      }
+
+      const { data: rotas, error: rotasErr } = await rotasQuery
 
       if (rotasErr) {
         comErro++
@@ -349,6 +372,18 @@ Deno.serve(async (req: Request) => {
           pendentes_reenviados: 0,
           rotas_sem_pendentes: 0,
           erros: [{ rota_id: '-', erro: rotasErr.message }],
+        })
+        continue
+      }
+
+      if (routeMode === 'specific' && (!rotas || rotas.length === 0)) {
+        comErro++
+        detalhes.push({
+          motorista_id: motoristaId,
+          rotas_iniciadas: 0,
+          pendentes_reenviados: 0,
+          rotas_sem_pendentes: 0,
+          erros: [{ rota_id: routeId ?? '-', erro: 'Rota configurada para envio automatico nao existe ou esta inativa.' }],
         })
         continue
       }

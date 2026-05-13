@@ -83,8 +83,13 @@ export function WhatsAppScreen() {
               <ScheduleCard
                 envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
                 horarioEnvioAuto={wa.horarioEnvioAuto}
+                routeMode={wa.routeMode}
+                routeId={wa.routeId}
+                rotas={wa.rotasAutomacao}
                 onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
                 onHorarioEnvioChange={wa.setHorarioEnvioAuto}
+                onRouteModeChange={wa.setRouteMode}
+                onRouteIdChange={wa.setRouteId}
                 salvando={wa.salvandoConfig}
                 onSalvar={wa.salvarHorarios}
                 desabilitado={desabilitarSalvarConfig}
@@ -118,8 +123,13 @@ export function WhatsAppScreen() {
             <ScheduleCard
               envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
               horarioEnvioAuto={wa.horarioEnvioAuto}
+              routeMode={wa.routeMode}
+              routeId={wa.routeId}
+              rotas={wa.rotasAutomacao}
               onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
               onHorarioEnvioChange={wa.setHorarioEnvioAuto}
+              onRouteModeChange={wa.setRouteMode}
+              onRouteIdChange={wa.setRouteId}
               salvando={wa.salvandoConfig}
               onSalvar={wa.salvarHorarios}
               desabilitado={desabilitarSalvarConfig}
