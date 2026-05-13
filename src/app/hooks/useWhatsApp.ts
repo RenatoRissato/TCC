@@ -86,8 +86,6 @@ export function useWhatsApp() {
 
   const [envioAutomaticoAtivo, setEnvioAutomaticoAtivo] = useState(false);
   const [horarioEnvioAuto,     setHorarioEnvioAuto]     = useState('');
-  const [horarioLimiteResp,    setHorarioLimiteResp]    = useState('');
-
   const [estatisticas, setEstatisticas] = useState<EstatisticasMensagens | null>(null);
 
   // Hidrata o estado editável a partir dos dados do banco.
@@ -105,7 +103,6 @@ export function useWhatsApp() {
     setConfiguracao(cfg);
     setEnvioAutomaticoAtivo(!!cfg?.envio_automatico_ativo);
     setHorarioEnvioAuto((cfg?.horario_envio_automatico ?? '').slice(0, 5));
-    setHorarioLimiteResp((cfg?.horario_limite_resposta ?? '').slice(0, 5));
   }, []);
 
   const carregar = useCallback(async () => {
@@ -214,7 +211,6 @@ export function useWhatsApp() {
         instanciaId: instancia.id,
         envioAutomaticoAtivo,
         horarioEnvioAutomatico: horarioEnvioAuto || null,
-        horarioLimiteResposta:  horarioLimiteResp  || null,
       });
       if (atualizado) {
         aplicarConfigNoEditor(atualizado);
@@ -229,7 +225,6 @@ export function useWhatsApp() {
     instancia,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
-    horarioLimiteResp,
     aplicarConfigNoEditor,
   ]);
 
@@ -482,12 +477,10 @@ export function useWhatsApp() {
     opcoesEdit,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
-    horarioLimiteResp,
     setCabecalhoEdit,
     setRodapeEdit,
     setEnvioAutomaticoAtivo,
     setHorarioEnvioAuto,
-    setHorarioLimiteResp,
     editarOpcao,
 
     // ações

@@ -128,7 +128,6 @@ export interface SalvarConfiguracaoInput {
   instanciaId: string;
   envioAutomaticoAtivo: boolean;
   horarioEnvioAutomatico: string | null;
-  horarioLimiteResposta: string | null;
 }
 
 export async function salvarConfiguracaoAutomacao(
@@ -139,7 +138,7 @@ export async function salvarConfiguracaoAutomacao(
     .update({
       envio_automatico_ativo:    input.envioAutomaticoAtivo,
       horario_envio_automatico:  input.horarioEnvioAutomatico,
-      horario_limite_resposta:   input.horarioLimiteResposta,
+      horario_limite_resposta:   null,
     })
     .eq('instancia_whatsapp_id', input.instanciaId)
     .select('*')

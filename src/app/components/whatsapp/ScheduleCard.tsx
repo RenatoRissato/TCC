@@ -1,4 +1,4 @@
-import { Clock, Send, Hourglass, Save, CheckCircle2 } from 'lucide-react';
+import { Clock, Send, Save, CheckCircle2 } from 'lucide-react';
 import { SLabel } from './SLabel';
 import { Spinner } from './Spinner';
 import { Toggle } from '../shared/Toggle';
@@ -6,10 +6,8 @@ import { Toggle } from '../shared/Toggle';
 interface ScheduleCardProps {
   envioAutomaticoAtivo: boolean;
   horarioEnvioAuto: string;
-  horarioLimiteResp: string;
   onEnvioAutomaticoChange: (v: boolean) => void;
   onHorarioEnvioChange: (v: string) => void;
-  onHorarioLimiteChange: (v: string) => void;
   salvando: boolean;
   onSalvar: () => void;
   desabilitado?: boolean;
@@ -18,10 +16,8 @@ interface ScheduleCardProps {
 export function ScheduleCard({
   envioAutomaticoAtivo,
   horarioEnvioAuto,
-  horarioLimiteResp,
   onEnvioAutomaticoChange,
   onHorarioEnvioChange,
-  onHorarioLimiteChange,
   salvando,
   onSalvar,
   desabilitado,
@@ -33,7 +29,7 @@ export function ScheduleCard({
         <div className="flex items-center gap-2.5 px-4 py-3 bg-pending/[0.08] border-b border-divider">
           <Clock size={15} color="#FFC107" strokeWidth={2.5} />
           <p className="text-xs m-0 font-medium leading-[1.4] text-[#856404] dark:text-[rgba(255,193,7,0.9)]">
-            Mensagens enviadas <strong>1 dia antes</strong> da rota, no horário configurado.
+            Mensagens enviadas no horário configurado. As confirmações valem só para o dia atual e recomeçam como pendentes no dia seguinte.
           </p>
         </div>
 
@@ -74,25 +70,6 @@ export function ScheduleCard({
             onChange={(e) => onHorarioEnvioChange(e.target.value)}
             disabled={!envioAutomaticoAtivo}
             className="bg-field border-2 border-field-border rounded-xl px-3 py-2 text-sm font-bold text-ink outline-none font-sans cursor-pointer min-h-[44px] shrink-0 focus:border-whatsapp disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-        </div>
-
-        <div className="flex items-center gap-3.5 px-4 py-3">
-          <div
-            className="w-10 h-10 rounded-[13px] flex items-center justify-center shrink-0"
-            style={{ background: 'rgba(253,126,20,0.18)' }}
-          >
-            <Hourglass size={18} color="#FD7E14" strokeWidth={2.2} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-ink m-0">Limite de resposta</p>
-            <p className="text-[11px] text-ink-soft m-0">Após esse horário pendentes viram ausentes</p>
-          </div>
-          <input
-            type="time"
-            value={horarioLimiteResp}
-            onChange={(e) => onHorarioLimiteChange(e.target.value)}
-            className="bg-field border-2 border-field-border rounded-xl px-3 py-2 text-sm font-bold text-ink outline-none font-sans cursor-pointer min-h-[44px] shrink-0 focus:border-whatsapp"
           />
         </div>
 

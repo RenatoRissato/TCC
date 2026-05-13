@@ -17,8 +17,6 @@ interface Detalhe {
   pendentes_reenviados: number
   /** Cenário 2: rotas com viagem existente cujos pendentes já foram todos respondidos */
   rotas_sem_pendentes: number
-  /** Pendentes que viraram ausentes por passar do horario_limite_resposta */
-  pendentes_marcados_ausentes: number
   erros: { rota_id: string; erro: string }[]
 }
 
@@ -70,41 +68,6 @@ function horarioExato(horarioConfig: string, minutosAtuais: number): boolean {
   const alvo = minutosDoHorario(horarioConfig)
   if (alvo === null) return false
   return minutosAtuais === alvo
-}
-
-function passouDoLimite(horarioLimite: string | null, minutosAtuais: number): boolean {
-  if (!horarioLimite) return false
-  const alvo = minutosDoHorario(horarioLimite)
-  if (alvo === null) return false
-  return minutosAtuais >= alvo
-}
-
-async function marcarPendentesAposLimite(
-  supabase: ReturnType<typeof criarClienteServico>,
-  rotaIds: string[],
-  dataHoje: string,
-): Promise<number> {
-  if (rotaIds.length === 0) return 0
-
-  const { data: viagens, error: viagemErr } = await supabase
-    .from('viagens')
-    .select('id')
-    .in('rota_id', rotaIds)
-    .eq('data', dataHoje)
-
-  if (viagemErr) throw viagemErr
-  const viagemIds = (viagens ?? []).map((v) => v.id)
-  if (viagemIds.length === 0) return 0
-
-  const { data: atualizadas, error: updErr } = await supabase
-    .from('confirmacoes')
-    .update({ status: 'ausente' })
-    .in('viagem_id', viagemIds)
-    .eq('status', 'pendente')
-    .select('id')
-
-  if (updErr) throw updErr
-  return atualizadas?.length ?? 0
 }
 
 interface ResultadoReenvio {
@@ -344,7 +307,7 @@ Deno.serve(async (req: Request) => {
     const { data: configs, error: cfgErr } = await supabase
       .from('configuracoes_automacao')
       .select(
-        'id, horario_envio_automatico, horario_limite_resposta, instancia_whatsapp_id, instancias_whatsapp(motorista_id)',
+        'id, horario_envio_automatico, instancia_whatsapp_id, instancias_whatsapp(motorista_id)',
       )
       .eq('envio_automatico_ativo', true)
 
@@ -368,7 +331,6 @@ Deno.serve(async (req: Request) => {
       const motoristaId: string | undefined = (cfg as any).instancias_whatsapp
         ?.motorista_id
       const horario: string | null = cfg.horario_envio_automatico
-      const horarioLimite: string | null = cfg.horario_limite_resposta
       if (!motoristaId) continue
 
       // Busca rotas ativas do motorista (precisamos do nome também para os logs
@@ -386,7 +348,6 @@ Deno.serve(async (req: Request) => {
           rotas_iniciadas: 0,
           pendentes_reenviados: 0,
           rotas_sem_pendentes: 0,
-          pendentes_marcados_ausentes: 0,
           erros: [{ rota_id: '-', erro: rotasErr.message }],
         })
         continue
@@ -396,28 +357,6 @@ Deno.serve(async (req: Request) => {
       let pendentesReenviados = 0
       let rotasSemPendentes = 0
       const erros: { rota_id: string; erro: string }[] = []
-      const rotaIds = (rotas ?? []).map((r) => r.id)
-      let pendentesMarcadosAusentes = 0
-
-      // Marca pendentes como ausentes ANTES do loop de rotas. Por isso, quando
-      // o loop chamar processarReenvioPendentes para uma rota cuja viagem já
-      // existe, ela não vai encontrar nenhum pendente (todos viraram ausentes).
-      // Esse é exatamente o comportamento desejado: após o limite, não reenvia.
-      if (passouDoLimite(horarioLimite, agoraBrasil.minutos)) {
-        try {
-          pendentesMarcadosAusentes = await marcarPendentesAposLimite(
-            supabase,
-            rotaIds,
-            hoje,
-          )
-        } catch (e) {
-          erros.push({
-            rota_id: '-',
-            erro: e instanceof Error ? e.message : String(e),
-          })
-        }
-      }
-
       if (!horario || (!ignorarHorario && !horarioExato(horario, agoraBrasil.minutos))) {
         console.log(
           '[automacao-diaria] cenario=fora_da_janela',
@@ -427,13 +366,12 @@ Deno.serve(async (req: Request) => {
             horario_atual_minutos: agoraBrasil.minutos,
           }),
         )
-        if (pendentesMarcadosAusentes > 0 || erros.length > 0) {
+        if (erros.length > 0) {
           detalhes.push({
             motorista_id: motoristaId,
             rotas_iniciadas: 0,
             pendentes_reenviados: 0,
             rotas_sem_pendentes: 0,
-            pendentes_marcados_ausentes: pendentesMarcadosAusentes,
             erros,
           })
         }
@@ -522,7 +460,6 @@ Deno.serve(async (req: Request) => {
         rotas_iniciadas: rotasIniciadas,
         pendentes_reenviados: pendentesReenviados,
         rotas_sem_pendentes: rotasSemPendentes,
-        pendentes_marcados_ausentes: pendentesMarcadosAusentes,
         erros,
       })
       if (erros.length > 0) comErro++

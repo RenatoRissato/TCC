@@ -83,10 +83,8 @@ export function WhatsAppScreen() {
               <ScheduleCard
                 envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
                 horarioEnvioAuto={wa.horarioEnvioAuto}
-                horarioLimiteResp={wa.horarioLimiteResp}
                 onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
                 onHorarioEnvioChange={wa.setHorarioEnvioAuto}
-                onHorarioLimiteChange={wa.setHorarioLimiteResp}
                 salvando={wa.salvandoConfig}
                 onSalvar={wa.salvarHorarios}
                 desabilitado={desabilitarSalvarConfig}
@@ -120,10 +118,8 @@ export function WhatsAppScreen() {
             <ScheduleCard
               envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
               horarioEnvioAuto={wa.horarioEnvioAuto}
-              horarioLimiteResp={wa.horarioLimiteResp}
               onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
               onHorarioEnvioChange={wa.setHorarioEnvioAuto}
-              onHorarioLimiteChange={wa.setHorarioLimiteResp}
               salvando={wa.salvandoConfig}
               onSalvar={wa.salvarHorarios}
               desabilitado={desabilitarSalvarConfig}
