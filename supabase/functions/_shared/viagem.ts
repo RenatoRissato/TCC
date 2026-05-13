@@ -151,8 +151,13 @@ export async function processarIniciarViagem(
   supabase: SupabaseClient,
   motoristaId: string,
   rotaId: string,
-  options: { dataViagem?: string } = {},
+  options: { dataViagem?: string; enviarMensagens?: boolean } = {},
 ): Promise<ResumoViagem> {
+  // Regra de negócio: o botão "play" (iniciar viagem) NÃO dispara WhatsApp.
+  // Mensagens automáticas saem apenas do cron `automacao-diaria` no horário
+  // configurado, ou via `reenviar-confirmacao` quando o motorista pede
+  // explicitamente. Default false; o cron passa true.
+  const enviarMensagens = options.enviarMensagens === true
   // 1. Verifica rota
   const { data: rota, error: rotaErr } = await supabase
     .from('rotas')
@@ -300,6 +305,20 @@ export async function processarIniciarViagem(
       '',
       rodape,
     ].join('\n')
+
+    // Bloco de envio só roda quando `enviarMensagens=true`. Quando o
+    // motorista aperta "play" no app, esse trecho fica desligado — a viagem
+    // é criada (com as confirmações pendentes) mas nenhuma mensagem sai
+    // pelo WhatsApp. O envio fica delegado ao cron `automacao-diaria` e ao
+    // botão "reenviar" manual.
+    if (!enviarMensagens) {
+      resultados.push({
+        passageiro_id: pax.id,
+        nome: pax.nome_completo,
+        sucesso: true,
+      })
+      continue
+    }
 
     let resp: EvolutionResposta | null = null
     let envioErro: string | null = null

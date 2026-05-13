@@ -437,6 +437,7 @@ Deno.serve(async (req: Request) => {
             )
             await processarIniciarViagem(supabase, motoristaId, rota.id, {
               dataViagem: hoje,
+              enviarMensagens: true,
             })
             rotasIniciadas++
           } else {
