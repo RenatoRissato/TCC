@@ -382,12 +382,12 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 2. Busca todos os motoristas com `envio_automatico_ativo = true` em `configuracoes_automacao` (com `instancias_whatsapp` joined)
 3. Aplica filtro `motorista_id` se passado
 4. Para cada motorista elegível:
-   - Se passou do `horario_limite_resposta`, marca pendentes do dia como `ausente` **antes** do loop de rotas
    - Verifica se a hora atual em `America/Sao_Paulo` bate **exatamente** com `horario_envio_automatico` (comparação `hh:mm === hh:mm`, sem janela de tolerância). Se não bate e não veio `ignorar_horario`, registra `cenario=fora_da_janela` e segue
    - Para cada rota ativa, decide o **cenário**:
      - **Cenário 1 — rota nova**: não existe viagem hoje → chama `processarIniciarViagem` (cria viagem + confirmações pendentes + envia para todos)
      - **Cenário 2 — viagem existe**: chama `processarReenvioPendentes` que busca confirmações `pendente` e reenvia apenas para esses (incrementa `mensagens.tentativas`)
      - **Cenário 2b — sem pendentes**: viagem existe mas todas confirmações já foram respondidas → encerra silenciosamente
+   - No dia seguinte, uma nova viagem reinicia naturalmente o ciclo com todas as confirmações em `pendente`
 5. Cada cenário emite log nominal: `cenario=rota_iniciada`, `cenario=reenvio_pendentes`, `cenario=sem_pendentes`, `cenario=fora_da_janela`
 6. Acumula contadores por motorista e devolve em `detalhes[]`
 
@@ -404,7 +404,6 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
     "rotas_iniciadas": 1,
     "pendentes_reenviados": 3,
     "rotas_sem_pendentes": 2,
-    "pendentes_marcados_ausentes": 0,
     "erros": []
   }]
 }

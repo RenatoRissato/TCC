@@ -116,7 +116,12 @@ faz comparação exata de `hora:minuto` em `America/Sao_Paulo` e também executa
 duas tarefas:
 
 - dispara mensagens quando o horário configurado do motorista bate exatamente;
-- aplica `horario_limite_resposta`, marcando pendentes como ausentes.
+- reaproveita a viagem do dia para reenviar apenas às confirmações pendentes,
+  sem converter pendentes em ausentes por horário.
+
+As confirmações valem para a viagem corrente. No dia seguinte, uma nova
+viagem recria todas as confirmações como `pendente`, reiniciando o ciclo
+naturalmente.
 
 O projeto ainda mantém a migration com nome legado:
 

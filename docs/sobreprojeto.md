@@ -135,8 +135,8 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 
 ### Automação
 - Horário configurável para envio automático das mensagens
-- Horário limite para aceitar respostas
 - Controle de tentativas de reenvio
+- Reinício diário natural do ciclo de confirmações: cada nova viagem começa com todos em `pendente`
 - Agendamento via cron na Edge Function
 
 ### Histórico e relatórios

@@ -125,7 +125,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
   formato `{numero}_{confirmacao_id}`) caso `sendList` seja reativado no
   futuro
 - **RN43** — Uma mensagem de confirmação de retorno por resposta válida recebida
-- **RN44** — Respostas após o horário limite são aceitas mas geram alerta
+- **RN44** — Não existe mais horário limite operacional para resposta. A confirmação permanece vinculada à viagem do dia e o próximo ciclo diário nasce com novas confirmações `pendente`
 - **RN72** — `confirmado + nao_vai` é semanticamente igual a `ausente` na UI:
   ambos viram `nao_vai_hoje` via `statusUIDaConfirmacao()` e o aluno é
   excluído do trajeto do Google Maps
@@ -144,9 +144,9 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 - **RN73** — Cron **multi-pass**: se a viagem do dia ainda não existe →
   cria + envia para todos. Se já existe → reenvia mensagem apenas para
   confirmações com `status='pendente'` (não duplica para quem já respondeu)
-- **RN74** — Após `horario_limite_resposta`, pendentes viram `ausente`
-  **antes** do loop de rotas → reenvio não acha ninguém e encerra
-  silenciosamente. Após o limite, ninguém recebe reenvio
+- **RN74** — O cron não converte mais pendentes em `ausente` por horário.
+  O reenvio atua apenas sobre confirmações `pendente` da viagem do dia; no
+  dia seguinte, uma nova viagem recria o ciclo inteiro em `pendente`
 - **RN75** — Salvaguarda contra disparo em massa: quando a UI/teste passa
   `ignorar_horario=true`, `motorista_id` é obrigatório (400
   `MOTORISTA_ID_OBRIGATORIO` se ausente)

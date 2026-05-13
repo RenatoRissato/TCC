@@ -26,9 +26,11 @@ A `automacao-diaria` opera em três cenários conforme o estado da rota no dia:
 | Viagem existe, todos respondidos | Não faz nada | `cenario=sem_pendentes` |
 | Horário não bate com o configurado | Não roda o loop da rota | `cenario=fora_da_janela` |
 
-Após passar do `horario_limite_resposta`, pendentes são marcados como
-**ausentes ANTES** do loop. O cenário 2 então acha 0 pendentes e encerra
-silenciosamente — após o limite, ninguém recebe reenvio.
+Não existe mais `horario_limite_resposta` como regra operacional. As
+confirmações valem apenas para a viagem do dia; no dia seguinte, uma nova
+viagem cria novamente todas as confirmações como `pendente`. O cron continua
+reutilizando a viagem atual do dia para reenvios, mas não converte
+automaticamente pendentes em `ausente`.
 
 ## Parâmetros opcionais no body
 
@@ -104,7 +106,6 @@ A Edge Function retorna JSON com contadores por motorista:
     "rotas_iniciadas": 1,
     "pendentes_reenviados": 3,
     "rotas_sem_pendentes": 2,
-    "pendentes_marcados_ausentes": 0,
     "erros": []
   }]
 }

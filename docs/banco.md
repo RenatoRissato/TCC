@@ -440,6 +440,7 @@ create table if not exists configuracoes_automacao (
 
 comment on table configuracoes_automacao is 'Configurações de automação do envio de mensagens. intervalo_tentativas em minutos.';
 comment on column configuracoes_automacao.intervalo_tentativas is 'Intervalo entre tentativas de reenvio em minutos.';
+comment on column configuracoes_automacao.horario_limite_resposta is 'Campo legado mantido por compatibilidade histórica. Não é mais usado como regra operacional desde a migration 20260513000000_remover_limite_resposta_logico.sql.';
 ```
 
 ---

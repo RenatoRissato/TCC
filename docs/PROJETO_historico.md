@@ -102,7 +102,6 @@ A primeira impressão do produto. Em **mobile**, apresenta um hero section com o
 - Validação de campos obrigatórios
 - Botão de login com spinner de loading
 - Link "Esqueceu sua senha?" e "Criar conta"
-- Botão Google Sign-In (UI apenas)
 - Suporte a dark/light mode
 - Scrollable em telas pequenas
 
@@ -137,7 +136,7 @@ Painel de gerenciamento da integração com WhatsApp. Em desktop, layout em grid
 
 **O que tem:**
 - **ConnectionStatus**: card com status de conexão (conectado/conectando/desconectado), placeholder de QR Code, botão conectar/desconectar
-- **ScheduleCard**: 3 inputs de horário (Manhã 06:30 / Tarde 11:45 / Noite 18:15) com botão salvar
+- **ScheduleCard**: controle de envio automático com toggle, horário único de disparo e salvamento das configurações
 - **TemplateEditor**: textarea com o template da mensagem, variáveis clicáveis ([RESPONSÁVEL], [NOME]), botões reset e salvar com feedback visual
 - **Alertbox** explicativo com as instruções do bot (1=VAI, 2=NÃO VAI)
 
@@ -195,7 +194,7 @@ Tela de configurações completa com 8 seções em accordion expansível.
 | Componente | O que faz |
 |---|---|
 | **ConnectionStatus** | Card de status + QR code |
-| **ScheduleCard** | 3 horários com salvar |
+| **ScheduleCard** | Toggle do envio automático + horário único de disparo |
 | **TemplateEditor** | Editor de template com variáveis |
 | **WhatsAppHeader** | Header verde com status de conexão |
 
@@ -1968,9 +1967,8 @@ A tela `WhatsAppScreen` antes era 100% simulada (estado local com
 - Editor de template passou a ter 2 textareas (cabeçalho + rodapé) + lista
   fixa das 4 opções editáveis, com chip de variáveis (`{nome_passageiro}`,
   `{data_formatada}`)
-- Schedule card simplificado para os 3 campos reais da tabela:
-  `envio_automatico_ativo`, `horario_envio_automatico`,
-  `horario_limite_resposta`
+- Schedule card simplificado para os campos operacionais reais da tela:
+  `envio_automatico_ativo` e `horario_envio_automatico`
 - Toda persistência via novo `whatsappService.ts` com `serializarErroSeguro`
   e `extrairErroEdgeFunction` (eliminam o `[object Object]` que aparecia em
   toasts de erro)
@@ -2095,13 +2093,10 @@ Outros ajustes:
   motorista (uso da UI multi-tenant)
 - **Salvaguarda** `MOTORISTA_ID_OBRIGATORIO`: `ignorar_horario=true` sem
   `motorista_id` retorna 400, evitando disparo em massa acidental em testes
-- Após `horario_limite_resposta`, pendentes viram `ausente` **antes** do
-  loop de rotas, então o Cenário 2 não acha ninguém para reenviar — após o
-  limite, ninguém recebe reenvio (comportamento desejado)
 - Logs nomeados por cenário para facilitar diagnóstico no painel Edge
   Functions → Logs
 - Resposta JSON ganhou contadores: `rotas_iniciadas`, `pendentes_reenviados`,
-  `rotas_sem_pendentes`, `pendentes_marcados_ausentes`, `erros[]`
+  `rotas_sem_pendentes`, `erros[]`
 
 ### 15.7 — Botão Reenviar manual no PassengerCard
 
@@ -2183,6 +2178,35 @@ Correções:
 - Migrations aplicadas no remoto via `supabase db push`
 - Mensagens chegando no WhatsApp real, respostas processadas via webhook,
   notificações in-app aparecendo no dashboard em tempo real
+
+### 15.12 — Remoção do limite de resposta e reinício diário do ciclo
+
+Em uso real, o campo visual de **limite de resposta** estava adicionando uma
+regra desnecessária para a operação. A decisão do produto foi simplificar:
+as respostas valem para a viagem do dia e, no próximo dia, o ciclo recomeça
+inteiro com novas confirmações `pendente`.
+
+**Mudança de regra de negócio:**
+- o motorista configura apenas o horário de envio automático
+- o sistema não converte mais pendentes em `ausente` por horário
+- reenvios continuam acontecendo apenas sobre confirmações `pendente` da
+  viagem atual
+- ao nascer uma nova viagem no dia seguinte, todos os passageiros daquela
+  rota voltam a iniciar o ciclo como `pendente`
+
+**Arquivos impactados:**
+- `src/app/components/whatsapp/ScheduleCard.tsx`
+- `src/app/hooks/useWhatsApp.ts`
+- `src/app/screens/WhatsAppScreen.tsx`
+- `src/app/services/whatsappService.ts`
+- `supabase/functions/automacao-diaria/index.ts`
+- `supabase/migrations/20260513000000_remover_limite_resposta_logico.sql`
+
+**Resultado operacional:**
+- a UI da tela WhatsApp ficou mais simples
+- o backend deixou de depender de `horario_limite_resposta`
+- o dia seguinte passou a ser o único "reset" do processo, sem transformação
+  automática de pendente para ausente por horário
 
 ---
 
