@@ -1,4 +1,4 @@
-# SmartRoutes PWA — Documento de Escopo & História do Projeto
+﻿# SmartRoutes PWA — Documento de Escopo & História do Projeto
 
 ---
 
@@ -2196,3 +2196,5 @@ Correções:
 - **Cron por motorista** — o cron atual é único e itera todos os motoristas a cada minuto. Para multi-tenant em escala, cada motorista poderia ter seu próprio job no `pg_cron` com `horario_envio_automatico` no schedule
 - **Reativação do sendList** — está implementada em `_shared/evolution.ts::evolutionEnviarLista` com payload correto (Evolution v2 `sections`), mas não usada porque Baileys instável. Voltar a usar quando a Evolution/Baileys estabilizar
 ---
+
+

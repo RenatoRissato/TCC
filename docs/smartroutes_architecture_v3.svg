@@ -1,5 +1,5 @@
 <svg width="100%" viewBox="0 0 680 780" role="img" xmlns="http://www.w3.org/2000/svg">
-  <title>Arquitetura SmartRoute v3</title>
+  <title>Arquitetura SmartRoutes v3</title>
   <desc>Diagrama com dois fluxos: automático via cron job no horário configurado pelo motorista, e manual quando o motorista inicia a rota pelo PWA.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

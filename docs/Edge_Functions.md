@@ -1,4 +1,4 @@
-# EDGE_FUNCTIONS.md — SmartRoute
+﻿# EDGE_FUNCTIONS.md — SmartRoutes
 
 ## O que são as Edge Functions
 
@@ -98,7 +98,7 @@ Deve exportar as seguintes funções:
 **`evolutionEnviarLista(telefone: string, titulo: string, descricao: string, opcoes: {rowId: string, title: string}[]): Promise<any>`**
 - Faz POST em `{EVOLUTION_API_URL}/message/sendList/{EVOLUTION_INSTANCE_NAME}`
 - Body: `{ number, title, description, buttonText: 'Responder', sections: [{ title: 'Opções', rows: opcoes }] }`
-- Usado para enviar a mensagem de confirmação com botões numerados
+- Mantido apenas por compatibilidade/reativação futura. O fluxo de produção atual usa `sendText`
 - Se a resposta não for 2xx, lançar Error
 
 **`evolutionVerificarConexao(): Promise<boolean>`**
@@ -132,15 +132,19 @@ Helper que extrai e valida o motorista da requisição.
 {
   "nome": "João da Silva",
   "telefone": "19999999999",
-  "cnh": "12345678901"
+  "placa_van": "ABC-1234",
+  "marca_van": "Mercedes-Benz",
+  "modelo_van": "Sprinter",
+  "ano_van": 2020
 }
 ```
 
 **O que faz:**
 1. Valida JWT e extrae o `user` do Supabase Auth
-2. Verifica se já existe um motorista com esse `user_id` — se sim, retorna os dados existentes sem criar duplicata
-3. Insere na tabela `motoristas` com `user_id`, `nome`, `email` (vindo do `user.email`), `telefone`, `cnh`
+2. Verifica se já existe um motorista com esse `user_id` — se sim, retorna os dados existentes sem criar duplicata, mas ainda garante as rotas padrão caso estejam faltando
+3. Insere na tabela `motoristas` com `user_id`, `nome`, `email` (vindo do `user.email`), `telefone`, `placa_van`, `marca_van`, `modelo_van`, `ano_van` e `cnh` apenas se vier por compatibilidade
 4. Chama a função SQL `criar_dados_iniciais_motorista(motorista_id)` que cria automaticamente: instância WhatsApp, configuração de automação, template de mensagem padrão e 4 opções de resposta
+5. Garante também as 3 rotas padrão do motorista (`Rota Manhã`, `Rota Tarde`, `Rota Noite`) de forma idempotente
 5. Retorna o motorista criado com status 201
 
 **Retorna:**
@@ -604,3 +608,5 @@ export function useConfirmacoes(viagemId: string) {
 | `desconectar-whatsapp` | Frontend (botão Desconectar) | JWT | Logout resiliente (força local mesmo se Evolution falhar) |
 | `registrar-webhook` | One-shot do motorista | JWT | (Re)registra webhook na Evolution com 3 eventos |
 | `otimizar-sequencia-passageiros` | Frontend (botão Otimizar) | JWT | Reordena `ordem_na_rota` via algoritmo |
+
+

@@ -1,4 +1,4 @@
-# CONTEXTO PARA IA — SmartRoutes
+﻿# CONTEXTO PARA IA — SmartRoutes
 
 Este projeto é um PWA mobile-first chamado SmartRoutes.
 
@@ -37,3 +37,4 @@ O sistema é voltado para motoristas de vans escolares e tem como objetivo autom
 - docs/banco.md — schema, histórico de migrations, regra `confirmado + nao_vai` ≠ "VAI"
 - docs/Cron_Automacao.md — instalação do `pg_cron` + cenários multi-pass
 - docs/sobreprojeto.md — visão geral, variáveis disponíveis, estado atual
+

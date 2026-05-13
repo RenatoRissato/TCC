@@ -1,4 +1,4 @@
-# Cron `automacao-diaria` — instruções
+﻿# Cron `automacao-diaria` — instruções do SmartRoutes
 
 ## O que faz
 
@@ -130,3 +130,5 @@ select cron.unschedule(
 
 Por isso o SQL fica em `supabase/sql/` como um arquivo "cole-no-Dashboard",
 controlado pelo time, mas executado uma vez por ambiente.
+
+

@@ -1,8 +1,8 @@
-# PROJETO.md — SmartRoute
+﻿# PROJETO.md — SmartRoutes
 
 ## O que é o sistema
 
-SmartRoute é um PWA mobile-first para motoristas de vans escolares que automatiza a confirmação de presença dos alunos via WhatsApp e organiza as rotas do dia com base nas respostas recebidas.
+SmartRoutes é um PWA mobile-first para motoristas de vans escolares que automatiza a confirmação de presença dos alunos via WhatsApp e organiza as rotas do dia com base nas respostas recebidas.
 
 O problema central resolvido: motoristas não sabem antecipadamente quais alunos vão usar o transporte, gerando paradas desnecessárias, atrasos e rotas ineficientes. O sistema resolve isso enviando mensagens automáticas para os responsáveis e registrando as respostas automaticamente.
 
@@ -222,3 +222,5 @@ automaticamente.
 - Mensagem automática para respostas inválidas (hoje "xyz" é ignorado silenciosamente — poderia avisar o pai a responder 1-4)
 - Internacionalização (campo `motoristas.idioma` já existe, falta i18n no frontend)
 - CI/CD para deploy automático
+
+

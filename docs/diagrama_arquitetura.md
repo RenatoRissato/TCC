@@ -1,14 +1,14 @@
-# Arquitetura do Sistema — SmartRoute
+﻿# Arquitetura do Sistema — SmartRoutes
 
 ## Diagrama
 
-![Arquitetura SmartRoute v3](./smartroutes_architecture_v3.svg)
+![Arquitetura SmartRoutes v3](./smartroutes_architecture_v3.svg)
 
 ---
 
 ## Visão geral
 
-O SmartRoute é um PWA mobile-first 100% frontend que se integra com dois serviços externos: o **Supabase** (banco de dados, autenticação e funções serverless) e a **Evolution API** (integração com WhatsApp). A arquitetura foi desenhada com uma camada de segurança intermediária — as **Edge Functions** — que garante que as credenciais de acesso ao WhatsApp nunca sejam expostas ao navegador.
+O SmartRoutes é um PWA mobile-first 100% frontend que se integra com dois serviços externos: o **Supabase** (banco de dados, autenticação e funções serverless) e a **Evolution API** (integração com WhatsApp). A arquitetura foi desenhada com uma camada de segurança intermediária — as **Edge Functions** — que garante que as credenciais de acesso ao WhatsApp nunca sejam expostas ao navegador.
 
 ---
 
@@ -103,3 +103,5 @@ O sistema utiliza dois bancos com responsabilidades completamente distintas:
 | Evolution API PostgreSQL | Infraestrutura interna de mensageria | A própria biblioteca |
 
 A existência de dois bancos não foi uma escolha de modelagem — é uma consequência técnica do uso da Evolution API, que requer banco próprio para funcionar. Os dois bancos nunca se comunicam diretamente.
+
+

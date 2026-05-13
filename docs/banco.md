@@ -1,4 +1,4 @@
-# BANCO.md — SmartRoute
+﻿# BANCO.md — SmartRoutes
 
 ## Banco de dados: Supabase (PostgreSQL)
 
@@ -13,7 +13,7 @@ O banco da Evolution API é separado e interno à biblioteca — a aplicação n
 O diagrama abaixo representa a modelagem completa do sistema. Use-o como referência para entender os relacionamentos antes de ler o SQL.
 
 ```plantuml
-@startuml SmartRoute - Diagrama de Classes v2
+@startuml SmartRoutes - Diagrama de Classes v2
 
 skinparam classAttributeIconSize 0
 skinparam classFontSize 13
@@ -31,6 +31,10 @@ class Motorista {
   - email: String
   - telefone: String
   - cnh: String
+  - placaVan: String
+  - marcaVan: String
+  - modeloVan: String
+  - anoVan: int
   - criadoEm: DateTime
 }
 
@@ -959,3 +963,5 @@ PRIVILEGES` para tabelas futuras herdarem o grant automaticamente.
 mas **ainda precisam** ter o GRANT na tabela — caso contrário o Postgres
 barra com `42501: permission denied for table X`. Esse foi o erro que
 travou o fluxo de QR Code antes da migration ser aplicada.
+
+

@@ -1,4 +1,4 @@
-# REQUISITOS.md — SmartRoute
+﻿# REQUISITOS.md — SmartRoutes
 
 ## Como usar este arquivo
 
@@ -47,9 +47,9 @@ Este arquivo é a referência de requisitos para implementação. Leia antes de 
 - **RN09** — Turno obrigatório: manhã / tarde / integral
 - **RN10** — Listar apenas passageiros com status `ativo` por padrão
 - **RN13** — Nunca permitir editar passageiro de outro motorista (RLS garante, mas validar na Edge Function também)
-- **RN14** — Exclusão é sempre lógica (`status = inativo`). Nunca deletar fisicamente do banco
-- **RN15** — Passageiro inativo não aparece na lista diária nem recebe mensagem WhatsApp
-- **RN16** — Histórico de passageiro inativo permanece acessível
+- **RN14** — Na implementação atual, a exclusão de passageiro é física (**hard delete**) após confirmação explícita do motorista
+- **RN15** — Passageiro excluído deixa de aparecer na lista diária, em viagens futuras e em envios de WhatsApp
+- **RN16** — Registros históricos já materializados em `historico_presenca` e `mensagens` continuam acessíveis para consulta operacional
 
 ### Lista diária e confirmações
 
@@ -168,7 +168,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 ### Histórico
 
 - **RN57** — Histórico nunca é excluído
-- **RN58** — Passageiros inativos têm histórico preservado
+- **RN58** — Registros históricos consolidados permanecem acessíveis mesmo quando o cadastro original do passageiro já foi removido
 - **RN59** — Taxa de presença = (confirmados / total dias) × 100
 
 ---
@@ -232,7 +232,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 | Login | RF01 | Supabase Auth — não implementar JWT manual |
 | Cadastro | RF02 | Chamar `criar_dados_iniciais_motorista` após criar conta |
 | Dashboard | RF15, RF07 | Resumo do dia + acesso rápido |
-| Passageiros (lista) | RF04, RF17 | Filtro ativo/inativo, busca em tempo real |
+| Passageiros (lista) | RF04, RF17 | Busca em tempo real e filtros operacionais por rota/status |
 | Passageiro (form) | RF03, RF05 | Selecionar rota ao cadastrar |
 | Rotas (lista + form) | RF18 | CRUD de rotas |
 | Lista diária | RF07, RF08, RF13 | Atualiza via Realtime; checkbox manual |
@@ -291,3 +291,5 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 - Exportação para PDF (funcionalidade futura)
 - WhatsApp Business API oficial (usa Evolution API não-oficial)
 - Múltiplos usuários por conta de motorista
+
+

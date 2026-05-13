@@ -1,10 +1,10 @@
-# EVOLUTION_API.md — SmartRoute
+﻿# EVOLUTION_API.md — SmartRoutes
 
 ## O que é a Evolution API
 
 A Evolution API v2 é uma plataforma brasileira que expõe o WhatsApp como uma API REST. Internamente usa a biblioteca **Baileys** (protocolo direto, sem Puppeteer). Roda em um servidor próprio no Railway com processo persistente 24/7.
 
-A aplicação SmartRoute **nunca chama a Evolution API diretamente do frontend**. Todas as chamadas passam pelas Edge Functions do Supabase, onde as credenciais ficam protegidas no servidor.
+A aplicação SmartRoutes **nunca chama a Evolution API diretamente do frontend**. Todas as chamadas passam pelas Edge Functions do Supabase, onde as credenciais ficam protegidas no servidor.
 
 Documentação oficial: https://doc.evolution-api.com/v2/pt/get-started/introduction
 
@@ -27,7 +27,7 @@ O número de telefone deve ser enviado **com código do país, sem símbolos** (
 
 ---
 
-## Endpoints usados pelo SmartRoute
+## Endpoints usados pelo SmartRoutes
 
 ### 1. Verificar estado da conexão
 
@@ -216,7 +216,7 @@ POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE_NAME}
 **Campos:**
 - `url` — URL da Edge Function que vai receber os eventos
 - `webhook_by_events` — `true` para receber apenas os eventos listados em `events`
-- `events` — três eventos que o SmartRoute processa:
+- `events` — três eventos que o SmartRoutes processa:
   - `MESSAGES_UPSERT` — resposta do responsável (fluxo principal de confirmação)
   - `QRCODE_UPDATED` — novo QR Code emitido (sincroniza `instancias_whatsapp` para `aguardando_qr`)
   - `CONNECTION_UPDATE` — mudança de estado (sincroniza `conectado`, `desconectado`, `numero_conta`, `nome_conta_wa`)
@@ -392,7 +392,7 @@ O telefone salvo na tabela `passageiros.telefone_responsavel` deve seguir o form
 
 ## Eventos do webhook usados
 
-O SmartRoute assina 3 eventos:
+O SmartRoutes assina 3 eventos:
 
 | Evento | Quando dispara | Tratamento na `webhook-evolution` |
 |---|---|---|
@@ -417,3 +417,5 @@ mensagem do passageiro.
 | `/message/sendText/{instance}` | POST | **Confirmação diária** + mensagens avulsas + resposta automática do webhook |
 | `/message/sendList/{instance}` | POST | Não usado em produção (substituído por sendText) — disponível em `evolutionEnviarLista` para reativar quando o Baileys estabilizar |
 | `/webhook/set/{instance}` | POST | `registrar-webhook` |
+
+
