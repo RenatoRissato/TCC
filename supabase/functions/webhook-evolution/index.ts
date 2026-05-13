@@ -4,7 +4,10 @@ import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { criarClienteServico } from '../_shared/auth.ts'
 import { evolutionEnviarTexto } from '../_shared/evolution.ts'
 import { processarMensagemConfirmacao } from '../_shared/conversaConfirmacao.ts'
-import { registrarMensagemConversa } from '../_shared/conversaRepository.ts'
+import {
+  mensagemJaProcessada,
+  registrarMensagemConversa,
+} from '../_shared/conversaRepository.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 async function buscarIdsInstanciasParaEvento(
@@ -170,26 +173,69 @@ Deno.serve(async (req: Request) => {
     }
 
     const { texto, confirmacaoId } = extrairTextoMensagem(data)
+    const remoteJidBruto: string | undefined = data?.key?.remoteJid
+    const telefoneRemetente = remoteJidBruto
+      ? remoteJidBruto.split('@')[0].replace(/\D/g, '')
+      : ''
+
+    console.log(
+      '[webhook] messages.upsert recebido',
+      JSON.stringify({
+        message_keys: data?.message ? Object.keys(data.message) : [],
+        remoteJid_bruto: remoteJidBruto ?? null,
+        telefone_normalizado: telefoneRemetente,
+        texto_bruto: texto,
+        confirmacao_id_payload: confirmacaoId,
+        whatsapp_message_id: data?.key?.id ?? null,
+      }),
+    )
+
     if (!texto) {
       return ok({ ignorado: true, motivo: 'mensagem sem texto processavel' })
     }
-
-    const remoteJid: string | undefined = data?.key?.remoteJid
-    const telefoneRemetente = remoteJid
-      ? remoteJid.split('@')[0].replace(/\D/g, '')
-      : ''
 
     if (!telefoneRemetente) {
       return ok({ ignorado: true, motivo: 'sem telefone de remetente identificavel' })
     }
 
     const supabase = criarClienteServico()
+
+    // Idempotência: Evolution/Baileys ocasionalmente reentregam a mesma
+    // messages.upsert. Visto em produção (print do usuário): um único "1"
+    // produziu DUAS respostas — "Confirmado!" + "Deseja alterar?". A 2ª
+    // veio porque o webhook processou a mesma mensagem 2x, e na 2ª passada
+    // o estado já estava `confirmado` → caiu no fluxo de alteração. Aqui
+    // checamos pelo `whatsapp_message_id` antes de avançar.
+    const whatsappMessageId: string | null = data?.key?.id ?? null
+    if (await mensagemJaProcessada(supabase, whatsappMessageId)) {
+      console.log(
+        '[webhook] mensagem ja processada — ignorando reentrega',
+        JSON.stringify({ whatsapp_message_id: whatsappMessageId }),
+      )
+      return ok({
+        ignorado: true,
+        motivo: 'mensagem ja processada (idempotencia)',
+      })
+    }
+
     const resultado = await processarMensagemConfirmacao(supabase, {
       telefoneRemetente,
       texto,
-      whatsappMessageId: data?.key?.id ?? null,
+      whatsappMessageId,
       confirmacaoId,
     })
+
+    console.log(
+      '[webhook] resultado processarMensagemConfirmacao',
+      JSON.stringify({
+        ignorado: resultado.ignorado ?? false,
+        motivo: resultado.motivo ?? null,
+        estado: resultado.estado ?? null,
+        tipo_confirmacao: resultado.tipoConfirmacao ?? null,
+        mensagem_destino: resultado.telefoneDestino ?? null,
+        mensagem_resposta: resultado.mensagemResposta ?? null,
+      }),
+    )
 
     if (resultado.ignorado) {
       return ok({ ignorado: true, motivo: resultado.motivo })
@@ -231,6 +277,16 @@ Deno.serve(async (req: Request) => {
       tipo: resultado.tipoConfirmacao,
     })
   } catch (err) {
+    // Log explícito antes do 500. Sem isso, erros fatais ficam invisíveis
+    // no painel da Edge Function — apenas o status code 500 aparece, sem
+    // contexto. Aqui imprimimos mensagem + stack para diagnóstico rápido.
+    console.error(
+      '[webhook] erro nao tratado',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : null,
+      }),
+    )
     return erroServidor(err)
   }
 })

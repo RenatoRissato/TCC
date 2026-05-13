@@ -22,7 +22,8 @@ import {
   buscarConfirmacaoDoDia,
   buscarConfirmacaoPorId,
   buscarEstadoConversa,
-  buscarPassageiroPorTelefone,
+  buscarPassageirosPorTelefone,
+  escolherPassageiroDoDia,
   obterInstanciaIdDoMotorista,
   registrarMensagemConversa,
   registrarNotificacaoResposta,
@@ -78,26 +79,68 @@ export async function processarMensagemConfirmacao(
   entrada: EntradaConversaConfirmacao,
 ): Promise<SaidaConversaConfirmacao> {
   const hoje = dataBrasilISO()
+  console.log(
+    '[conversa] processarMensagemConfirmacao: inicio',
+    JSON.stringify({
+      telefone_remetente: entrada.telefoneRemetente,
+      texto: entrada.texto,
+      confirmacao_id_payload: entrada.confirmacaoId ?? null,
+      data_hoje_brasil: hoje,
+    }),
+  )
+
+  // Busca passageiro UMA vez — usamos `rota_id` na busca da confirmação
+  // (que agora vai por viagem da rota, evitando filtro em embed). O nome
+  // `passageiroInicial` evita colisão com o `passageiro` extraído de
+  // `confirmacao.passageiros` mais abaixo nesta mesma função.
+  //
+  // Desambiguação: o mesmo telefone pode estar cadastrado em mais de um
+  // passageiro (ex.: dois irmãos do mesmo responsável). `escolherPassageiroDoDia`
+  // prioriza quem tem confirmação pendente hoje — assim a resposta volta
+  // com o nome certo.
+  const candidatos = entrada.confirmacaoId
+    ? []
+    : await buscarPassageirosPorTelefone(supabase, entrada.telefoneRemetente)
+
+  const passageiroInicial = entrada.confirmacaoId
+    ? null
+    : await escolherPassageiroDoDia(supabase, candidatos, hoje)
+
   const confirmacao = entrada.confirmacaoId
     ? await buscarConfirmacaoPorId(supabase, entrada.confirmacaoId)
-    : await buscarPassageiroPorTelefone(supabase, entrada.telefoneRemetente)
-      .then((p) => p ? buscarConfirmacaoDoDia(supabase, p.id, hoje) : null)
+    : passageiroInicial
+      ? await buscarConfirmacaoDoDia(
+          supabase,
+          passageiroInicial.id,
+          passageiroInicial.rota_id,
+          hoje,
+        )
+      : null
 
   if (!confirmacao) {
-    const passageiro = await buscarPassageiroPorTelefone(
-      supabase,
-      entrada.telefoneRemetente,
-    )
-    if (!passageiro) {
+    const paxFallback = passageiroInicial
+    if (!paxFallback) {
+      console.log(
+        '[conversa] sem passageiro ativo para o telefone — mensagem ignorada',
+        JSON.stringify({ telefone_remetente: entrada.telefoneRemetente }),
+      )
       return { ignorado: true, motivo: 'remetente sem passageiro ativo' }
     }
+    console.log(
+      '[conversa] sem confirmacao do dia — devolvendo fallback ao responsavel',
+      JSON.stringify({
+        passageiro_id: paxFallback.id,
+        rota_id: paxFallback.rota_id,
+        data: hoje,
+      }),
+    )
     return {
-      telefoneDestino: passageiro.telefone_responsavel,
+      telefoneDestino: paxFallback.telefone_responsavel,
       mensagemResposta: montarMensagemSemConfirmacaoHoje(),
       tipoMensagemResposta: 'resposta_invalida',
       contextoLog: {
         instanciaId: null,
-        passageiroId: passageiro.id,
+        passageiroId: paxFallback.id,
         confirmacaoId: null,
       },
       estado: 'sem_resposta',
