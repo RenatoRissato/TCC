@@ -1,4 +1,4 @@
-
+﻿
 # SmartRoutes
 
 Frontend do SmartRoutes, um PWA para motoristas de vans escolares com rotas, passageiros, viagens em andamento e automação de confirmações por WhatsApp.
@@ -42,3 +42,5 @@ O botão de otimizar sequência no Dashboard funciona em duas camadas:
 - fallback automático com OpenStreetMap + OSRM, quando a chave não existe
 
 Assim você pode usar a funcionalidade agora mesmo e adicionar a chave do Google depois, sem trocar código.
+
+

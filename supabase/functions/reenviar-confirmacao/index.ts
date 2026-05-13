@@ -2,10 +2,11 @@
 import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { AuthError, getMotorista } from '../_shared/auth.ts'
+import { evolutionEnviarTexto } from '../_shared/evolution.ts'
 import {
-  evolutionEnviarLista,
-  OpcaoLista,
-} from '../_shared/evolution.ts'
+  aplicarVariaveis,
+  obterSaudacaoBrasil,
+} from '../_shared/viagem.ts'
 
 interface Body {
   confirmacao_id?: string
@@ -13,16 +14,11 @@ interface Body {
 
 function formatarDataBR(date = new Date()): string {
   return date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   })
-}
-
-function aplicarVars(texto: string, nome: string, data: string): string {
-  return texto
-    .replaceAll('{nome_passageiro}', nome)
-    .replaceAll('{data_formatada}', data)
 }
 
 Deno.serve(async (req: Request) => {
@@ -88,6 +84,23 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // Pre-flight: checa se o WhatsApp do motorista está conectado antes de
+    // tentar enviar. Sem isso, o erro vem como string genérica da Evolution
+    // ("Connection state: close") que confunde o usuário.
+    const { data: instCheck } = await supabase
+      .from('instancias_whatsapp')
+      .select('status_conexao')
+      .eq('motorista_id', motorista.id)
+      .maybeSingle()
+
+    if (!instCheck || instCheck.status_conexao !== 'conectado') {
+      return erroCliente(
+        'WhatsApp não está conectado. Vá em "Painel WhatsApp" e conecte sua conta antes de reenviar.',
+        'WHATSAPP_DESCONECTADO',
+        503,
+      )
+    }
+
     // Template ativo + opções
     const { data: template, error: tplErr } = await supabase
       .from('templates_mensagem')
@@ -120,19 +133,31 @@ Deno.serve(async (req: Request) => {
     }
 
     const dataFmt = formatarDataBR()
-    const cabecalho = aplicarVars(
+    const saudacao = obterSaudacaoBrasil()
+    const cabecalho = aplicarVariaveis(
       template.cabecalho,
       passageiro.nome_completo,
       dataFmt,
+      saudacao,
     )
-    const rodape = aplicarVars(template.rodape, passageiro.nome_completo, dataFmt)
-    const titulo = `Van Escolar — ${rotaInfo.nome}`
+    const rodape = aplicarVariaveis(
+      template.rodape,
+      passageiro.nome_completo,
+      dataFmt,
+      saudacao,
+    )
 
-    const rows: OpcaoLista[] = opcoesAtivas.map((o) => ({
-      title: o.texto_exibido,
-      description: `${passageiro.nome_completo} — ${o.texto_exibido}`,
-      rowId: `${o.numero}_${confirmacao.id}`,
-    }))
+    // Mesma estrutura de mensagem usada em viagem.ts (sendText com opções
+    // numeradas no corpo). Mantém UX consistente entre envio automático e
+    // reenvio manual — o responsável vê exatamente o mesmo formato.
+    const corpoMensagem = [
+      cabecalho,
+      '',
+      'Responda com o número da opção desejada:',
+      ...opcoesAtivas.map((o) => `${o.numero} - ${o.texto_exibido}`),
+      '',
+      rodape,
+    ].join('\n')
 
     // Conta tentativas anteriores para essa confirmação
     const { count: tentativasAnteriores } = await supabase
@@ -151,29 +176,31 @@ Deno.serve(async (req: Request) => {
       .eq('motorista_id', motorista.id)
       .maybeSingle()
 
-    const corpoLegivel = [
-      cabecalho,
-      ...opcoesAtivas.map((o) => `${o.numero} - ${o.texto_exibido}`),
-      rodape,
-    ].join('\n')
-
     let resp
     try {
-      resp = await evolutionEnviarLista(
+      resp = await evolutionEnviarTexto(
         passageiro.telefone_responsavel,
-        titulo,
-        cabecalho,
-        rodape,
-        rows,
+        corpoMensagem,
       )
     } catch (e) {
+      const erroEvolution = e instanceof Error ? e.message : String(e)
+      console.error(
+        '[reenviar-confirmacao] sendText FALHOU',
+        JSON.stringify({
+          passageiro: passageiro.nome_completo,
+          telefone: passageiro.telefone_responsavel,
+          confirmacao_id: confirmacao.id,
+          tentativa: tentativaAtual,
+          erro: erroEvolution,
+        }),
+      )
       const { data: msgFalha } = await supabase
         .from('mensagens')
         .insert({
           instancia_whatsapp_id: instancia?.id ?? null,
           passageiro_id: passageiro.id,
           confirmacao_id: confirmacao.id,
-          conteudo: corpoLegivel,
+          conteudo: corpoMensagem,
           direcao: 'saida',
           tipo: 'confirmacao_diaria',
           status_envio: 'falha',
@@ -185,10 +212,15 @@ Deno.serve(async (req: Request) => {
         await supabase.from('log_mensagens').insert({
           mensagem_id: msgFalha.id,
           evento: 'reenvio_falha',
-          detalhes: e instanceof Error ? e.message : String(e),
+          detalhes: erroEvolution,
         })
       }
-      return erroServidor(e)
+      return erroCliente(
+        'Falha ao reenviar via WhatsApp. Confira a conexão da Evolution API.',
+        'EVOLUTION_FALHOU',
+        503,
+        { detalhes: erroEvolution },
+      )
     }
 
     const { data: msgOk } = await supabase
@@ -197,7 +229,7 @@ Deno.serve(async (req: Request) => {
         instancia_whatsapp_id: instancia?.id ?? null,
         passageiro_id: passageiro.id,
         confirmacao_id: confirmacao.id,
-        conteudo: corpoLegivel,
+        conteudo: corpoMensagem,
         direcao: 'saida',
         tipo: 'confirmacao_diaria',
         status_envio: 'enviada',

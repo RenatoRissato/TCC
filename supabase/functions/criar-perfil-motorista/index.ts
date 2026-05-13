@@ -13,20 +13,6 @@ interface BodyInput {
 }
 
 async function garantirRotasPadrao(supabase: ReturnType<typeof criarClienteUsuario>, motoristaId: string) {
-  const { data: rotasExistentes, error: lookupRotasErr } = await supabase
-    .from('rotas')
-    .select('id')
-    .eq('motorista_id', motoristaId)
-    .limit(1)
-
-  if (lookupRotasErr) {
-    return { rotasCriadas: 0, rotasErro: lookupRotasErr.message }
-  }
-
-  if (rotasExistentes && rotasExistentes.length > 0) {
-    return { rotasCriadas: 0, rotasErro: null }
-  }
-
   const padroes = [
     { motorista_id: motoristaId, nome: 'Rota Manhã', horario_saida: '07:00', turno: 'morning', status: 'ativa' },
     { motorista_id: motoristaId, nome: 'Rota Tarde', horario_saida: '12:00', turno: 'afternoon', status: 'ativa' },
@@ -35,7 +21,10 @@ async function garantirRotasPadrao(supabase: ReturnType<typeof criarClienteUsuar
 
   const { data: inseridas, error: rotasErr } = await supabase
     .from('rotas')
-    .insert(padroes)
+    .upsert(padroes, {
+      onConflict: 'motorista_id,turno',
+      ignoreDuplicates: true,
+    })
     .select('id')
 
   if (rotasErr) {

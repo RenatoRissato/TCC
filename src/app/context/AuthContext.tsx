@@ -23,6 +23,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<LoginResult>;
   register: (data: RegisterData) => Promise<RegisterResult>;
   logout: () => Promise<void>;
+  recarregarMotorista: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -43,6 +44,10 @@ function traduzirAuthErro(msg: string): string {
 }
 
 function motoristaToUser(m: MotoristaRow): User {
+  const vehiclePartes = [
+    [m.marca_van, m.modelo_van].filter(Boolean).join(' '),
+    m.ano_van ? String(m.ano_van) : '',
+  ].filter(Boolean);
   return {
     id: m.id,
     name: m.nome,
@@ -50,7 +55,15 @@ function motoristaToUser(m: MotoristaRow): User {
     phone: m.telefone ?? '',
     cnh: m.cnh,
     plate: m.placa_van ?? undefined,
-    vehicle: [m.marca_van, m.modelo_van].filter(Boolean).join(' ') || undefined,
+    vehicle: vehiclePartes.join(' · ') || undefined,
+    vehicleBrand: m.marca_van,
+    vehicleModel: m.modelo_van,
+    vehicleYear: m.ano_van,
+    notifWhatsApp:  m.notif_whatsapp ?? true,
+    notifPush:      m.notif_push ?? true,
+    notifPendentes: m.notif_pendentes ?? false,
+    somAlerta:      (m.som_alerta as User['somAlerta']) ?? 'default',
+    idioma:         (m.idioma as User['idioma']) ?? 'pt-BR',
   };
 }
 
@@ -214,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // for de uma versão antiga ou tiver falhado parcialmente, garantimos
       // aqui no primeiro login após registro. Se as rotas já existem,
       // criarRotasPadrao retorna sem inserir.
-      if (motoristaAcabouDeNascer || true) {
+      if (motoristaAcabouDeNascer) {
         console.log('[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para', motorista.id);
         const r = await criarRotasPadrao(motorista.id);
         console.log('[hidratarSessao] criarRotasPadrao resultado:', r);
@@ -356,11 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Function for uma versão antiga (sem a feature de rotas), garantimos
     // que as rotas existam. Se já existirem, a função retorna sem inserir.
     const motoristaIdCriado = (fnData as { motorista?: { id?: string } } | null)?.motorista?.id;
-    if (motoristaIdCriado) {
-      console.log('[register] fallback criarRotasPadrao para motorista', motoristaIdCriado);
-      const r = await criarRotasPadrao(motoristaIdCriado);
-      console.log('[register] criarRotasPadrao resultado:', r);
-    } else {
+    if (!motoristaIdCriado) {
       console.warn('[register] motorista.id ausente no retorno da Edge Function');
     }
 
@@ -397,6 +406,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const recarregarMotorista = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const m = await carregarMotorista(session.user.id);
+    if (m) setUser(motoristaToUser(m));
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -405,6 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       logout,
+      recarregarMotorista,
       isAuthenticated: !!user,
     }}>
       {children}

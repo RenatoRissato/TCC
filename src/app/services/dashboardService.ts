@@ -1,11 +1,12 @@
 import { supabase } from '../../lib/supabase';
 import { listarRotasComContagem } from './rotaService';
+import { alunoVaiHoje } from '../utils/confirmacaoStatus';
 import type { WhatsAppUpdate, RouteConfig } from '../types';
-import type { TipoConfirmacao } from '../types/database';
+import type { StatusConfirmacao, TipoConfirmacao } from '../types/database';
 
 interface ConfirmacaoJoin {
   id: string;
-  status: 'confirmado' | 'ausente';
+  status: StatusConfirmacao;
   tipo_confirmacao: TipoConfirmacao | null;
   respondida_em: string;
   passageiros: { nome_completo: string } | { nome_completo: string }[] | null;
@@ -54,7 +55,11 @@ export async function getRecentUpdates(): Promise<WhatsAppUpdate[]> {
   return (data ?? []).map((c: ConfirmacaoJoin) => {
     const p = Array.isArray(c.passageiros) ? c.passageiros[0] : c.passageiros;
     const nome = p?.nome_completo ?? 'Passageiro';
-    const indo = c.status === 'confirmado';
+    // Bug anterior: usava `c.status === 'confirmado'` para inferir que o aluno
+    // ia hoje. Mas `confirmado + nao_vai` significa "respondeu dizendo que NÃO
+    // vai" — a UI mostrava "Confirmou presença + VAI" pra quem havia recusado.
+    // O helper centraliza essa regra.
+    const indo = alunoVaiHoje(c.status, c.tipo_confirmacao);
     return {
       id: c.id,
       name: nome,

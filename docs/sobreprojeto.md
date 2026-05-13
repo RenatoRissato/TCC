@@ -1,8 +1,8 @@
-# PROJETO.md — SmartRoute
+﻿# PROJETO.md — SmartRoutes
 
 ## O que é o sistema
 
-SmartRoute é um PWA mobile-first para motoristas de vans escolares que automatiza a confirmação de presença dos alunos via WhatsApp e organiza as rotas do dia com base nas respostas recebidas.
+SmartRoutes é um PWA mobile-first para motoristas de vans escolares que automatiza a confirmação de presença dos alunos via WhatsApp e organiza as rotas do dia com base nas respostas recebidas.
 
 O problema central resolvido: motoristas não sabem antecipadamente quais alunos vão usar o transporte, gerando paradas desnecessárias, atrasos e rotas ineficientes. O sistema resolve isso enviando mensagens automáticas para os responsáveis e registrando as respostas automaticamente.
 
@@ -135,8 +135,8 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 
 ### Automação
 - Horário configurável para envio automático das mensagens
-- Horário limite para aceitar respostas
 - Controle de tentativas de reenvio
+- Reinício diário natural do ciclo de confirmações: cada nova viagem começa com todos em `pendente`
 - Agendamento via cron na Edge Function
 
 ### Histórico e relatórios
@@ -159,25 +159,68 @@ EVOLUTION_API_URL=
 EVOLUTION_API_KEY=
 EVOLUTION_INSTANCE_NAME=
 
-# Segurança do webhook
+# Segurança do webhook (evita chamadas externas falsas)
 WEBHOOK_SECRET=
+
+# Segurança do cron (pg_cron passa esse header em cada disparo)
+CRON_SECRET=
 ```
+
+---
+
+## Formato real das mensagens hoje
+
+Confirmação diária e reenvios são enviados via **`sendText` puro** (não
+mais `sendList`/lista interativa). O corpo segue o template do motorista
++ variáveis:
+
+```
+{saudacao}! Confirmação de presença na van escolar para hoje.
+
+Responda com o número da opção desejada:
+1 - Ida e volta
+2 - Somente ida
+3 - Somente volta
+4 - Não vai hoje
+
+Aguardo sua resposta. Obrigado!
+```
+
+Variáveis disponíveis no template (substituídas em runtime pela Edge
+Function, **não** pelo frontend):
+
+| Variável | Substituída por |
+|---|---|
+| `{saudacao}` | `Bom dia` / `Boa tarde` / `Boa noite` conforme horário em `America/Sao_Paulo` |
+| `{nome_passageiro}` | Nome completo do aluno |
+| `{data_formatada}` | Data de hoje em `dd/mm/yyyy` |
+
+O responsável responde com o dígito 1-4 (o webhook aceita variações como
+"1", "1 - Ida e volta", "1.", etc.) e o sistema atualiza a confirmação
+automaticamente.
 
 ---
 
 ## O que já está pronto
 
 - Frontend PWA com autenticação real via Supabase Auth
-- Camada `src/app/services/` já conectada ao Supabase para rotas, passageiros, dashboard e viagens
-- Estrutura de telas ativa: Dashboard, Rotas, Passageiros, WhatsApp, Configurações, Login, Cadastro e Viagem em andamento
-- Banco com migrations, RLS, Realtime e Edge Functions já versionados no repositório
-- Fluxo de viagem já implementado: iniciar viagem, acompanhar confirmações em tempo real, reenviar confirmação, marcar manualmente e finalizar viagem
-- Integração backend com Evolution API já implementada nas Edge Functions
+- Camada `src/app/services/` 100% conectada ao Supabase (rotas, passageiros, dashboard, viagens, WhatsApp e configurações)
+- Estrutura de telas ativa: Dashboard, Rotas, Passageiros, WhatsApp, Configurações, Login, Cadastro e Viagem em andamento — **todas com persistência real no backend**
+- Banco com migrations, RLS, Realtime e Edge Functions versionados no repositório
+- **WhatsApp ponta a ponta**: QR Code real, status de conexão sincronizado via webhook, envio automático via cron, reenvio manual e em massa, processamento de respostas via texto puro
+- **Cron multi-pass** (`automacao-diaria`): cria viagem nova no horário OU reenvia apenas para confirmações pendentes em chamadas subsequentes
+- Variável `{saudacao}` automática no template
+- Status UI unificado: `confirmado + nao_vai` é tratado como "não vai hoje" em todas as telas e no trajeto do Google Maps
+- Histórico em `historico_presenca` populado automaticamente via trigger ao finalizar viagem
+- Notificações in-app em tempo real (sino do dashboard) via Realtime
 
-## O que falta implementar
+## O que ainda falta
 
-- Conectar a tela **WhatsApp** aos dados reais de `instancias_whatsapp`, `configuracoes_automacao` e `templates_mensagem`
-- Persistir no backend as ações hoje apenas locais da tela **Configurações**: perfil, senha, turnos, notificações e preferências
-- Implementar telas e consultas de **histórico/relatórios** no frontend
-- Configurar em ambiente real o webhook da Evolution API e o cron da automação diária
+- Implementar telas e consultas de **histórico/relatórios** no frontend (os dados já existem em `historico_presenca` e `mensagens`, falta visualização)
 - Completar a camada PWA real com manifest, service worker e instalação offline
+- Notificações push reais (toggle `notif_push` já persiste; falta FCM/service worker)
+- Mensagem automática para respostas inválidas (hoje "xyz" é ignorado silenciosamente — poderia avisar o pai a responder 1-4)
+- Internacionalização (campo `motoristas.idioma` já existe, falta i18n no frontend)
+- CI/CD para deploy automático
+
+

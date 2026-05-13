@@ -1,10 +1,12 @@
 import { memo } from 'react';
 import {
   Navigation, MessageCircle, MapPin,
-  CheckCircle2, XCircle, Edit2, Trash2,
+  CheckCircle2, XCircle, Edit2, Trash2, Send,
 } from 'lucide-react';
 import { Avatar } from '../shared/Avatar';
 import { StatusBadge } from '../shared/StatusBadge';
+import { Spinner } from '../whatsapp/Spinner';
+import { useReenviarConfirmacao } from '../../hooks/useViagem';
 import type { Passenger, RouteType } from '../../types';
 
 const SHIFT_OPTIONS: Record<RouteType, { label: string; emoji: string; color: string }> = {
@@ -54,6 +56,18 @@ export const PassengerCard = memo(function PassengerCard({
   const waUrl = `https://wa.me/${p.phone}?text=${encodeURIComponent(
     `Olá ${p.parentName}! Confirma presença de ${p.name.split(' ')[0]} hoje? 🚌`,
   )}`;
+
+  const { reenviarConfirmacao, loading: reenviando } = useReenviarConfirmacao();
+
+  // Só faz sentido reenviar quando há confirmação pendente do dia. Sem viagem
+  // criada (confirmacaoId null) não tem o que reenviar — escondemos o botão.
+  const podeReenviar = p.status === 'pending' && !!p.confirmacaoId;
+
+  const handleReenviar = async () => {
+    if (!p.confirmacaoId || reenviando) return;
+    await reenviarConfirmacao(p.confirmacaoId);
+    // toast (sucesso ou erro) já é tratado dentro do hook
+  };
   return (
     <div
       className={`slide-up stagger-${Math.min(idx + 1, 5)} bg-panel rounded-[20px] overflow-hidden transition-all ${
@@ -133,6 +147,19 @@ export const PassengerCard = memo(function PassengerCard({
           <p className="text-[11px] font-semibold m-0 text-[#C56A00] dark:text-warning">
             Aguardando resposta...
           </p>
+          {podeReenviar && (
+            <button
+              onClick={handleReenviar}
+              disabled={reenviando}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-bold text-[#C56A00] dark:text-warning cursor-pointer transition-colors hover:bg-warning/20 disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-label={`Reenviar mensagem para ${p.name}`}
+              title="Reenviar mensagem de confirmação"
+            >
+              {reenviando
+                ? <><Spinner size={12} />Enviando...</>
+                : <><Send size={12} strokeWidth={2.5} />Reenviar</>}
+            </button>
+          )}
         </div>
       )}
 

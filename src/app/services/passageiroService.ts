@@ -73,6 +73,7 @@ function rowToPassenger(
     instituicao:    obs?.instituicao    ?? '',
     serieSemestre:  obs?.serieSemestre  ?? '',
     curso:          obs?.curso          ?? '',
+    confirmacaoId:  confirmacao?.id ?? null,
   };
 }
 
@@ -256,11 +257,49 @@ export function getSummary(list: Passenger[]): Summary {
 /**
  * Lista os endereços de embarque dos passageiros ATIVOS de uma rota,
  * ordenados por `ordem_na_rota`. Usado para montar os waypoints do Google Maps.
+ *
+ * IMPORTANTE: se já existe viagem para o dia, passageiros que responderam
+ * "Não vai" (confirmado + nao_vai) OU foram marcados ausentes pelo cron
+ * são EXCLUÍDOS do trajeto. Não faz sentido o motorista passar na casa de
+ * quem já avisou que não vai usar a van.
+ *
+ * Se NÃO há viagem do dia ainda, retorna todos os ativos (cenário "ainda
+ * vou iniciar a rota" — sem confirmações o trajeto é o nominal).
  */
 export async function listarPassageirosDaRota(rotaId: string): Promise<string[]> {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // 1) Busca viagem do dia (se houver) para filtrar quem disse "não vai"
+  const { data: viagem } = await supabase
+    .from('viagens')
+    .select('id')
+    .eq('rota_id', rotaId)
+    .eq('data', hoje)
+    .maybeSingle();
+
+  // 2) Coleta IDs de passageiros que NÃO devem entrar no trajeto. Conta como
+  //    "não vai" tanto status='ausente' quanto status='confirmado' + 'nao_vai'.
+  const idsExcluir = new Set<string>();
+  if (viagem?.id) {
+    const { data: confs } = await supabase
+      .from('confirmacoes')
+      .select('passageiro_id, status, tipo_confirmacao')
+      .eq('viagem_id', viagem.id);
+    for (const c of confs ?? []) {
+      const status = (c as { status: string }).status;
+      const tipo = (c as { tipo_confirmacao: string | null }).tipo_confirmacao;
+      const naoVaiHoje =
+        status === 'ausente' || (status === 'confirmado' && tipo === 'nao_vai');
+      if (naoVaiHoje) {
+        idsExcluir.add((c as { passageiro_id: string }).passageiro_id);
+      }
+    }
+  }
+
+  // 3) Busca passageiros ATIVOS da rota
   const { data, error } = await supabase
     .from('passageiros')
-    .select('embarque_rua, embarque_numero, embarque_bairro, embarque_cep, ordem_na_rota')
+    .select('id, embarque_rua, embarque_numero, embarque_bairro, embarque_cep, ordem_na_rota')
     .eq('rota_id', rotaId)
     .eq('status', 'ativo')
     .order('ordem_na_rota', { ascending: true });
@@ -268,7 +307,10 @@ export async function listarPassageirosDaRota(rotaId: string): Promise<string[]>
     console.error('listarPassageirosDaRota:', error);
     return [];
   }
+
+  // 4) Filtra os que não vão e mapeia para endereço formatado
   return (data ?? [])
+    .filter((p) => !idsExcluir.has((p as { id: string }).id))
     .map((p: {
       embarque_rua: string | null;
       embarque_numero: string | null;

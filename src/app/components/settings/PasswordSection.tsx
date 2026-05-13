@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
 import { FormInput } from '../shared/FormInput';
+import { Spinner } from '../whatsapp/Spinner';
+import { useAuth } from '../../context/AuthContext';
+import { alterarSenha, verificarSenhaAtual } from '../../services/motoristaService';
 
 function EyeToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
@@ -16,6 +20,7 @@ function EyeToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) 
 }
 
 export function PasswordSection() {
+  const { user } = useAuth();
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [conf, setConf] = useState('');
@@ -23,15 +28,42 @@ export function PasswordSection() {
   const [showNew, setShowNew] = useState(false);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
   const handleSave = async () => {
     setErr('');
+    if (!user?.email) {
+      setErr('Usuário não autenticado.');
+      return;
+    }
     if (!cur) return setErr('Insira a senha atual.');
     if (next.length < 6) return setErr('Nova senha: mínimo 6 caracteres.');
     if (next !== conf) return setErr('As senhas não coincidem.');
-    await new Promise((r) => setTimeout(r, 700));
+    if (next === cur) return setErr('A nova senha precisa ser diferente da atual.');
+
+    setSalvando(true);
+
+    // 1) Reautentica para confirmar a senha atual — Supabase não exige isso,
+    // mas a UX espera "senha atual" como prova de identidade.
+    const verif = await verificarSenhaAtual(user.email, cur);
+    if (!verif.ok) {
+      setSalvando(false);
+      setErr('Senha atual incorreta.');
+      return;
+    }
+
+    const r = await alterarSenha(next);
+    setSalvando(false);
+
+    if (!r.ok) {
+      setErr(r.erro ?? 'Erro ao trocar senha. Tente novamente.');
+      toast.error('Não foi possível trocar a senha.', { description: r.erro });
+      return;
+    }
+
     setOk(true);
     setCur(''); setNext(''); setConf('');
+    toast.success('Senha alterada com sucesso.');
     setTimeout(() => setOk(false), 2500);
   };
 
@@ -74,9 +106,12 @@ export function PasswordSection() {
       />
       <button
         onClick={handleSave}
-        className="w-full flex items-center justify-center gap-2 border-0 rounded-[14px] py-3.5 px-6 text-[15px] font-bold text-white cursor-pointer min-h-[52px] font-sans bg-[linear-gradient(135deg,#DC3545,#B02A37)] shadow-[0_4px_16px_rgba(220,53,69,0.3)]"
+        disabled={salvando}
+        className="w-full flex items-center justify-center gap-2 border-0 rounded-[14px] py-3.5 px-6 text-[15px] font-bold text-white cursor-pointer min-h-[52px] font-sans bg-[linear-gradient(135deg,#DC3545,#B02A37)] shadow-[0_4px_16px_rgba(220,53,69,0.3)] disabled:opacity-70 disabled:cursor-not-allowed"
       >
-        <Lock size={18} strokeWidth={2.5} /> Salvar Nova Senha
+        {salvando
+          ? <><Spinner size={18} />Trocando senha...</>
+          : <><Lock size={18} strokeWidth={2.5} /> Salvar Nova Senha</>}
       </button>
     </>
   );

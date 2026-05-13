@@ -64,3 +64,18 @@ verify_jwt = false
 
 [functions.otimizar-sequencia-passageiros]
 verify_jwt = true
+
+[functions.verificar-whatsapp]
+verify_jwt = true
+
+[functions.qr-code-whatsapp]
+verify_jwt = true
+
+[functions.status-whatsapp]
+verify_jwt = true
+
+[functions.registrar-webhook]
+verify_jwt = true
+
+[functions.desconectar-whatsapp]
+verify_jwt = true

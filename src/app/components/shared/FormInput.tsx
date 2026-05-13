@@ -9,11 +9,12 @@ interface FormInputProps {
   placeholder?: string;
   rightEl?: ReactNode;
   required?: boolean;
+  disabled?: boolean;
 }
 
 export function FormInput({
   label, icon: Icon, value, onChange,
-  type = 'text', placeholder, rightEl, required,
+  type = 'text', placeholder, rightEl, required, disabled,
 }: FormInputProps) {
   const id = useId();
   return (
@@ -33,12 +34,14 @@ export function FormInput({
           value={value}
           placeholder={placeholder}
           required={required}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           className={[
             'w-full box-border bg-field border-2 border-field-border rounded-[13px]',
             'px-3.5 py-3 text-sm font-medium text-ink outline-none min-h-[50px] transition-colors',
             'focus:border-pending focus:shadow-[0_0_0_3px_rgba(255,193,7,0.12)]',
             rightEl ? 'pr-[46px]' : '',
+            disabled ? 'opacity-60 cursor-not-allowed' : '',
           ].join(' ')}
         />
         {rightEl && (

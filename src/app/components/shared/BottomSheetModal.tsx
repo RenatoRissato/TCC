@@ -53,7 +53,12 @@ export function BottomSheetModal({
         ) : (
           <SheetTitle className="sr-only">Modal</SheetTitle>
         )}
-        {description && <SheetDescription className="sr-only">{description}</SheetDescription>}
+        {/* SheetDescription sempre presente para silenciar o warning do Radix
+            sobre `aria-describedby` ausente. Se nenhuma descrição for passada,
+            usamos um texto genérico (sr-only — invisível, só leitores de tela). */}
+        <SheetDescription className="sr-only">
+          {description ?? title ?? 'Conteúdo do modal'}
+        </SheetDescription>
         {!hideHandle && !centered && (
           <div className="flex justify-center pt-3 pb-1 shrink-0">
             <span className="w-10 h-1 rounded-full bg-app-border" />

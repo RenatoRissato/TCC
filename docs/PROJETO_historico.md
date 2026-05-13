@@ -1,4 +1,4 @@
-# SmartRoutes PWA — Documento de Escopo & História do Projeto
+﻿# SmartRoutes PWA — Documento de Escopo & História do Projeto
 
 ---
 
@@ -102,7 +102,6 @@ A primeira impressão do produto. Em **mobile**, apresenta um hero section com o
 - Validação de campos obrigatórios
 - Botão de login com spinner de loading
 - Link "Esqueceu sua senha?" e "Criar conta"
-- Botão Google Sign-In (UI apenas)
 - Suporte a dark/light mode
 - Scrollable em telas pequenas
 
@@ -137,7 +136,7 @@ Painel de gerenciamento da integração com WhatsApp. Em desktop, layout em grid
 
 **O que tem:**
 - **ConnectionStatus**: card com status de conexão (conectado/conectando/desconectado), placeholder de QR Code, botão conectar/desconectar
-- **ScheduleCard**: 3 inputs de horário (Manhã 06:30 / Tarde 11:45 / Noite 18:15) com botão salvar
+- **ScheduleCard**: controle de envio automático com toggle, horário único de disparo e salvamento das configurações
 - **TemplateEditor**: textarea com o template da mensagem, variáveis clicáveis ([RESPONSÁVEL], [NOME]), botões reset e salvar com feedback visual
 - **Alertbox** explicativo com as instruções do bot (1=VAI, 2=NÃO VAI)
 
@@ -195,7 +194,7 @@ Tela de configurações completa com 8 seções em accordion expansível.
 | Componente | O que faz |
 |---|---|
 | **ConnectionStatus** | Card de status + QR code |
-| **ScheduleCard** | 3 horários com salvar |
+| **ScheduleCard** | Toggle do envio automático + horário único de disparo |
 | **TemplateEditor** | Editor de template com variáveis |
 | **WhatsAppHeader** | Header verde com status de conexão |
 
@@ -1950,12 +1949,308 @@ Isso foi importante porque essa fase não tratou apenas de UX; ela mexeu em **fo
 | Edge Function não reparava rotas quando o motorista já existia | Retorno antecipado antes da garantia das rotas padrão | Function tornou-se realmente idempotente |
 
 
+## Fase 15 — WhatsApp real ponta a ponta, cron multi-pass e UX de status (maio/2026)
+
+A Fase 14 deixou a base do app sólida (rotas, passageiros, autenticação), mas a
+**integração real com WhatsApp** ainda não funcionava de ponta a ponta. A
+Fase 15 fechou esse ciclo, corrigindo bugs profundos no fluxo de mensagens,
+no cron e na semântica de status do aluno.
+
+### 15.1 — Configurações persistentes da tela WhatsApp
+
+A tela `WhatsAppScreen` antes era 100% simulada (estado local com
+`setTimeout`). Foi ligada ao Supabase real:
+
+- `useWhatsApp` carrega `instancias_whatsapp`, `configuracoes_automacao`,
+  `templates_mensagem`, `opcoes_resposta` e estatísticas reais
+  (`obterEstatisticasMensagens` agregando a tabela `mensagens`)
+- Editor de template passou a ter 2 textareas (cabeçalho + rodapé) + lista
+  fixa das 4 opções editáveis, com chip de variáveis (`{nome_passageiro}`,
+  `{data_formatada}`)
+- Schedule card simplificado para os campos operacionais reais da tela:
+  `envio_automatico_ativo` e `horario_envio_automatico`
+- Toda persistência via novo `whatsappService.ts` com `serializarErroSeguro`
+  e `extrairErroEdgeFunction` (eliminam o `[object Object]` que aparecia em
+  toasts de erro)
+
+### 15.2 — Fluxo real de QR Code
+
+Implementado o fluxo completo de pareamento via Evolution API v2:
+
+- Nova Edge Function `qr-code-whatsapp` — chama `instance/connect` na
+  Evolution (com retry de 6 tentativas), retorna o QR como data-URL e marca
+  `status_conexao = 'aguardando_qr'`
+- Nova Edge Function `status-whatsapp` — polling endpoint que consulta
+  `fetchInstances` + `connectionState`, atualiza `numero_conta`,
+  `nome_conta_wa` e `data_ultima_conexao` quando conecta
+- Nova Edge Function `verificar-whatsapp` — versão otimizada para hot path
+- Nova Edge Function `registrar-webhook` — registra a URL do webhook na
+  Evolution com 3 eventos: `MESSAGES_UPSERT`, `QRCODE_UPDATED`,
+  `CONNECTION_UPDATE`
+- Nova Edge Function `desconectar-whatsapp` — resiliente: **força a
+  desconexão local** em `instancias_whatsapp` mesmo se a Evolution recusar
+  o `DELETE /instance/logout`. Retorna um `evolution_aviso` que o frontend
+  mostra como toast informativo, não erro
+- Componente `QrCodeModal` no frontend com countdown de 60s, pairing code
+  como fallback, botão "Gerar novo QR"
+- `useWhatsApp` ganhou polling separado (3s) com timeout interno de 90s,
+  contagem regressiva isolada do polling (bug "contador travado em 60s" era
+  causado por `iniciarPolling` chamar `pararPolling` que limpava ambos os
+  timers)
+- Anti-race em `useWhatsApp.carregar`: não regride de `conectado` para
+  `desconectado` quando um carregamento tardio chega depois de um webhook
+
+### 15.3 — Tratamento de eventos da Evolution no webhook
+
+O `webhook-evolution` passou de um simples handler de `messages.upsert` para
+tratar três eventos:
+
+- `qrcode.updated` → marca `status_conexao = 'aguardando_qr'` em todas as
+  instâncias (modelo single-tenant atual)
+- `connection.update` → sincroniza `conectado/desconectado/conectando` e,
+  quando `state=open`, persiste `numero_conta` e `nome_conta_wa` do payload
+- `messages.upsert` → ignora mensagens com `data.key.fromMe === true`
+  (evita interpretar o eco da resposta automática como nova resposta do pai)
+
+### 15.4 — Migração arquitetural: sendList → sendText
+
+O Baileys (biblioteca por trás da Evolution API) passou a falhar
+sistematicamente com mensagens de lista interativas:
+
+1. Em algumas versões a Evolution v2 retorna **HTTP 400** com
+   `"instance requires property sections"` (a doc original do projeto
+   estava desatualizada; o campo se chama `sections`, não `values`)
+2. Em outras versões, mesmo com `sections` correto, o Baileys lança
+   `TypeError: this.isZero is not a function` na serialização interna
+3. WhatsApp restringiu mensagens interativas para APIs não-Business
+
+A solução foi migrar **todos** os caminhos de envio de confirmação para
+`sendText` puro com as opções numeradas no corpo:
+
+```
+Bom dia! Confirmação de presença na van escolar para hoje.
+
+Responda com o número da opção desejada:
+1 - Ida e volta
+2 - Somente ida
+3 - Somente volta
+4 - Não vai hoje
+
+Aguardo sua resposta. Obrigado!
+```
+
+O `webhook-evolution` foi adaptado para entender **dois formatos**:
+
+- **Texto puro** com regex `^([1-4])\b` (caminho principal hoje) — busca o
+  passageiro pelo telefone do remetente e atualiza a última confirmação
+  pendente dele
+- `listResponseMessage` com `selectedRowId` no formato `{numero}_{confirmacao_id}`
+  (mantido por compat, caso a Evolution volte a suportar listas)
+
+Mudanças aplicadas em `_shared/viagem.ts::processarIniciarViagem`,
+`reenviar-confirmacao` e `webhook-evolution`.
+
+### 15.5 — Saudação automática `{saudacao}` no template
+
+Nova variável `{saudacao}` substituída em runtime conforme o horário em
+`America/Sao_Paulo`:
+
+- 00h às 11h59 → "Bom dia"
+- 12h às 17h59 → "Boa tarde"
+- 18h às 23h59 → "Boa noite"
+
+Helper `obterSaudacaoBrasil()` exportado de `_shared/viagem.ts` e usado
+tanto pelo envio inicial quanto pelo `reenviar-confirmacao` (sem
+duplicação). A saudação é calculada **uma vez** por viagem para que todos
+os passageiros recebam a mesma — evita inconsistência se o loop atravessar
+a virada do horário (ex: 11:58 → 12:01).
+
+Migration `20260510010000_saudacao_template.sql`:
+- Atualiza o `DEFAULT` da coluna `templates_mensagem.cabecalho`
+- Sobrescreve cabeçalhos de motoristas existentes que ainda usam o texto
+  padrão antigo (preserva customizações)
+- Atualiza a função `criar_dados_iniciais_motorista` para motoristas novos
+
+### 15.6 — Cron multi-pass: cenários 1, 2 e 3
+
+A `automacao-diaria` antes apenas pulava rotas que já tinham viagem do
+dia. Foi refatorada para suportar três cenários:
+
+- **Cenário 1** — sem viagem hoje: cria viagem + envia para todos
+  (`cenario=rota_iniciada`)
+- **Cenário 2** — viagem existe, pendentes > 0: reenvia mensagem apenas
+  para confirmações `pendente`, incrementando `mensagens.tentativas`
+  (`cenario=reenvio_pendentes`)
+- **Cenário 3** — viagem existe, todos respondidos: encerra silenciosamente
+  (`cenario=sem_pendentes`)
+
+Outros ajustes:
+
+- **Horário exato** sem janela de ±5 min: `horarioExato(config, agora)` é
+  comparação `hh:mm === hh:mm`. O cron `pg_cron` agora dispara `* * * * *`
+  (todo minuto) e a função decide se age
+- Filtro **`motorista_id`** opcional no body para disparos restritos a um
+  motorista (uso da UI multi-tenant)
+- **Salvaguarda** `MOTORISTA_ID_OBRIGATORIO`: `ignorar_horario=true` sem
+  `motorista_id` retorna 400, evitando disparo em massa acidental em testes
+- Logs nomeados por cenário para facilitar diagnóstico no painel Edge
+  Functions → Logs
+- Resposta JSON ganhou contadores: `rotas_iniciadas`, `pendentes_reenviados`,
+  `rotas_sem_pendentes`, `erros[]`
+
+### 15.7 — Botão Reenviar manual no PassengerCard
+
+Cada `PassengerCard` com status `pending` ganhou um botão **"Reenviar"** que:
+
+- Aparece apenas quando há `confirmacaoId` (existe viagem do dia)
+- Chama o hook existente `useReenviarConfirmacao` (sem duplicar service)
+- Mostra spinner enquanto envia; toast de sucesso/erro
+- A Edge Function `reenviar-confirmacao` ganhou pre-flight de conexão
+  (`WHATSAPP_DESCONECTADO`) com mensagem amigável
+
+### 15.8 — Status UI unificado (`confirmado + nao_vai` ≠ "VAI")
+
+Bug crítico encontrado tarde: a combinação `status='confirmado' +
+tipo_confirmacao='nao_vai'` significa **"respondeu dizendo que NÃO vai"**,
+mas várias telas estavam lendo só `status='confirmado'` e mostrando como
+"VAI" verde. Pais que recusavam a viagem apareciam como confirmados no
+dashboard e no LiveTrip, e a casa deles continuava aparecendo no trajeto
+do Google Maps.
+
+Correções:
+
+- Novo helper `src/app/utils/confirmacaoStatus.ts` com
+  `statusUIDaConfirmacao(status, tipo): 'vai' | 'nao_vai_hoje' | 'pendente'`
+  e atalho `alunoVaiHoje(status, tipo): boolean` — fonte única de verdade
+- `LiveTripScreen` passou a usar o helper. Header mostra "VÃO / NÃO VÃO /
+  PENDENTES" (antes era "CONFIRMADOS / AUSENTES"). Cada linha de passageiro
+  com `confirmado + nao_vai` agora exibe badge vermelho "Não vai hoje"
+- `dashboardService.getRecentUpdates` usa `alunoVaiHoje` — Respostas
+  Recentes não diz mais "Confirmou presença" para quem recusou
+- `passageiroService.listarPassageirosDaRota` filtra passageiros que
+  responderam "Não vai" ou foram marcados ausentes — Google Maps só recebe
+  paradas dos que vão de fato
+- `rotaService.validarRotaParaInicio` ganhou novo cenário `todos_nao_vao`:
+  se TODOS os passageiros ativos têm confirmação fechada negativa, o app
+  bloqueia abrir o Maps e mostra toast informativo
+
+### 15.9 — Migrations posteriores
+
+- `20260507000000_notificacoes.sql` — enum `tipo_notificacao` + tabela
+  `notificacoes` + RLS + Realtime
+- `20260509000000_motoristas_preferencias.sql` — colunas em `motoristas`:
+  `notif_whatsapp`, `notif_push`, `notif_pendentes`, `som_alerta`, `idioma`
+- `20260510000000_grants_service_role.sql` — `GRANT all` para `service_role`
+  + `ALTER DEFAULT PRIVILEGES` (corrige `42501 permission denied` quando
+  Edge Functions com service_role tentavam UPDATE em `instancias_whatsapp`)
+- `20260510010000_saudacao_template.sql` — variável `{saudacao}` no
+  cabeçalho padrão
+
+### 15.10 — Outras melhorias e correções
+
+- `viagemService.extrairErro` virou async e lê o body do `error.context`,
+  eliminando o genérico `"Edge Function returned a non-2xx status code"`
+  nos toasts
+- `Settings` ligado ao backend real: edição de perfil, troca de senha
+  (via `supabase.auth.updateUser`), turnos persistem em `rotas`,
+  notificações/idioma em `motoristas`
+- Helper `serializarErroSeguro` impede objetos arbitrários virarem
+  `[object Object]` em toasts — usa `JSON.stringify` com replacer
+  anti-circular como último recurso
+- Botão "Reenviar" no PassengerCard inicialmente foi implementado em
+  paralelo ao service existente (`viagemService.reenviarConfirmacao` +
+  `useReenviarConfirmacao`). A duplicação foi removida — agora o card
+  consome o hook que já existia
+- Sheet (Radix wrapper) convertido para `React.forwardRef` em todos os
+  subcomponentes — silencia o warning *"Function components cannot be
+  given refs"* que aparecia ao abrir modais
+- `BottomSheetModal` agora sempre renderiza `SheetDescription` (sr-only) —
+  silencia o warning de acessibilidade do Radix Dialog
+- Fluxo de login: limpeza de `localStorage` com chave antiga e timeout de
+  20s para Supabase free tier; `storageKey` versionado em
+  `lib/supabase.ts` evita reuso de sessão obsoleta após troca de anon key
+
+### 15.11 — Validação operacional ao final da fase
+
+- `npm run build` — sucesso
+- `npm test` — 9 testes verdes
+- 11+ Edge Functions deployadas e funcionais
+- Migrations aplicadas no remoto via `supabase db push`
+- Mensagens chegando no WhatsApp real, respostas processadas via webhook,
+  notificações in-app aparecendo no dashboard em tempo real
+
+### 15.12 — Remoção do limite de resposta e reinício diário do ciclo
+
+Em uso real, o campo visual de **limite de resposta** estava adicionando uma
+regra desnecessária para a operação. A decisão do produto foi simplificar:
+as respostas valem para a viagem do dia e, no próximo dia, o ciclo recomeça
+inteiro com novas confirmações `pendente`.
+
+**Mudança de regra de negócio:**
+- o motorista configura apenas o horário de envio automático
+- o sistema não converte mais pendentes em `ausente` por horário
+- reenvios continuam acontecendo apenas sobre confirmações `pendente` da
+  viagem atual
+- ao nascer uma nova viagem no dia seguinte, todos os passageiros daquela
+  rota voltam a iniciar o ciclo como `pendente`
+
+**Arquivos impactados:**
+- `src/app/components/whatsapp/ScheduleCard.tsx`
+- `src/app/hooks/useWhatsApp.ts`
+- `src/app/screens/WhatsAppScreen.tsx`
+- `src/app/services/whatsappService.ts`
+- `supabase/functions/automacao-diaria/index.ts`
+- `supabase/migrations/20260513000000_remover_limite_resposta_logico.sql`
+
+**Resultado operacional:**
+- a UI da tela WhatsApp ficou mais simples
+- o backend deixou de depender de `horario_limite_resposta`
+- o dia seguinte passou a ser o único "reset" do processo, sem transformação
+  automática de pendente para ausente por horário
+
+### 15.13 — Conversa reutilizável no webhook Evolution
+
+O `webhook-evolution` evoluiu de um processador direto de respostas para uma
+arquitetura de conversa reutilizável, inspirada no comportamento do bot antigo
+em `whatsapp-web.js`, mas desacoplada da biblioteca.
+
+**Objetivo:** preservar o comportamento funcional do bot:
+- validar respostas `1`, `2`, `3`, `4`
+- responder mensagens inválidas com orientação
+- tratar números fora das opções, como `8` ou `10`
+- detectar quando o responsável já confirmou no dia
+- perguntar se deseja alterar uma confirmação já feita
+- permitir nova escolha após confirmação da alteração
+- manter a resposta anterior quando o responsável não quiser alterar
+
+**Arquitetura criada:**
+- `supabase/functions/webhook-evolution/index.ts` virou controller do webhook
+- `_shared/conversaConfirmacao.ts` concentra a regra da conversa
+- `_shared/conversaValidacao.ts` valida opções de confirmação e decisão
+- `_shared/conversaMensagens.ts` monta as mensagens de resposta
+- `_shared/conversaRepository.ts` encapsula persistência e consultas
+- `20260513020000_conversas_confirmacao_whatsapp.sql` criou a tabela de estado diário
+
+**Estados persistidos por passageiro/dia:**
+- `sem_resposta`
+- `confirmado`
+- `aguardando_decisao`
+- `aguardando_nova_resposta`
+
+**Resultado:** o webhook ficou preparado para Evolution API, mas a regra de
+conversa não depende mais de `whatsapp-web.js`, Baileys ou do formato interno
+do evento. O controller apenas extrai telefone/texto e chama o service.
+
+---
+
 ## O que NÃO existe (ainda)
 
-- **Tela WhatsApp ligada ao backend real** — a UI de conexão, QR code, horários e template ainda usa estado local/simulado, embora a integração backend com Evolution API já exista nas Edge Functions
 - **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
 - **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
-- **Internacionalização** — strings hardcoded em PT-BR
-- **Notificações push reais** — apenas UI
-- **Persistência real da tela Configurações** — perfil, senha, turnos e preferências ainda não salvam no backend
+- **Internacionalização** — strings hardcoded em PT-BR (o campo `motoristas.idioma` já existe mas não há i18n no frontend ainda)
+- **Notificações push reais** — só UI; toggle `notif_push` é persistido mas sem service worker / FCM
+- **Cron por motorista** — o cron atual é único e itera todos os motoristas a cada minuto. Para multi-tenant em escala, cada motorista poderia ter seu próprio job no `pg_cron` com `horario_envio_automatico` no schedule
+- **Reativação do sendList** — está implementada em `_shared/evolution.ts::evolutionEnviarLista` com payload correto (Evolution v2 `sections`), mas não usada porque Baileys instável. Voltar a usar quando a Evolution/Baileys estabilizar
 ---
+
+

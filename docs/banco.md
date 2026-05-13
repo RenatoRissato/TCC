@@ -1,4 +1,4 @@
-# BANCO.md — SmartRoute
+﻿# BANCO.md — SmartRoutes
 
 ## Banco de dados: Supabase (PostgreSQL)
 
@@ -13,7 +13,7 @@ O banco da Evolution API é separado e interno à biblioteca — a aplicação n
 O diagrama abaixo representa a modelagem completa do sistema. Use-o como referência para entender os relacionamentos antes de ler o SQL.
 
 ```plantuml
-@startuml SmartRoute - Diagrama de Classes v2
+@startuml SmartRoutes - Diagrama de Classes v2
 
 skinparam classAttributeIconSize 0
 skinparam classFontSize 13
@@ -31,6 +31,10 @@ class Motorista {
   - email: String
   - telefone: String
   - cnh: String
+  - placaVan: String
+  - marcaVan: String
+  - modeloVan: String
+  - anoVan: int
   - criadoEm: DateTime
 }
 
@@ -436,6 +440,7 @@ create table if not exists configuracoes_automacao (
 
 comment on table configuracoes_automacao is 'Configurações de automação do envio de mensagens. intervalo_tentativas em minutos.';
 comment on column configuracoes_automacao.intervalo_tentativas is 'Intervalo entre tentativas de reenvio em minutos.';
+comment on column configuracoes_automacao.horario_limite_resposta is 'Campo legado mantido por compatibilidade histórica. Não é mais usado como regra operacional desde a migration 20260513000000_remover_limite_resposta_logico.sql.';
 ```
 
 ---
@@ -524,7 +529,44 @@ comment on table log_mensagens is 'Log de eventos do ciclo de vida de cada mensa
 
 ---
 
-### 15. Tabela: historico_presenca
+### 15. Tabela: conversas_confirmacao_whatsapp
+
+Estado diário da conversa do responsável no WhatsApp. Essa tabela permite que
+o webhook saiba se o responsável ainda não respondeu, já confirmou, está
+decidindo se quer alterar ou está enviando uma nova escolha.
+
+```sql
+create table if not exists conversas_confirmacao_whatsapp (
+  id uuid primary key default gen_random_uuid(),
+  passageiro_id uuid not null references passageiros(id) on delete cascade,
+  viagem_id uuid references viagens(id) on delete cascade,
+  confirmacao_id uuid references confirmacoes(id) on delete cascade,
+  data date not null default current_date,
+  estado text not null default 'sem_resposta',
+  tipo_confirmacao_anterior tipo_confirmacao,
+  alterada boolean not null default false,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (passageiro_id, data),
+  constraint conversas_confirmacao_estado_check
+    check (estado in (
+      'sem_resposta',
+      'confirmado',
+      'aguardando_decisao',
+      'aguardando_nova_resposta'
+    ))
+);
+```
+
+**Estados possíveis:**
+- `sem_resposta` — confirmação do dia ainda não recebeu resposta válida
+- `confirmado` — confirmação válida já registrada
+- `aguardando_decisao` — responsável enviou nova opção e precisa decidir se altera
+- `aguardando_nova_resposta` — responsável aceitou alterar e precisa enviar nova opção de 1 a 4
+
+---
+
+### 16. Tabela: historico_presenca
 
 Desnormalização intencional para performance de relatórios. Evita varredura completa de confirmacoes.
 
@@ -545,7 +587,7 @@ comment on table historico_presenca is 'Desnormalização intencional para relat
 
 ---
 
-### 16. Índices para performance
+### 17. Índices para performance
 
 ```sql
 create index if not exists idx_rotas_motorista_id on rotas(motorista_id);
@@ -557,12 +599,14 @@ create index if not exists idx_confirmacoes_passageiro_id on confirmacoes(passag
 create index if not exists idx_confirmacoes_status on confirmacoes(status);
 create index if not exists idx_mensagens_confirmacao_id on mensagens(confirmacao_id);
 create index if not exists idx_mensagens_passageiro_id on mensagens(passageiro_id);
+create index if not exists idx_conversas_confirmacao_passageiro_data on conversas_confirmacao_whatsapp(passageiro_id, data);
+create index if not exists idx_conversas_confirmacao_confirmacao_id on conversas_confirmacao_whatsapp(confirmacao_id);
 create index if not exists idx_historico_passageiro_data on historico_presenca(passageiro_id, data);
 ```
 
 ---
 
-### 17. Trigger: atualizar atualizado_em no template
+### 18. Trigger: atualizar atualizado_em no template
 
 ```sql
 create or replace function atualizar_timestamp()
@@ -814,7 +858,7 @@ $$ language plpgsql security definer;
 
 | Tabela | Descrição | Linhas estimadas |
 |---|---|---|
-| `motoristas` | Perfil do motorista | Baixo |
+| `motoristas` | Perfil do motorista + preferências (notif, idioma, dados do veículo) | Baixo |
 | `rotas` | Modelos fixos de rota | Baixo |
 | `passageiros` | Alunos por rota | Médio |
 | `viagens` | Execuções diárias das rotas | Cresce diariamente |
@@ -827,3 +871,137 @@ $$ language plpgsql security definer;
 | `mensagens` | Histórico completo WhatsApp | Alto volume |
 | `log_mensagens` | Eventos por mensagem | Alto volume |
 | `historico_presenca` | Desnormalização para relatórios | Alto volume |
+| `notificacoes` | Notificações in-app do motorista (sino do dashboard) | Médio |
+
+---
+
+## Histórico de migrations aplicadas
+
+Lista cronológica das migrations em `supabase/migrations/`, do mais antigo
+para o mais novo. Todas já foram aplicadas no remoto via `supabase db push`.
+
+| Arquivo | O que faz |
+|---|---|
+| `20260427000000_initial_schema.sql` | Schema inicial (todas as tabelas + RLS + função `criar_dados_iniciais_motorista`) |
+| `20260429000000_grants_authenticated.sql` | `GRANT select/insert/update/delete` para `authenticated` em todas as tabelas (necessário porque RLS sozinho não basta no Postgres) |
+| `20260430000000_paradas_rota.sql` | Adiciona `ponto_saida_*` em `rotas` + tabela `paradas_rota` (depois substituída por `destinos` JSONB) |
+| `20260430010000_endereco_estruturado.sql` | Estruturação do endereço de origem da rota |
+| `20260430020000_destinos_em_rotas.sql` | Coluna `destinos JSONB` em `rotas` substituindo `paradas_rota` |
+| `20260501000000_endereco_estruturado_passageiro.sql` | Quebra `endereco_embarque` em `embarque_rua`, `embarque_numero`, `embarque_bairro`, `embarque_cep` |
+| `20260501010000_observacoes_jsonb.sql` | `passageiros.observacoes` vira JSONB (`tipoPassageiro`, `instituicao`, `serieSemestre`, `curso`, `nomeResponsavel`) |
+| `20260501020000_drop_endereco_embarque.sql` | Remove a coluna legada `endereco_embarque` |
+| `20260506000000_motoristas_dados_veiculo.sql` | Adiciona `placa_van`, `marca_van`, `modelo_van`, `ano_van` em `motoristas` |
+| `20260507000000_notificacoes.sql` | Cria enum `tipo_notificacao` + tabela `notificacoes` + RLS + Realtime |
+| `20260509000000_motoristas_preferencias.sql` | Adiciona `notif_whatsapp`, `notif_push`, `notif_pendentes`, `som_alerta`, `idioma` em `motoristas` |
+| `20260510000000_grants_service_role.sql` | `GRANT all` para `service_role` + `ALTER DEFAULT PRIVILEGES` (fix do erro 42501 em Edge Functions que usam `criarClienteServico`) |
+| `20260510010000_saudacao_template.sql` | `DEFAULT` do `templates_mensagem.cabecalho` passa a usar `{saudacao}`; sobrescreve templates antigos no formato padrão exato; reescreve `criar_dados_iniciais_motorista` |
+
+---
+
+## Estado atual da tabela `motoristas`
+
+Depois de todas as migrations, a tabela tem mais colunas que o snapshot do
+schema inicial mostra. Versão consolidada (apenas para referência):
+
+```sql
+create table motoristas (
+  id              uuid primary key default uuid_generate_v4(),
+  user_id         uuid not null unique references auth.users(id) on delete cascade,
+  nome            text not null,
+  email           text not null,
+  telefone        text,
+  cnh             text,
+  -- veículo (20260506)
+  placa_van       text,
+  marca_van       text,
+  modelo_van      text,
+  ano_van         integer,
+  -- preferências (20260509)
+  notif_whatsapp  boolean not null default true,
+  notif_push      boolean not null default true,
+  notif_pendentes boolean not null default false,
+  som_alerta      text not null default 'default',
+  idioma          text not null default 'pt-BR',
+  criado_em       timestamptz not null default now()
+);
+```
+
+---
+
+## Tabela `notificacoes` (migration 20260507)
+
+Notificações in-app que aparecem no sino do dashboard. INSERT é restrito ao
+`service role` (somente Edge Functions criam) — motoristas podem ler/atualizar
+apenas as suas via RLS.
+
+```sql
+create type tipo_notificacao as enum (
+  'whatsapp_resposta',
+  'viagem_iniciada',
+  'viagem_finalizada'
+);
+
+create table notificacoes (
+  id            uuid primary key default gen_random_uuid(),
+  motorista_id  uuid not null references motoristas(id) on delete cascade,
+  titulo        text not null,
+  mensagem      text not null,
+  tipo          tipo_notificacao not null,
+  lida          boolean not null default false,
+  criada_em     timestamptz not null default now()
+);
+
+-- INSERT só via service role; SELECT/UPDATE para o dono
+alter table notificacoes enable row level security;
+grant select, update on notificacoes to authenticated;
+
+-- Adicionada ao Realtime para o frontend ouvir mudanças em tempo real
+alter publication supabase_realtime add table notificacoes;
+```
+
+Quem cria notificações:
+- `webhook-evolution` → `whatsapp_resposta` (quando o pai responde no WhatsApp)
+- `_shared/viagem.ts` (chamada por `iniciar-viagem` / `automacao-diaria`) → `viagem_iniciada`
+- `finalizar-viagem` → `viagem_finalizada`
+
+---
+
+## Decisão arquitetural: `confirmado + nao_vai` é semanticamente "não vai hoje"
+
+A coluna `confirmacoes.status` admite `pendente`, `confirmado`, `ausente`. A
+`tipo_confirmacao` admite `ida_e_volta`, `somente_ida`, `somente_volta`,
+`nao_vai`. A combinação **`status='confirmado' + tipo_confirmacao='nao_vai'`**
+significa que o responsável **respondeu** dizendo que NÃO vai — semanticamente
+é equivalente a `ausente` na UI.
+
+Para evitar divergências entre telas, o frontend usa
+`src/app/utils/confirmacaoStatus.ts::statusUIDaConfirmacao(status, tipo)` que
+retorna um status único de UI:
+
+| `status` + `tipo` no banco | `StatusUI` |
+|---|---|
+| `pendente` (qualquer) | `pendente` |
+| `confirmado + ida_e_volta`/`somente_ida`/`somente_volta` | `vai` |
+| `confirmado + nao_vai` | `nao_vai_hoje` |
+| `ausente` | `nao_vai_hoje` |
+
+Use esse helper em qualquer tela nova que precise classificar o aluno como
+vai / não vai / pendente.
+
+---
+
+## Grants para `service_role`
+
+A migration `20260510000000_grants_service_role.sql` concede `select/insert/
+update/delete` em todas as tabelas + `usage/select/update` em sequences +
+`execute` em functions para o role `service_role`. Também usa `ALTER DEFAULT
+PRIVILEGES` para tabelas futuras herdarem o grant automaticamente.
+
+**Por que isso é necessário:** as Edge Functions que usam `criarClienteServico()`
+(`webhook-evolution`, `automacao-diaria`, `qr-code-whatsapp`,
+`status-whatsapp`, `verificar-whatsapp`, `desconectar-whatsapp`) bypassam RLS
+mas **ainda precisam** ter o GRANT na tabela — caso contrário o Postgres
+barra com `42501: permission denied for table X`. Esse foi o erro que
+travou o fluxo de QR Code antes da migration ser aplicada.
+
+

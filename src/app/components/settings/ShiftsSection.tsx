@@ -1,18 +1,29 @@
-import { useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { Save } from 'lucide-react';
 import { Toggle } from '../shared/Toggle';
+import { Spinner } from '../whatsapp/Spinner';
+import { supabase } from '../../../lib/supabase';
+import type { RotaRow, TurnoRota } from '../../types/database';
 
-interface Shift {
-  id: string;
+interface ShiftUI {
+  id: TurnoRota;
   emoji: string;
   label: string;
   enabled: boolean;
-  time: string;
+  time: string;       // HH:MM
   color: string;
+  rotaId: string | null;
 }
 
+const TURNOS_DEFAULT: ShiftUI[] = [
+  { id: 'morning',   emoji: '☀️',  label: 'Rota Manhã', enabled: true,  time: '07:00', color: '#FFC107', rotaId: null },
+  { id: 'afternoon', emoji: '🌤️', label: 'Rota Tarde', enabled: true,  time: '12:00', color: '#FD7E14', rotaId: null },
+  { id: 'night',     emoji: '🌙',  label: 'Rota Noite', enabled: true,  time: '17:30', color: '#6C5CE7', rotaId: null },
+];
+
 interface ShiftCardProps {
-  shift: Shift;
+  shift: ShiftUI;
   onToggle: (v: boolean) => void;
   onTime: (v: string) => void;
 }
@@ -85,21 +96,84 @@ interface ShiftsSectionProps {
 }
 
 export function ShiftsSection({ isDesktop }: ShiftsSectionProps) {
-  const [shifts, setShifts] = useState<Shift[]>([
-    { id: 'morning',   emoji: '☀️',  label: 'Rota Manhã',  enabled: true, time: '07:15', color: '#FFC107' },
-    { id: 'afternoon', emoji: '🌤️', label: 'Rota Tarde',  enabled: true, time: '12:30', color: '#FD7E14' },
-    { id: 'night',     emoji: '🌙',  label: 'Rota Noite',  enabled: true, time: '19:00', color: '#6C5CE7' },
-  ]);
-  const [saved, setSaved] = useState(false);
+  const [shifts, setShifts] = useState<ShiftUI[]>(TURNOS_DEFAULT);
+  const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
 
-  const update = (id: string, ch: Partial<Shift>) =>
+  useEffect(() => {
+    let ativo = true;
+    void (async () => {
+      // Inclui rotas inativas — o motorista pode ter desativado um turno antes.
+      const { data, error } = await supabase
+        .from('rotas')
+        .select('*')
+        .order('horario_saida', { ascending: true });
+      if (!ativo) return;
+      if (error) {
+        console.error('ShiftsSection load:', error);
+        toast.error('Não foi possível carregar os turnos.');
+        setLoading(false);
+        return;
+      }
+      const rotas = (data ?? []) as RotaRow[];
+      const proxima = TURNOS_DEFAULT.map((t) => {
+        const rota = rotas.find((r) => r.turno === t.id);
+        if (!rota) return t;
+        return {
+          ...t,
+          enabled: rota.status === 'ativa',
+          time: (rota.horario_saida ?? t.time).slice(0, 5),
+          rotaId: rota.id,
+        };
+      });
+      setShifts(proxima);
+      setLoading(false);
+    })();
+    return () => { ativo = false; };
+  }, []);
+
+  const update = (id: TurnoRota, ch: Partial<ShiftUI>) =>
     setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...ch } : s)));
 
   const handleSave = async () => {
-    await new Promise((r) => setTimeout(r, 500));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    const turnosComRota = shifts.filter((s) => s.rotaId);
+    if (turnosComRota.length === 0) {
+      toast.error('Nenhuma rota encontrada para salvar.');
+      return;
+    }
+    setSalvando(true);
+    let falhas = 0;
+    for (const sh of turnosComRota) {
+      // Update das rotas existentes — ativando/desativando via status e
+      // ajustando horario_saida. Não criamos rotas novas aqui (isso é feito
+      // pela Edge Function criar-perfil-motorista).
+      const { error } = await supabase
+        .from('rotas')
+        .update({
+          status: sh.enabled ? 'ativa' : 'inativa',
+          horario_saida: sh.time,
+        })
+        .eq('id', sh.rotaId!);
+      if (error) {
+        console.error('ShiftsSection save', sh.id, error);
+        falhas++;
+      }
+    }
+    setSalvando(false);
+    if (falhas === 0) {
+      toast.success('Configurações de turnos salvas.');
+    } else {
+      toast.error(`Falha ao salvar ${falhas} turno(s). Tente novamente.`);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-ink-soft text-sm gap-2">
+        <Spinner size={18} /> Carregando turnos...
+      </div>
+    );
+  }
 
   return (
     <>
@@ -115,13 +189,16 @@ export function ShiftsSection({ isDesktop }: ShiftsSectionProps) {
       </div>
       <button
         onClick={handleSave}
-        className="w-full flex items-center justify-center gap-2 border-0 rounded-[14px] py-3 px-6 text-sm font-bold cursor-pointer min-h-[50px] font-sans transition-colors"
+        disabled={salvando}
+        className="w-full flex items-center justify-center gap-2 border-0 rounded-[14px] py-3 px-6 text-sm font-bold cursor-pointer min-h-[50px] font-sans transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
         style={{
-          background: saved ? 'var(--success)' : 'var(--pending)',
-          color: saved ? '#fff' : '#212529',
+          background: 'var(--pending)',
+          color: '#212529',
         }}
       >
-        {saved ? (<><CheckCircle2 size={17} strokeWidth={2.5} />Salvo!</>) : 'Salvar Configurações'}
+        {salvando
+          ? <><Spinner size={17} />Salvando...</>
+          : <><Save size={17} strokeWidth={2.5} />Salvar Configurações</>}
       </button>
     </>
   );

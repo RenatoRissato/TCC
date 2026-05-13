@@ -1,4 +1,4 @@
-# Backend SmartRoutes — Edge Functions
+﻿# Backend SmartRoutes — Edge Functions
 
 Backend serverless do SmartRoutes em Supabase Edge Functions (Deno + TypeScript). Toda a lógica que toca a Evolution API roda aqui — credenciais nunca chegam ao frontend.
 
@@ -109,12 +109,48 @@ curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE_NAME" \
   }'
 ```
 
-### 7. Configurar cron job (no SQL Editor do Supabase)
+### 7. Configurar cron job (a cada 1 minuto)
+
+O cron precisa rodar **uma vez por minuto** porque a Edge Function `automacao-diaria`
+faz comparação exata de `hora:minuto` em `America/Sao_Paulo` e também executa
+duas tarefas:
+
+- dispara mensagens quando o horário configurado do motorista bate exatamente;
+- reaproveita a viagem do dia para reenviar apenas às confirmações pendentes,
+  sem converter pendentes em ausentes por horário.
+
+As confirmações valem para a viagem corrente. No dia seguinte, uma nova
+viagem recria todas as confirmações como `pendente`, reiniciando o ciclo
+naturalmente.
+
+O projeto ainda mantém a migration com nome legado:
+
+```text
+supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql
+```
+
+Apesar do nome do arquivo, a recomendação operacional atual do projeto é
+agendar `automacao-diaria` **a cada 1 minuto** usando `pg_cron` + `pg_net`.
+Para nao versionar segredo, salve o `CRON_SECRET` no Supabase Vault antes de
+rodar as migrations:
+
+```sql
+select vault.create_secret('SEU_CRON_SECRET', 'smartroutes_cron_secret');
+```
+
+Se a migration legada já tiver sido aplicada sem o secret no Vault, rode uma vez
+o helper existente ou recrie manualmente o job com schedule de 1 minuto:
+
+```sql
+select public.configurar_cron_automacao_diaria_5min('SEU_CRON_SECRET');
+```
+
+SQL equivalente manual:
 
 ```sql
 select cron.schedule(
   'automacao-diaria-smartroute',
-  '*/15 * * * *',  -- a cada 15 minutos; a função filtra pelo horário configurado de cada motorista
+  '* * * * *',
   $$
   select net.http_post(
     url := 'https://SEU_PROJECT_REF.supabase.co/functions/v1/automacao-diaria',
@@ -170,7 +206,10 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/criar-perfil-motorista"
   -d '{
     "nome": "João da Silva",
     "telefone": "5519999999999",
-    "cnh": "12345678901"
+    "placa_van": "ABC-1234",
+    "marca_van": "Mercedes-Benz",
+    "modelo_van": "Sprinter",
+    "ano_van": 2020
   }'
 ```
 
@@ -186,7 +225,7 @@ Reexecutar retorna `200` com `criado: false` (idempotente).
 
 ### 2. `iniciar-viagem`
 
-Cria a viagem do dia e dispara `sendList` para cada passageiro ativo.
+Cria a viagem do dia e dispara `sendText` para cada passageiro ativo.
 
 ```bash
 curl -X POST "https://<PROJECT>.supabase.co/functions/v1/iniciar-viagem" \
@@ -345,7 +384,7 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/automacao-diaria" \
 | `NAO_AUTORIZADO` | 401 | JWT inválido ou ausente |
 | `MOTORISTA_NAO_ENCONTRADO` | 404 | Usuário sem perfil de motorista |
 | `ROTA_NAO_ENCONTRADA` | 403 | Rota inexistente ou de outro motorista |
-| `PASSAGEIRO_NAO_ENCONTRADO` | 403/404 | Passageiro inexistente, inativo ou de outro motorista |
+| `PASSAGEIRO_NAO_ENCONTRADO` | 403/404 | Passageiro inexistente, removido ou de outro motorista |
 | `VIAGEM_NAO_ENCONTRADA` | 403 | Viagem inexistente ou de outro motorista |
 | `VIAGEM_JA_FINALIZADA` | 409 | Tentativa de finalizar viagem já finalizada |
 | `CONFIRMACAO_NAO_ENCONTRADA` | 403/404 | Confirmação inexistente ou inacessível |
@@ -375,3 +414,5 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/automacao-diaria" \
 - **Mensagens não chegam** → Verifique `evolutionVerificarConexao` e o status da instância no painel da Evolution API.
 - **Webhook não dispara** → Confira que `webhook_by_events: true` foi setado e que `events` inclui `MESSAGES_UPSERT`.
 - **Logs em produção:** `npx supabase functions logs <nome> --tail`
+
+

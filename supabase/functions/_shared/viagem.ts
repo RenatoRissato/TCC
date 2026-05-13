@@ -2,9 +2,8 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { criarClienteServico } from './auth.ts'
 import {
-  evolutionEnviarLista,
+  evolutionEnviarTexto,
   EvolutionResposta,
-  OpcaoLista,
 } from './evolution.ts'
 
 export interface ResultadoEnvio {
@@ -42,22 +41,65 @@ interface TemplateAtivo {
   opcoes: OpcaoTemplate[]
 }
 
+const TIME_ZONE_BR = 'America/Sao_Paulo'
+
+export function dataBrasilISO(date = new Date()): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE_BR,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const get = (type: string) =>
+    partes.find((p) => p.type === type)?.value ?? ''
+
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+
 function formatarDataBR(date = new Date()): string {
   return date.toLocaleDateString('pt-BR', {
+    timeZone: TIME_ZONE_BR,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   })
 }
 
-function aplicarVariaveis(
+/**
+ * Retorna a saudação adequada para o horário atual em Brasília:
+ *   - 00h às 11h59 → "Bom dia"
+ *   - 12h às 17h59 → "Boa tarde"
+ *   - 18h às 23h59 → "Boa noite"
+ *
+ * Exportada porque é usada também em `reenviar-confirmacao` (mesmo cálculo,
+ * sem duplicar a lógica de timezone).
+ */
+export function obterSaudacaoBrasil(date = new Date()): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE_BR,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hora = parseInt(
+    partes.find((p) => p.type === 'hour')?.value ?? '0',
+    10,
+  )
+  if (hora < 12) return 'Bom dia'
+  if (hora < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+export function aplicarVariaveis(
   texto: string,
   passageiroNome: string,
   data: string,
+  saudacao: string,
 ): string {
   return texto
     .replaceAll('{nome_passageiro}', passageiroNome)
     .replaceAll('{data_formatada}', data)
+    .replaceAll('{saudacao}', saudacao)
 }
 
 async function buscarTemplateAtivo(
@@ -109,7 +151,13 @@ export async function processarIniciarViagem(
   supabase: SupabaseClient,
   motoristaId: string,
   rotaId: string,
+  options: { dataViagem?: string; enviarMensagens?: boolean } = {},
 ): Promise<ResumoViagem> {
+  // Regra de negócio: o botão "play" (iniciar viagem) NÃO dispara WhatsApp.
+  // Mensagens automáticas saem apenas do cron `automacao-diaria` no horário
+  // configurado, ou via `reenviar-confirmacao` quando o motorista pede
+  // explicitamente. Default false; o cron passa true.
+  const enviarMensagens = options.enviarMensagens === true
   // 1. Verifica rota
   const { data: rota, error: rotaErr } = await supabase
     .from('rotas')
@@ -125,7 +173,7 @@ export async function processarIniciarViagem(
   }
 
   // 2. Tenta criar viagem; se já existir (rota_id + data), busca a existente
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = options.dataViagem ?? dataBrasilISO()
   let viagemJaExistia = false
 
   const { data: viagemNova, error: insertErr } = await supabase
@@ -185,6 +233,10 @@ export async function processarIniciarViagem(
   const template = await buscarTemplateAtivo(supabase, motoristaId)
   const instanciaId = await buscarInstanciaWhatsApp(supabase, motoristaId)
   const dataFmt = formatarDataBR()
+  // Saudação calculada UMA vez no momento do disparo. Se uma viagem começar
+  // 11:58 e o último passageiro só receber às 12:01, todos veem "Bom dia"
+  // — consistente, ninguém recebe metade da turma com saudação diferente.
+  const saudacao = obterSaudacaoBrasil()
 
   // 6. Para cada passageiro: confirmação + envio
   const resultados: ResultadoEnvio[] = []
@@ -226,41 +278,74 @@ export async function processarIniciarViagem(
       confirmacaoId = confNova.id
     }
 
-    // Monta mensagem
+    // Monta mensagem em TEXTO PURO com as opções numeradas no corpo.
+    // Decisão arquitetural: trocamos sendList por sendText porque o Baileys
+    // (servidor Evolution) tem bugs intermitentes na codificação de mensagens
+    // interativas ("TypeError: this.isZero is not a function"), e o WhatsApp
+    // restringe cada vez mais botões/listas para APIs não-oficiais. Texto
+    // puro funciona em qualquer versão e nunca é bloqueado.
     const cabecalho = aplicarVariaveis(
       template.cabecalho,
       pax.nome_completo,
       dataFmt,
+      saudacao,
     )
-    const rodape = aplicarVariaveis(template.rodape, pax.nome_completo, dataFmt)
-    const titulo = `Van Escolar — ${rota.nome}`
+    const rodape = aplicarVariaveis(
+      template.rodape,
+      pax.nome_completo,
+      dataFmt,
+      saudacao,
+    )
 
-    const rows: OpcaoLista[] = template.opcoes.map((o) => ({
-      title: o.texto_exibido,
-      description: `${pax.nome_completo} — ${o.texto_exibido}`,
-      rowId: `${o.numero}_${confirmacaoId}`,
-    }))
+    const corpoLegivel = [
+      cabecalho,
+      '',
+      'Responda com o número da opção desejada:',
+      ...template.opcoes.map((o) => `${o.numero} - ${o.texto_exibido}`),
+      '',
+      rodape,
+    ].join('\n')
+
+    // Bloco de envio só roda quando `enviarMensagens=true`. Quando o
+    // motorista aperta "play" no app, esse trecho fica desligado — a viagem
+    // é criada (com as confirmações pendentes) mas nenhuma mensagem sai
+    // pelo WhatsApp. O envio fica delegado ao cron `automacao-diaria` e ao
+    // botão "reenviar" manual.
+    if (!enviarMensagens) {
+      resultados.push({
+        passageiro_id: pax.id,
+        nome: pax.nome_completo,
+        sucesso: true,
+      })
+      continue
+    }
 
     let resp: EvolutionResposta | null = null
     let envioErro: string | null = null
     try {
-      resp = await evolutionEnviarLista(
-        pax.telefone_responsavel,
-        titulo,
-        cabecalho,
-        rodape,
-        rows,
+      resp = await evolutionEnviarTexto(pax.telefone_responsavel, corpoLegivel)
+      console.log(
+        '[processarIniciarViagem] sendText OK',
+        JSON.stringify({
+          passageiro: pax.nome_completo,
+          telefone: pax.telefone_responsavel,
+          rota: rota.nome,
+          whatsapp_message_id: resp?.key?.id ?? null,
+        }),
       )
     } catch (e) {
       envioErro = e instanceof Error ? e.message : String(e)
+      console.error(
+        '[processarIniciarViagem] sendText FALHOU',
+        JSON.stringify({
+          passageiro: pax.nome_completo,
+          telefone: pax.telefone_responsavel,
+          rota: rota.nome,
+          rota_id: rotaId,
+          erro: envioErro,
+        }),
+      )
     }
-
-    // Conteúdo legível para o log
-    const corpoLegivel = [
-      cabecalho,
-      ...template.opcoes.map((o) => `${o.numero} - ${o.texto_exibido}`),
-      rodape,
-    ].join('\n')
 
     if (resp && !envioErro) {
       await supabase.from('mensagens').insert({
