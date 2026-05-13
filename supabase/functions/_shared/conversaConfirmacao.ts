@@ -36,6 +36,13 @@ export interface EntradaConversaConfirmacao {
   texto: string
   whatsappMessageId?: string | null
   confirmacaoId?: string | null
+  /**
+   * Motorista dono da instância de WhatsApp ativa. O webhook descobre via
+   * `obterMotoristaDaInstanciaAtiva` antes de chamar. Quando presente,
+   * restringe a busca de passageiros aos passageiros desse motorista —
+   * passageiros de outro motorista com mesmo telefone ficam fora.
+   */
+  motoristaIdAtivo?: string | null
 }
 
 export interface SaidaConversaConfirmacao {
@@ -100,7 +107,11 @@ export async function processarMensagemConfirmacao(
   // com o nome certo.
   const candidatos = entrada.confirmacaoId
     ? []
-    : await buscarPassageirosPorTelefone(supabase, entrada.telefoneRemetente)
+    : await buscarPassageirosPorTelefone(
+        supabase,
+        entrada.telefoneRemetente,
+        entrada.motoristaIdAtivo ?? null,
+      )
 
   const passageiroInicial = entrada.confirmacaoId
     ? null

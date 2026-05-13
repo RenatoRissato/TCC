@@ -48,9 +48,48 @@ function candidatosTelefone(telefone: string): string[] {
   return [...candidatos].filter(Boolean)
 }
 
+/**
+ * Identifica o motorista DONO da instância de WhatsApp que recebeu a
+ * mensagem. Como o `EVOLUTION_INSTANCE_NAME` é global (single-tenant na
+ * Evolution), só pode haver um motorista com `status_conexao='conectado'`
+ * em um dado instante. Em caso de mais de um (race condition transitória),
+ * pegamos o de `data_ultima_conexao` mais recente.
+ *
+ * Esse motorista delimita o universo de passageiros que o webhook pode
+ * responder. Sem isso, um passageiro de outro motorista com mesmo
+ * telefone poderia ser escolhido — exatamente o bug reportado em produção.
+ */
+export async function obterMotoristaDaInstanciaAtiva(
+  supabase: SupabaseClient,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('instancias_whatsapp')
+    .select('motorista_id, data_ultima_conexao')
+    .eq('status_conexao', 'conectado')
+    .order('data_ultima_conexao', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error(
+      '[conversa] obterMotoristaDaInstanciaAtiva: erro consultando instancia',
+      JSON.stringify({ erro: error.message }),
+    )
+    return null
+  }
+  if (!data) {
+    console.log(
+      '[conversa] obterMotoristaDaInstanciaAtiva: nenhuma instancia conectada',
+    )
+    return null
+  }
+  return (data as { motorista_id: string }).motorista_id
+}
+
 export async function buscarPassageirosPorTelefone(
   supabase: SupabaseClient,
   telefone: string,
+  motoristaId: string | null = null,
 ): Promise<PassageiroConversa[]> {
   const candidatos = candidatosTelefone(telefone)
   const { data, error } = await supabase
@@ -71,17 +110,29 @@ export async function buscarPassageirosPorTelefone(
     )
     return []
   }
-  const lista = (data ?? []) as PassageiroConversa[]
+  const todos = (data ?? []) as PassageiroConversa[]
+
+  // Filtra por motorista (regra de negócio: o webhook só responde para
+  // passageiros do motorista DONO da instância ativa). Filtro em memória
+  // porque o JOIN via PostgREST `rotas.motorista_id` é frágil — preferimos
+  // pegar todos e filtrar aqui.
+  const lista = motoristaId
+    ? todos.filter((p) => p.rotas?.motorista_id === motoristaId)
+    : todos
+
   console.log(
     '[conversa] buscarPassageirosPorTelefone',
     JSON.stringify({
       telefone_recebido: telefone,
       candidatos,
-      total: lista.length,
+      filtro_motorista_id: motoristaId,
+      total_no_banco: todos.length,
+      total_no_motorista: lista.length,
       passageiros: lista.map((p) => ({
         id: p.id,
         nome: p.nome_completo,
         rota_id: p.rota_id,
+        motorista_id: p.rotas?.motorista_id ?? null,
       })),
     }),
   )
@@ -97,8 +148,9 @@ export async function buscarPassageirosPorTelefone(
 export async function buscarPassageiroPorTelefone(
   supabase: SupabaseClient,
   telefone: string,
+  motoristaId: string | null = null,
 ): Promise<PassageiroConversa | null> {
-  const lista = await buscarPassageirosPorTelefone(supabase, telefone)
+  const lista = await buscarPassageirosPorTelefone(supabase, telefone, motoristaId)
   return lista[0] ?? null
 }
 

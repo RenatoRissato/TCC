@@ -6,6 +6,7 @@ import { evolutionEnviarTexto } from '../_shared/evolution.ts'
 import { processarMensagemConfirmacao } from '../_shared/conversaConfirmacao.ts'
 import {
   mensagemJaProcessada,
+  obterMotoristaDaInstanciaAtiva,
   registrarMensagemConversa,
 } from '../_shared/conversaRepository.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -218,11 +219,23 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    // Identifica o motorista dono da instância ativa — a busca de passageiro
+    // só pode considerar passageiros desse motorista. Single-tenant na
+    // Evolution (1 número de WhatsApp do bot global), então só 1 motorista
+    // tem status_conexao='conectado' por vez. Sem esse filtro, um passageiro
+    // de outro motorista com mesmo telefone seria escolhido.
+    const motoristaIdAtivo = await obterMotoristaDaInstanciaAtiva(supabase)
+    console.log(
+      '[webhook] motorista ativo da instancia',
+      JSON.stringify({ motorista_id_ativo: motoristaIdAtivo }),
+    )
+
     const resultado = await processarMensagemConfirmacao(supabase, {
       telefoneRemetente,
       texto,
       whatsappMessageId,
       confirmacaoId,
+      motoristaIdAtivo,
     })
 
     console.log(
