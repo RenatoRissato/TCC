@@ -120,12 +120,22 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
   - `3` → `somente_volta`
   - `4` → `nao_vai`
 - A confirmação a atualizar é resolvida pelo **telefone do remetente** →
-  passageiro → última confirmação `pendente` daquele passageiro
+  passageiro → confirmação da viagem do dia daquele passageiro
 - O webhook ainda aceita `listResponseMessage` legado (com `rowId` no
   formato `{numero}_{confirmacao_id}`) caso `sendList` seja reativado no
   futuro
 - **RN43** — Uma mensagem de confirmação de retorno por resposta válida recebida
 - **RN44** — Não existe mais horário limite operacional para resposta. A confirmação permanece vinculada à viagem do dia e o próximo ciclo diário nasce com novas confirmações `pendente`
+- **RN76** — O webhook mantém estado diário de conversa por passageiro em
+  `conversas_confirmacao_whatsapp`
+- **RN77** — Primeiro contato do dia aceita apenas `1`, `2`, `3` ou `4`; texto
+  ou número fora do intervalo gera mensagem de orientação com opções válidas
+- **RN78** — Se já houver confirmação no dia e o responsável enviar nova opção
+  `1` a `4`, o bot pergunta se deseja alterar antes de sobrescrever
+- **RN79** — Em `aguardando_decisao`, `1` permite nova escolha e `2` mantém a
+  resposta anterior; qualquer outro valor repete apenas as opções dessa etapa
+- **RN80** — Em `aguardando_nova_resposta`, apenas `1` a `4` são aceitos; valor
+  inválido repete as opções de confirmação
 - **RN72** — `confirmado + nao_vai` é semanticamente igual a `ausente` na UI:
   ambos viram `nao_vai_hoje` via `statusUIDaConfirmacao()` e o aluno é
   excluído do trajeto do Google Maps

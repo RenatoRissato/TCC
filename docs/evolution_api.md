@@ -158,13 +158,25 @@ ativas (`opcoes_resposta`) entre os dois.
 #### Como o responsável responde
 
 O pai recebe o texto e responde diretamente com o número da opção. O regex
-do webhook aceita variações:
+do service de conversa aceita variações:
 
 - `"1"`, `"2"`, `"3"`, `"4"` (estrito)
 - `"1 - Ida e volta"`, `"1.", "1 ", "  1  "` (qualquer texto que comece com dígito 1-4)
 
 Veja `webhook-evolution` em [`docs/Edge_Functions.md`](Edge_Functions.md) para
 o pipeline completo.
+
+O webhook também trata respostas inválidas e alteração de confirmação já feita.
+O estado diário fica em `conversas_confirmacao_whatsapp`:
+
+- `sem_resposta`
+- `confirmado`
+- `aguardando_decisao`
+- `aguardando_nova_resposta`
+
+Quando o responsável já confirmou e envia uma nova opção, o bot pergunta se
+ele deseja alterar. Se responder `1`, aguarda uma nova escolha de 1 a 4. Se
+responder `2`, mantém a resposta anterior.
 
 #### Compatibilidade com sendList (legado)
 
@@ -246,7 +258,50 @@ POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE_NAME}
 
 ## Payload do webhook — como a Evolution API notifica o sistema
 
-Quando um responsável responde a mensagem de lista, a Evolution API faz um POST na URL do webhook com o seguinte payload:
+Quando um responsável responde por texto, a Evolution API faz um POST na URL
+do webhook com payload parecido com este:
+
+```json
+{
+  "event": "messages.upsert",
+  "instance": "smartroute",
+  "data": {
+    "key": {
+      "remoteJid": "5519999999999@s.whatsapp.net",
+      "fromMe": false,
+      "id": "ABCD1234567890"
+    },
+    "pushName": "Maria",
+    "message": {
+      "conversation": "1"
+    },
+    "messageType": "conversation"
+  }
+}
+```
+
+Também pode vir como `extendedTextMessage`:
+
+```json
+{
+  "event": "messages.upsert",
+  "data": {
+    "key": {
+      "remoteJid": "5519999999999@s.whatsapp.net",
+      "fromMe": false,
+      "id": "ABCD1234567891"
+    },
+    "message": {
+      "extendedTextMessage": {
+        "text": "4"
+      }
+    }
+  }
+}
+```
+
+O formato de lista é legado. O webhook ainda aceita `listResponseMessage`
+com `selectedRowId` no formato `{numero}_{confirmacao_id}`:
 
 ```json
 {
@@ -283,19 +338,17 @@ Quando um responsável responde a mensagem de lista, a Evolution API faz um POST
 
 **Como processar na Edge Function `webhook-evolution`:**
 
-1. Verificar `payload.event === "messages.upsert"` — ignorar qualquer outro evento
-2. Verificar `payload.data.message.listResponseMessage` existe — ignorar se não for resposta de lista (pode ser outra mensagem recebida no número)
-3. Extrair `payload.data.message.listResponseMessage.singleSelectReply.selectedRowId` — esse é o `rowId` que foi enviado na mensagem de lista
-4. Separar o `rowId` no underscore: `const [numero, confirmacaoId] = rowId.split('_', 2)`
-5. O `numero` mapeia para o `tipo_confirmacao`:
-   - `"1"` → `ida_e_volta`
-   - `"2"` → `somente_ida`
-   - `"3"` → `somente_volta`
-   - `"4"` → `nao_vai`
-6. Extrair o telefone do remetente: `payload.data.key.remoteJid.replace('@s.whatsapp.net', '')`
-7. Usar o `confirmacaoId` para atualizar a tabela `confirmacoes` no banco
+1. Verificar `payload.event === "messages.upsert"` — ignorar outros eventos que não sejam mensagem
+2. Ignorar `payload.data.key.fromMe === true`
+3. Extrair texto de `conversation`, `extendedTextMessage.text`, legenda de imagem ou `listResponseMessage`
+4. Extrair o telefone do remetente por `payload.data.key.remoteJid`
+5. Chamar `_shared/conversaConfirmacao.ts::processarMensagemConfirmacao`
+6. O service busca passageiro, confirmação da viagem do dia e estado em `conversas_confirmacao_whatsapp`
+7. O service valida a opção, decide se confirma, pergunta alteração, mantém resposta anterior ou pede nova escolha
+8. O controller envia a mensagem de retorno com `evolutionEnviarTexto`
 
-**Importante:** O webhook pode receber outros tipos de mensagem além de respostas de lista (mensagens de texto avulsas, figurinhas, áudios do responsável). A Edge Function deve verificar `payload.data.message.listResponseMessage` antes de processar — se não existir, retornar 200 com `{ ignorado: true }` sem fazer nada.
+**Importante:** O controller não contém a regra de negócio da conversa. Ele
+apenas adapta o payload da Evolution API para o service compartilhado.
 
 ---
 

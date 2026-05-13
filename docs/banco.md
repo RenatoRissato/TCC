@@ -529,7 +529,44 @@ comment on table log_mensagens is 'Log de eventos do ciclo de vida de cada mensa
 
 ---
 
-### 15. Tabela: historico_presenca
+### 15. Tabela: conversas_confirmacao_whatsapp
+
+Estado diário da conversa do responsável no WhatsApp. Essa tabela permite que
+o webhook saiba se o responsável ainda não respondeu, já confirmou, está
+decidindo se quer alterar ou está enviando uma nova escolha.
+
+```sql
+create table if not exists conversas_confirmacao_whatsapp (
+  id uuid primary key default gen_random_uuid(),
+  passageiro_id uuid not null references passageiros(id) on delete cascade,
+  viagem_id uuid references viagens(id) on delete cascade,
+  confirmacao_id uuid references confirmacoes(id) on delete cascade,
+  data date not null default current_date,
+  estado text not null default 'sem_resposta',
+  tipo_confirmacao_anterior tipo_confirmacao,
+  alterada boolean not null default false,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (passageiro_id, data),
+  constraint conversas_confirmacao_estado_check
+    check (estado in (
+      'sem_resposta',
+      'confirmado',
+      'aguardando_decisao',
+      'aguardando_nova_resposta'
+    ))
+);
+```
+
+**Estados possíveis:**
+- `sem_resposta` — confirmação do dia ainda não recebeu resposta válida
+- `confirmado` — confirmação válida já registrada
+- `aguardando_decisao` — responsável enviou nova opção e precisa decidir se altera
+- `aguardando_nova_resposta` — responsável aceitou alterar e precisa enviar nova opção de 1 a 4
+
+---
+
+### 16. Tabela: historico_presenca
 
 Desnormalização intencional para performance de relatórios. Evita varredura completa de confirmacoes.
 
@@ -550,7 +587,7 @@ comment on table historico_presenca is 'Desnormalização intencional para relat
 
 ---
 
-### 16. Índices para performance
+### 17. Índices para performance
 
 ```sql
 create index if not exists idx_rotas_motorista_id on rotas(motorista_id);
@@ -562,12 +599,14 @@ create index if not exists idx_confirmacoes_passageiro_id on confirmacoes(passag
 create index if not exists idx_confirmacoes_status on confirmacoes(status);
 create index if not exists idx_mensagens_confirmacao_id on mensagens(confirmacao_id);
 create index if not exists idx_mensagens_passageiro_id on mensagens(passageiro_id);
+create index if not exists idx_conversas_confirmacao_passageiro_data on conversas_confirmacao_whatsapp(passageiro_id, data);
+create index if not exists idx_conversas_confirmacao_confirmacao_id on conversas_confirmacao_whatsapp(confirmacao_id);
 create index if not exists idx_historico_passageiro_data on historico_presenca(passageiro_id, data);
 ```
 
 ---
 
-### 17. Trigger: atualizar atualizado_em no template
+### 18. Trigger: atualizar atualizado_em no template
 
 ```sql
 create or replace function atualizar_timestamp()

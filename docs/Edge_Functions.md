@@ -266,25 +266,29 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 **O que faz para `messages.upsert`:**
 1. Valida `x-webhook-secret`; se inválido retorna 401
 2. Ignora mensagens enviadas pelo próprio bot (`data.key.fromMe === true`)
-3. Tenta extrair o "número de opção" de **duas fontes**, nesta ordem:
-   - **Texto puro** com dígito 1-4 no início — `data.message.conversation` ou `data.message.extendedTextMessage.text` (fluxo atual: o bot envia `sendText` com opções numeradas no corpo, o pai responde "1", "2", "1 - Ida e volta" etc.). Regex: `^([1-4])\b`
-   - **`listResponseMessage`** com `selectedRowId` no formato legado `{numero}_{confirmacao_id}` — mantido por compatibilidade, mas o sistema não envia mais via `sendList`
-4. Mapeia o número para o `tipo_confirmacao`:
-   - `1` → `ida_e_volta`
-   - `2` → `somente_ida`
-   - `3` → `somente_volta`
-   - `4` → `nao_vai`
-5. **Resolve qual confirmação atualizar:**
-   - Se veio do listResponseMessage, usa o `confirmacao_id` embutido no `rowId`
-   - Se veio do texto puro, busca o passageiro pelo telefone do remetente e pega a **última confirmação pendente** dele
-6. Se o status já não for `pendente`, ignora (evita processamento duplicado)
-7. Atualiza `confirmacoes` com `status = 'confirmado'`, `tipo_confirmacao`, `origem = 'whatsapp'`, `respondida_em = now()`
-8. Cria notificação `whatsapp_resposta` para o motorista
-9. Insere em `mensagens` com `tipo = 'resposta_confirmacao'`, `direcao = 'entrada'`
-10. Envia mensagem de retorno automática:
-    - `ida_e_volta` / `somente_ida` / `somente_volta` → "Confirmado! {nome} estará aguardando a van. Bom dia!"
-    - `nao_vai` → "Entendido! {nome} não vai hoje. Obrigado por avisar."
+3. Extrai texto de `conversation`, `extendedTextMessage.text`, legenda de imagem ou `listResponseMessage` legado
+4. Extrai o telefone do responsável a partir de `data.key.remoteJid`
+5. Chama `_shared/conversaConfirmacao.ts::processarMensagemConfirmacao`
+6. O service resolve passageiro, confirmação do dia e estado da conversa em `conversas_confirmacao_whatsapp`
+7. Valida opções aceitas (`1`, `2`, `3`, `4`) ou opções de decisão (`1` alterar, `2` manter), conforme o estado atual
+8. Atualiza `confirmacoes` quando uma resposta válida é confirmada ou alterada
+9. Registra mensagens de entrada e saída em `mensagens`
+10. Envia a resposta automática pela Evolution API com `evolutionEnviarTexto`
 11. Tudo usa `SUPABASE_SERVICE_ROLE_KEY` (sem JWT do usuário)
+
+**Estados de conversa por dia:**
+- `sem_resposta` — ainda não há resposta válida para a confirmação do dia
+- `confirmado` — já existe resposta registrada
+- `aguardando_decisao` — responsável enviou nova opção e o bot perguntou se deseja alterar
+- `aguardando_nova_resposta` — responsável aceitou alterar e o bot aguarda uma nova opção de 1 a 4
+
+**Arquitetura interna do processamento:**
+- `_shared/conversaConfirmacao.ts` — service principal da regra de conversa
+- `_shared/conversaValidacao.ts` — validação de opção de confirmação e decisão
+- `_shared/conversaMensagens.ts` — textos de resposta automática e mensagens de erro
+- `_shared/conversaRepository.ts` — acesso a passageiro, confirmação, estado da conversa, mensagens e notificações
+
+**Importante:** A mensagem inicial de confirmação não fica neste webhook e não foi alterada. Ela continua sendo montada pelos fluxos de envio (`iniciar-viagem`, `automacao-diaria`, `reenviar-confirmacao`). O webhook trata apenas as respostas recebidas e as mensagens seguintes da conversa.
 
 **Importante:** O Supabase Realtime notifica o frontend automaticamente quando `confirmacoes` ou `instancias_whatsapp` são atualizadas — nenhuma lógica extra necessária.
 

@@ -2208,6 +2208,39 @@ inteiro com novas confirmações `pendente`.
 - o dia seguinte passou a ser o único "reset" do processo, sem transformação
   automática de pendente para ausente por horário
 
+### 15.13 — Conversa reutilizável no webhook Evolution
+
+O `webhook-evolution` evoluiu de um processador direto de respostas para uma
+arquitetura de conversa reutilizável, inspirada no comportamento do bot antigo
+em `whatsapp-web.js`, mas desacoplada da biblioteca.
+
+**Objetivo:** preservar o comportamento funcional do bot:
+- validar respostas `1`, `2`, `3`, `4`
+- responder mensagens inválidas com orientação
+- tratar números fora das opções, como `8` ou `10`
+- detectar quando o responsável já confirmou no dia
+- perguntar se deseja alterar uma confirmação já feita
+- permitir nova escolha após confirmação da alteração
+- manter a resposta anterior quando o responsável não quiser alterar
+
+**Arquitetura criada:**
+- `supabase/functions/webhook-evolution/index.ts` virou controller do webhook
+- `_shared/conversaConfirmacao.ts` concentra a regra da conversa
+- `_shared/conversaValidacao.ts` valida opções de confirmação e decisão
+- `_shared/conversaMensagens.ts` monta as mensagens de resposta
+- `_shared/conversaRepository.ts` encapsula persistência e consultas
+- `20260513020000_conversas_confirmacao_whatsapp.sql` criou a tabela de estado diário
+
+**Estados persistidos por passageiro/dia:**
+- `sem_resposta`
+- `confirmado`
+- `aguardando_decisao`
+- `aguardando_nova_resposta`
+
+**Resultado:** o webhook ficou preparado para Evolution API, mas a regra de
+conversa não depende mais de `whatsapp-web.js`, Baileys ou do formato interno
+do evento. O controller apenas extrai telefone/texto e chama o service.
+
 ---
 
 ## O que NÃO existe (ainda)
@@ -2216,7 +2249,6 @@ inteiro com novas confirmações `pendente`.
 - **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
 - **Internacionalização** — strings hardcoded em PT-BR (o campo `motoristas.idioma` já existe mas não há i18n no frontend ainda)
 - **Notificações push reais** — só UI; toggle `notif_push` é persistido mas sem service worker / FCM
-- **Mensagens de aviso de resposta inválida** — se o pai responder `xyz` (não 1-4), hoje a mensagem é ignorada silenciosamente
 - **Cron por motorista** — o cron atual é único e itera todos os motoristas a cada minuto. Para multi-tenant em escala, cada motorista poderia ter seu próprio job no `pg_cron` com `horario_envio_automatico` no schedule
 - **Reativação do sendList** — está implementada em `_shared/evolution.ts::evolutionEnviarLista` com payload correto (Evolution v2 `sections`), mas não usada porque Baileys instável. Voltar a usar quando a Evolution/Baileys estabilizar
 ---
