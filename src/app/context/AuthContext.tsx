@@ -227,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // for de uma versão antiga ou tiver falhado parcialmente, garantimos
       // aqui no primeiro login após registro. Se as rotas já existem,
       // criarRotasPadrao retorna sem inserir.
-      if (motoristaAcabouDeNascer || true) {
+      if (motoristaAcabouDeNascer) {
         console.log('[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para', motorista.id);
         const r = await criarRotasPadrao(motorista.id);
         console.log('[hidratarSessao] criarRotasPadrao resultado:', r);
@@ -369,11 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Function for uma versão antiga (sem a feature de rotas), garantimos
     // que as rotas existam. Se já existirem, a função retorna sem inserir.
     const motoristaIdCriado = (fnData as { motorista?: { id?: string } } | null)?.motorista?.id;
-    if (motoristaIdCriado) {
-      console.log('[register] fallback criarRotasPadrao para motorista', motoristaIdCriado);
-      const r = await criarRotasPadrao(motoristaIdCriado);
-      console.log('[register] criarRotasPadrao resultado:', r);
-    } else {
+    if (!motoristaIdCriado) {
       console.warn('[register] motorista.id ausente no retorno da Edge Function');
     }
 

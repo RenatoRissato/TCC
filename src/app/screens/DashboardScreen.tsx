@@ -315,8 +315,8 @@ export function DashboardScreen() {
           if (!fnError) {
             const motoristaIdRetornado =
               (fnData as { motorista?: { id?: string } } | null)?.motorista?.id ?? null;
-            if (motoristaIdRetornado) {
-              await criarRotasPadrao(motoristaIdRetornado);
+            if (!motoristaIdRetornado) {
+              console.warn('Dashboard autorepair: motorista.id ausente no retorno da Edge Function');
             }
             const recarregadas = await getRouteConfigs();
             arr = Array.isArray(recarregadas) ? recarregadas : [];

@@ -36,20 +36,6 @@ export interface CriarRotasPadraoResult {
  * caller pode logar o resultado e detectar bloqueio de RLS, constraint, etc.
  */
 export async function criarRotasPadrao(motoristaId: string): Promise<CriarRotasPadraoResult> {
-  const { data: existentes, error: lookupErr } = await supabase
-    .from('rotas')
-    .select('id')
-    .eq('motorista_id', motoristaId)
-    .limit(1);
-
-  if (lookupErr) {
-    console.error('criarRotasPadrao (lookup):', lookupErr);
-    return { status: 'erro', erro: lookupErr.message };
-  }
-  if (existentes && existentes.length > 0) {
-    return { status: 'ja_existiam' };
-  }
-
   const padroes = [
     { motorista_id: motoristaId, nome: 'Rota Manhã', horario_saida: '07:00', turno: 'morning'   as const, status: 'ativa' as const },
     { motorista_id: motoristaId, nome: 'Rota Tarde', horario_saida: '12:00', turno: 'afternoon' as const, status: 'ativa' as const },
@@ -58,13 +44,20 @@ export async function criarRotasPadrao(motoristaId: string): Promise<CriarRotasP
 
   const { data: inseridas, error: insertErr } = await supabase
     .from('rotas')
-    .insert(padroes)
+    .upsert(padroes, {
+      onConflict: 'motorista_id,turno',
+      ignoreDuplicates: true,
+    })
     .select('id');
   if (insertErr) {
-    console.error('criarRotasPadrao (insert):', insertErr);
+    console.error('criarRotasPadrao (upsert):', insertErr);
     return { status: 'erro', erro: insertErr.message };
   }
-  return { status: 'criadas', totalCriadas: inseridas?.length ?? 0 };
+
+  const totalCriadas = inseridas?.length ?? 0;
+  return totalCriadas > 0
+    ? { status: 'criadas', totalCriadas }
+    : { status: 'ja_existiam', totalCriadas: 0 };
 }
 
 export async function listarRotasComContagem(): Promise<RouteConfig[]> {
