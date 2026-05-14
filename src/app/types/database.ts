@@ -20,6 +20,7 @@ export interface MotoristaRow {
   marca_van: string | null;
   modelo_van: string | null;
   ano_van: number | null;
+  foto_url: string | null;
   notif_whatsapp: boolean;
   notif_push: boolean;
   notif_pendentes: boolean;

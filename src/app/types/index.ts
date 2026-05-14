@@ -90,6 +90,7 @@ export interface User {
   name: string;
   email: string;
   phone: string;
+  avatar?: string | null;
   cnh: string | null;
   plate?: string;
   vehicle?: string;

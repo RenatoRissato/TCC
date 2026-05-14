@@ -53,6 +53,7 @@ function motoristaToUser(m: MotoristaRow): User {
     name: m.nome,
     email: m.email,
     phone: m.telefone ?? '',
+    avatar: m.foto_url,
     cnh: m.cnh,
     plate: m.placa_van ?? undefined,
     vehicle: vehiclePartes.join(' · ') || undefined,
@@ -141,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     const metaName = pickName('nome', 'name', 'full_name', 'display_name');
     const metaPhone = pickName('telefone', 'phone', 'phone_number');
+    const metaAvatar = pickName('foto_url', 'avatar_url', 'picture');
     const metaCnh = pickName('cnh');
     const metaPlacaVan = pickName('placa_van');
     const metaMarcaVan = pickName('marca_van');
@@ -159,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: fallbackName,
         email: session.user.email ?? '',
         phone: metaPhone.replace(/\D/g, ''),
+        avatar: metaAvatar || null,
         cnh: metaCnh || null,
         plate: metaPlacaVan || undefined,
         vehicle: [metaMarcaVan, metaModeloVan].filter(Boolean).join(' ') || undefined,

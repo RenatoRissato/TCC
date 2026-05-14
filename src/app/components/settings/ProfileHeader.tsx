@@ -11,7 +11,7 @@ interface ProfileHeaderProps {
   isLg: boolean;
   isDesktop: boolean;
   paddingX: number;
-  user: { name?: string; email?: string; vehicle?: string } | null;
+  user: { name?: string; email?: string; vehicle?: string; avatar?: string | null } | null;
   stats: Stat[];
   onToggleTheme: () => void;
   onOpenDrawer: () => void;
@@ -50,13 +50,17 @@ export function ProfileHeader({
 
         <div className="relative">
           <div
-            className="w-[72px] h-[72px] rounded-[22px] flex items-center justify-center text-[28px] font-extrabold text-[#212529] tracking-[-1px]"
+            className="w-[72px] h-[72px] rounded-[22px] overflow-hidden flex items-center justify-center text-[28px] font-extrabold text-[#212529] tracking-[-1px]"
             style={{
               background: 'linear-gradient(135deg,#FFC107,#E6A800)',
               boxShadow: '0 4px 20px rgba(255,193,7,0.4)',
             }}
           >
-            {initials}
+            {user?.avatar ? (
+              <img src={user.avatar} alt={user?.name ?? 'Foto de perfil'} className="w-full h-full object-cover" />
+            ) : (
+              initials
+            )}
           </div>
           <button
             onClick={onEditProfile}
