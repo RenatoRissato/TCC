@@ -79,6 +79,61 @@ interface ResultadoReenvio {
   falhas_detalhe: { passageiro_id: string; erro: string }[]
 }
 
+async function garantirConfirmacoesPendentesDaRota(
+  supabase: ReturnType<typeof criarClienteServico>,
+  viagemId: string,
+  rotaId: string,
+): Promise<number> {
+  const { data: passageirosAtivos, error: paxErr } = await supabase
+    .from('passageiros')
+    .select('id')
+    .eq('rota_id', rotaId)
+    .eq('status', 'ativo')
+
+  if (paxErr) throw paxErr
+
+  const idsAtivos = (passageirosAtivos ?? [])
+    .map((p) => p.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+  if (idsAtivos.length === 0) return 0
+
+  const { data: existentes, error: confErr } = await supabase
+    .from('confirmacoes')
+    .select('passageiro_id')
+    .eq('viagem_id', viagemId)
+    .in('passageiro_id', idsAtivos)
+
+  if (confErr) throw confErr
+
+  const existentesSet = new Set(
+    (existentes ?? [])
+      .map((c) => c.passageiro_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )
+
+  const faltantes = idsAtivos.filter((id) => !existentesSet.has(id))
+  if (faltantes.length === 0) return 0
+
+  const { data: criadas, error: insertErr } = await supabase
+    .from('confirmacoes')
+    .upsert(
+      faltantes.map((passageiroId) => ({
+        viagem_id: viagemId,
+        passageiro_id: passageiroId,
+        status: 'pendente' as const,
+      })),
+      {
+        onConflict: 'viagem_id,passageiro_id',
+        ignoreDuplicates: true,
+      },
+    )
+    .select('id')
+
+  if (insertErr) throw insertErr
+  return criadas?.length ?? 0
+}
+
 /**
  * Cenário 2 da automacao-diaria: já existe viagem do dia para esta rota.
  *
@@ -94,9 +149,27 @@ interface ResultadoReenvio {
 async function processarReenvioPendentes(
   supabase: ReturnType<typeof criarClienteServico>,
   viagemId: string,
+  rotaId: string,
   motoristaId: string,
   rotaNome: string,
 ): Promise<ResultadoReenvio> {
+  const confirmacoesCriadasAgora = await garantirConfirmacoesPendentesDaRota(
+    supabase,
+    viagemId,
+    rotaId,
+  )
+  if (confirmacoesCriadasAgora > 0) {
+    console.log(
+      '[automacao-diaria/reenvio] confirmacoes_reconciliadas',
+      JSON.stringify({
+        viagem_id: viagemId,
+        rota_id: rotaId,
+        rota_nome: rotaNome,
+        confirmacoes_criadas: confirmacoesCriadasAgora,
+      }),
+    )
+  }
+
   // 1. Busca pendentes da viagem com os dados do passageiro
   const { data: pendentes, error: pendErr } = await supabase
     .from('confirmacoes')
@@ -339,6 +412,28 @@ Deno.serve(async (req: Request) => {
           : null
       if (!motoristaId) continue
 
+      const { data: agendamentosRotas, error: agendamentosErr } = await supabase
+        .from('configuracoes_automacao_rotas')
+        .select('rota_id, horario_envio, envio_automatico_ativo')
+        .eq('instancia_whatsapp_id', cfg.instancia_whatsapp_id)
+
+      if (agendamentosErr && !['42P01', 'PGRST205'].includes(agendamentosErr.code ?? '')) {
+        throw agendamentosErr
+      }
+
+      const agendamentosConfigurados = (agendamentosRotas ?? []) as {
+        rota_id: string
+        horario_envio: string
+        envio_automatico_ativo: boolean
+      }[]
+      const agendamentosAtivos = agendamentosConfigurados.filter((a) => a.envio_automatico_ativo)
+      const usaAgendamentoPorRota = agendamentosConfigurados.length > 0
+      const agendamentosNoHorario = ignorarHorario
+        ? agendamentosAtivos
+        : agendamentosAtivos.filter((agendamento) =>
+            horarioExato(agendamento.horario_envio, agoraBrasil.minutos)
+          )
+
       // Busca rotas ativas do motorista (precisamos do nome também para os logs
       // de cenário e do reenvio).
       let rotasQuery = supabase
@@ -347,7 +442,26 @@ Deno.serve(async (req: Request) => {
         .eq('motorista_id', motoristaId)
         .eq('status', 'ativa')
 
-      if (routeMode === 'specific') {
+      if (usaAgendamentoPorRota) {
+        if (agendamentosNoHorario.length === 0) {
+          console.log(
+            '[automacao-diaria] cenario=fora_da_janela_por_rota',
+            JSON.stringify({
+              motorista_id: motoristaId,
+              horario_atual_minutos: agoraBrasil.minutos,
+              agendamentos: agendamentosAtivos.map((a) => ({
+                rota_id: a.rota_id,
+                horario_envio: a.horario_envio,
+              })),
+            }),
+          )
+          continue
+        }
+        rotasQuery = rotasQuery.in(
+          'id',
+          agendamentosNoHorario.map((a) => a.rota_id),
+        )
+      } else if (routeMode === 'specific') {
         if (!routeId) {
           comErro++
           detalhes.push({
@@ -376,7 +490,7 @@ Deno.serve(async (req: Request) => {
         continue
       }
 
-      if (routeMode === 'specific' && (!rotas || rotas.length === 0)) {
+      if (!usaAgendamentoPorRota && routeMode === 'specific' && (!rotas || rotas.length === 0)) {
         comErro++
         detalhes.push({
           motorista_id: motoristaId,
@@ -392,7 +506,7 @@ Deno.serve(async (req: Request) => {
       let pendentesReenviados = 0
       let rotasSemPendentes = 0
       const erros: { rota_id: string; erro: string }[] = []
-      if (!horario || (!ignorarHorario && !horarioExato(horario, agoraBrasil.minutos))) {
+      if (!usaAgendamentoPorRota && (!horario || (!ignorarHorario && !horarioExato(horario, agoraBrasil.minutos)))) {
         console.log(
           '[automacao-diaria] cenario=fora_da_janela',
           JSON.stringify({
@@ -446,6 +560,7 @@ Deno.serve(async (req: Request) => {
             const r = await processarReenvioPendentes(
               supabase,
               viagemExistente.id,
+              rota.id,
               motoristaId,
               rota.nome,
             )

@@ -82,14 +82,9 @@ export function WhatsAppScreen() {
             <div className="flex flex-col gap-5">
               <ScheduleCard
                 envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
-                horarioEnvioAuto={wa.horarioEnvioAuto}
-                routeMode={wa.routeMode}
-                routeId={wa.routeId}
-                rotas={wa.rotasAutomacao}
+                rotasEnvioAuto={wa.rotasEnvioAuto}
                 onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
-                onHorarioEnvioChange={wa.setHorarioEnvioAuto}
-                onRouteModeChange={wa.setRouteMode}
-                onRouteIdChange={wa.setRouteId}
+                onRotaAutomacaoChange={wa.editarRotaEnvioAutomatico}
                 salvando={wa.salvandoConfig}
                 onSalvar={wa.salvarHorarios}
                 desabilitado={desabilitarSalvarConfig}
@@ -122,14 +117,9 @@ export function WhatsAppScreen() {
             />
             <ScheduleCard
               envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
-              horarioEnvioAuto={wa.horarioEnvioAuto}
-              routeMode={wa.routeMode}
-              routeId={wa.routeId}
-              rotas={wa.rotasAutomacao}
+              rotasEnvioAuto={wa.rotasEnvioAuto}
               onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
-              onHorarioEnvioChange={wa.setHorarioEnvioAuto}
-              onRouteModeChange={wa.setRouteMode}
-              onRouteIdChange={wa.setRouteId}
+              onRotaAutomacaoChange={wa.editarRotaEnvioAutomatico}
               salvando={wa.salvandoConfig}
               onSalvar={wa.salvarHorarios}
               desabilitado={desabilitarSalvarConfig}

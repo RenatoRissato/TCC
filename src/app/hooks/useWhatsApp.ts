@@ -6,11 +6,13 @@ import {
   desconectarWhatsApp,
   EstatisticasMensagens,
   obterConfiguracaoAutomacao,
+  obterConfiguracoesRotasAutomacao,
   obterEstatisticasMensagens,
   obterInstancia,
   obterTemplate,
   OPCOES_PADRAO,
   salvarConfiguracaoAutomacao,
+  salvarConfiguracoesRotasAutomacao,
   salvarTemplate,
   solicitarQrCode,
   verificarConexaoWhatsApp,
@@ -27,6 +29,16 @@ export interface OpcaoTemplateState {
   numero: number;
   texto_exibido: string;
   tipo_confirmacao: OpcaoRespostaRow['tipo_confirmacao'];
+}
+
+export interface RotaAutomacaoState {
+  rotaId: string;
+  nome: string;
+  horarioSaida: string | null;
+  turno: RotaRow['turno'];
+  ativa: boolean;
+  envioAutomaticoAtivo: boolean;
+  horarioEnvio: string;
 }
 
 // Liga/desliga logs de depuração via localStorage. Útil para o usuário
@@ -52,6 +64,43 @@ function ordenarOpcoesNaUI(opcoes: OpcaoRespostaRow[]): OpcaoTemplateState[] {
       numero: padrao.numero,
       texto_exibido: existente?.texto_exibido ?? padrao.texto_exibido,
       tipo_confirmacao: padrao.tipo_confirmacao,
+    };
+  });
+}
+
+function horarioPadraoDaRota(rota: RotaRow, fallback?: string | null): string {
+  return (fallback || rota.horario_saida || '07:00').slice(0, 5);
+}
+
+function montarRotasAutomacao(
+  rotas: RotaRow[],
+  cfg: ConfiguracaoAutomacaoRow | null,
+  configsRotas: Array<{
+    rota_id: string;
+    envio_automatico_ativo: boolean;
+    horario_envio: string;
+  }>,
+): RotaAutomacaoState[] {
+  const porRota = new Map(configsRotas.map((c) => [c.rota_id, c]));
+  const horarioLegado = (cfg?.horario_envio_automatico ?? '').slice(0, 5);
+  const modoLegado = cfg?.route_mode === 'specific' ? 'specific' : 'all';
+  const rotaLegadaId = cfg?.route_id ?? '';
+
+  return rotas.map((rota) => {
+    const existente = porRota.get(rota.id);
+    const ativaNoLegado = modoLegado === 'all' || rota.id === rotaLegadaId;
+    return {
+      rotaId: rota.id,
+      nome: rota.nome,
+      horarioSaida: rota.horario_saida,
+      turno: rota.turno,
+      ativa: rota.status === 'ativa',
+      envioAutomaticoAtivo: existente
+        ? existente.envio_automatico_ativo
+        : ativaNoLegado && rota.status === 'ativa',
+      horarioEnvio: existente
+        ? existente.horario_envio.slice(0, 5)
+        : horarioPadraoDaRota(rota, horarioLegado),
     };
   });
 }
@@ -88,9 +137,8 @@ export function useWhatsApp() {
 
   const [envioAutomaticoAtivo, setEnvioAutomaticoAtivo] = useState(false);
   const [horarioEnvioAuto,     setHorarioEnvioAuto]     = useState('');
-  const [routeMode, setRouteMode] = useState<'all' | 'specific'>('all');
-  const [routeId, setRouteId] = useState('');
   const [rotasAutomacao, setRotasAutomacao] = useState<RotaRow[]>([]);
+  const [rotasEnvioAuto, setRotasEnvioAuto] = useState<RotaAutomacaoState[]>([]);
   const [estatisticas, setEstatisticas] = useState<EstatisticasMensagens | null>(null);
 
   // Hidrata o estado editável a partir dos dados do banco.
@@ -108,9 +156,6 @@ export function useWhatsApp() {
     setConfiguracao(cfg);
     setEnvioAutomaticoAtivo(!!cfg?.envio_automatico_ativo);
     setHorarioEnvioAuto((cfg?.horario_envio_automatico ?? '').slice(0, 5));
-    const modo = cfg?.route_mode === 'specific' ? 'specific' : 'all';
-    setRouteMode(modo);
-    setRouteId(modo === 'specific' ? (cfg?.route_id ?? '') : '');
   }, []);
 
   const carregar = useCallback(async () => {
@@ -158,16 +203,21 @@ export function useWhatsApp() {
       const statsPromise = inst
         ? obterEstatisticasMensagens(inst.id, 7)
         : Promise.resolve(null);
+      const configsRotasPromise = inst
+        ? obterConfiguracoesRotasAutomacao(inst.id)
+        : Promise.resolve([]);
       const rotasPromise = listarRotas();
 
-      const [cfg, { template: tpl, opcoes }, stats, rotas] = await Promise.all([
+      const [cfg, { template: tpl, opcoes }, stats, configsRotas, rotas] = await Promise.all([
         cfgPromise,
         tplPromise,
         statsPromise,
+        configsRotasPromise,
         rotasPromise,
       ]);
 
       setRotasAutomacao(rotas);
+      setRotasEnvioAuto(montarRotasAutomacao(rotas, cfg, configsRotas));
       aplicarConfigNoEditor(cfg);
       aplicarTemplateNoEditor(tpl, opcoes);
       setEstatisticas(stats);
@@ -216,29 +266,46 @@ export function useWhatsApp() {
       toast.error('Instância WhatsApp não encontrada para salvar.');
       return;
     }
-    if (envioAutomaticoAtivo && routeMode === 'specific' && !routeId) {
-      toast.error('Selecione uma rota para o envio automatico.');
+    if (envioAutomaticoAtivo && rotasEnvioAuto.length === 0) {
+      toast.error('Nenhuma rota encontrada para configurar.');
       return;
     }
     if (
       envioAutomaticoAtivo &&
-      routeMode === 'specific' &&
-      !rotasAutomacao.some((rota) => rota.id === routeId)
+      !rotasEnvioAuto.some((rota) => rota.envioAutomaticoAtivo)
     ) {
-      toast.error('A rota selecionada nao esta mais ativa.');
+      toast.error('Ative pelo menos uma rota para o envio automatico.');
+      return;
+    }
+    if (rotasEnvioAuto.some((rota) => rota.envioAutomaticoAtivo && !rota.horarioEnvio)) {
+      toast.error('Informe o horario de envio das rotas ativas.');
       return;
     }
     setSalvandoConfig(true);
     try {
+      const primeiroHorarioAtivo =
+        rotasEnvioAuto.find((rota) => rota.envioAutomaticoAtivo)?.horarioEnvio ||
+        horarioEnvioAuto ||
+        null;
       const atualizado = await salvarConfiguracaoAutomacao({
         instanciaId: instancia.id,
         envioAutomaticoAtivo,
-        horarioEnvioAutomatico: horarioEnvioAuto || null,
-        routeMode,
-        routeId: routeMode === 'specific' ? routeId : null,
+        horarioEnvioAutomatico: primeiroHorarioAtivo,
+        routeMode: 'all',
+        routeId: null,
       });
-      if (atualizado) {
+      const configsRotas = await salvarConfiguracoesRotasAutomacao(
+        instancia.id,
+        rotasEnvioAuto.map((rota) => ({
+          instanciaId: instancia.id,
+          rotaId: rota.rotaId,
+          envioAutomaticoAtivo: rota.envioAutomaticoAtivo,
+          horarioEnvio: rota.horarioEnvio,
+        })),
+      );
+      if (atualizado && configsRotas) {
         aplicarConfigNoEditor(atualizado);
+        setRotasEnvioAuto(montarRotasAutomacao(rotasAutomacao, atualizado, configsRotas));
         toast.success('Configurações de envio salvas.');
       } else {
         toast.error('Não foi possível salvar. Tente novamente.');
@@ -250,11 +317,19 @@ export function useWhatsApp() {
     instancia,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
-    routeMode,
-    routeId,
+    rotasEnvioAuto,
     rotasAutomacao,
     aplicarConfigNoEditor,
   ]);
+
+  const editarRotaEnvioAutomatico = useCallback((
+    rotaId: string,
+    patch: Partial<Pick<RotaAutomacaoState, 'envioAutomaticoAtivo' | 'horarioEnvio'>>,
+  ) => {
+    setRotasEnvioAuto((prev) =>
+      prev.map((rota) => (rota.rotaId === rotaId ? { ...rota, ...patch } : rota)),
+    );
+  }, []);
 
   const salvarTemplateAtual = useCallback(async () => {
     if (!template) {
@@ -505,15 +580,13 @@ export function useWhatsApp() {
     opcoesEdit,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
-    routeMode,
-    routeId,
     rotasAutomacao,
+    rotasEnvioAuto,
     setCabecalhoEdit,
     setRodapeEdit,
     setEnvioAutomaticoAtivo,
     setHorarioEnvioAuto,
-    setRouteMode,
-    setRouteId,
+    editarRotaEnvioAutomatico,
     editarOpcao,
 
     // ações

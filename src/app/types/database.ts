@@ -51,6 +51,16 @@ export interface ConfiguracaoAutomacaoRow {
   intervalo_tentativas: number;
 }
 
+export interface ConfiguracaoAutomacaoRotaRow {
+  id: string;
+  instancia_whatsapp_id: string;
+  rota_id: string;
+  envio_automatico_ativo: boolean;
+  horario_envio: string;
+  criado_em: string;
+  atualizado_em: string;
+}
+
 export interface TemplateMensagemRow {
   id: string;
   motorista_id: string;

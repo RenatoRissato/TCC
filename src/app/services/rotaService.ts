@@ -42,15 +42,28 @@ export async function criarRotasPadrao(motoristaId: string): Promise<CriarRotasP
     { motorista_id: motoristaId, nome: 'Rota Noite', horario_saida: '17:30', turno: 'night'     as const, status: 'ativa' as const },
   ];
 
+  const { data: existentes, error: lookupErr } = await supabase
+    .from('rotas')
+    .select('nome')
+    .eq('motorista_id', motoristaId)
+    .in('nome', padroes.map((p) => p.nome));
+  if (lookupErr) {
+    console.error('criarRotasPadrao (lookup):', lookupErr);
+    return { status: 'erro', erro: lookupErr.message };
+  }
+
+  const nomesExistentes = new Set((existentes ?? []).map((rota) => rota.nome));
+  const faltantes = padroes.filter((rota) => !nomesExistentes.has(rota.nome));
+  if (faltantes.length === 0) {
+    return { status: 'ja_existiam', totalCriadas: 0 };
+  }
+
   const { data: inseridas, error: insertErr } = await supabase
     .from('rotas')
-    .upsert(padroes, {
-      onConflict: 'motorista_id,turno',
-      ignoreDuplicates: true,
-    })
+    .insert(faltantes)
     .select('id');
   if (insertErr) {
-    console.error('criarRotasPadrao (upsert):', insertErr);
+    console.error('criarRotasPadrao (insert):', insertErr);
     return { status: 'erro', erro: insertErr.message };
   }
 

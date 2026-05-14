@@ -19,12 +19,26 @@ async function garantirRotasPadrao(supabase: ReturnType<typeof criarClienteUsuar
     { motorista_id: motoristaId, nome: 'Rota Noite', horario_saida: '17:30', turno: 'night', status: 'ativa' },
   ]
 
+  const { data: existentes, error: lookupErr } = await supabase
+    .from('rotas')
+    .select('nome')
+    .eq('motorista_id', motoristaId)
+    .in('nome', padroes.map((p) => p.nome))
+
+  if (lookupErr) {
+    console.error('[criar-perfil-motorista] falha ao verificar rotas padrÃ£o:', lookupErr)
+    return { rotasCriadas: 0, rotasErro: lookupErr.message }
+  }
+
+  const nomesExistentes = new Set((existentes ?? []).map((rota) => rota.nome))
+  const faltantes = padroes.filter((rota) => !nomesExistentes.has(rota.nome))
+  if (faltantes.length === 0) {
+    return { rotasCriadas: 0, rotasErro: null }
+  }
+
   const { data: inseridas, error: rotasErr } = await supabase
     .from('rotas')
-    .upsert(padroes, {
-      onConflict: 'motorista_id,turno',
-      ignoreDuplicates: true,
-    })
+    .insert(faltantes)
     .select('id')
 
   if (rotasErr) {
