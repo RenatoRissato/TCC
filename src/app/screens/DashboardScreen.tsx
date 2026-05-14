@@ -20,10 +20,12 @@ import {
   formatarEnderecoCompleto,
 } from '../utils/maps';
 import type { RouteConfig, WhatsAppUpdate } from '../types';
+import type { DirecaoViagem } from '../types/database';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
+import { DirecaoViagemModal } from '../components/dashboard/DirecaoViagemModal';
 import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
 import { useNotificacoes } from '../hooks/useNotificacoes';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
@@ -77,6 +79,12 @@ export function DashboardScreen() {
   const [etapaOtimizacaoIndex, setEtapaOtimizacaoIndex] = useState(0);
   const [gerenciarAberto, setGerenciarAberto] = useState(false);
   const [notificacoesAberto, setNotificacoesAberto] = useState(false);
+  // Modal de direção da viagem — abre antes de qualquer ação ao clicar no play.
+  const [direcaoAlvo, setDirecaoAlvo] = useState<{
+    rotaId: string;
+    nome: string;
+    temDestinoFinal: boolean;
+  } | null>(null);
   const {
     lista: notificacoes,
     naoLidas: notificacoesNaoLidas,
@@ -100,17 +108,39 @@ export function DashboardScreen() {
     return () => { cancelado = true; };
   }, [motoristaId, user?.id]);
 
-  const handleIniciarViagem = async (rotaId: string) => {
+  const handleAbrirModalDirecao = (rotaId: string) => {
+    const rota = routeConfigsVisiveis.find((rc) => rc.rotaId === rotaId);
+    setDirecaoAlvo({
+      rotaId,
+      nome: rota?.label ?? 'Rota',
+      // Pré-checagem do botão "Levar para casa" — se a rota não tem destino,
+      // o modal já mostra desabilitado sem precisar ir ao servidor.
+      temDestinoFinal: !!(rota?.temDestinoFinal),
+    });
+  };
+
+  const handleEscolherDirecao = async (direcao: DirecaoViagem) => {
+    if (!direcaoAlvo) return;
+    const rotaId = direcaoAlvo.rotaId;
+    // Pop-up blocker: abrimos uma aba vazia AGORA (ainda dentro do gesto do
+    // clique do usuário no botão do modal). A validação assíncrona e a
+    // chamada de iniciarViagem rodam depois.
+    const janelaMaps = deveAbrirMapsNoMesmoContexto() ? null : window.open('', '_blank');
+    if (janelaMaps) {
+      try {
+        janelaMaps.opener = null;
+        janelaMaps.document.title = 'Abrindo trajeto...';
+      } catch {
+        // Alguns navegadores podem restringir ajustes na janela recém-aberta.
+      }
+    }
+
+    setDirecaoAlvo(null);
     setRotaIniciandoId(rotaId);
     try {
-      // 1) Validação de pré-requisitos: ponto de saída, destinos, passageiros
-      // ativos, e (se houver viagem do dia) se ainda sobra alguém indo.
-      // Qualquer falha → toast e abortamos antes de abrir qualquer aba.
       const validacao = await validarRotaParaInicio(rotaId);
       if (!validacao.valido) {
-        // Cenário "todos responderam Não vai" não é erro do motorista —
-        // é o sistema fazendo o favor de poupar uma viagem perdida.
-        // Mostra como toast informativo (neutro) em vez de erro vermelho.
+        janelaMaps?.close();
         if (validacao.codigo === 'todos_nao_vao') {
           toast(validacao.erro ?? 'Nenhum aluno embarca hoje nesta rota.', {
             description: 'Os responsáveis responderam "Não vai hoje" (opção 4) para todos. Não é necessário iniciar a viagem.',
@@ -122,27 +152,12 @@ export function DashboardScreen() {
         return;
       }
 
-      // 2) Pop-up blocker: abrimos uma aba vazia AGORA (ainda dentro do mesmo
-      // turno do clique) para reservar a permissão; populamos a URL depois.
-      // A validação acima é uma única query rápida, então a janela permanece
-      // dentro da janela de tolerância dos browsers.
-      const janelaMaps = deveAbrirMapsNoMesmoContexto() ? null : window.open('', '_blank');
-      if (janelaMaps) {
-        try {
-          janelaMaps.opener = null;
-          janelaMaps.document.title = 'Abrindo trajeto...';
-        } catch {
-          // Alguns navegadores podem restringir ajustes na janela recém-aberta.
-        }
-      }
-
-      // 3) Busca rota completa (com destinos) e passageiros em paralelo
       const [rota, enderecosPassageiros] = await Promise.all([
         obterRota(rotaId),
         listarPassageirosDaRota(rotaId),
       ]);
 
-      const origem = rota
+      const enderecoPontoSaida = rota
         ? formatarEnderecoCompleto({
             rua: rota.ponto_saida_rua,
             numero: rota.ponto_saida_numero,
@@ -157,25 +172,38 @@ export function DashboardScreen() {
         }))
         .filter(Boolean);
 
-      const paradas = [...enderecosPassageiros, ...enderecosDestinos];
+      // Monta a sequência de paradas conforme a direção escolhida:
+      //   buscar:  ponto_saida → passageiros (asc) → destino(s) final
+      //   retorno: destino_final → passageiros (desc) → ponto_saida
+      let origem: string;
+      let paradas: string[];
+      if (direcao === 'retorno') {
+        // Em "retorno", o motorista sai da escola (último destino cadastrado)
+        // e termina no ponto de saída da van.
+        const destinoFinalEnd = enderecosDestinos[enderecosDestinos.length - 1] ?? '';
+        const destinosIntermediarios = enderecosDestinos.slice(0, -1);
+        origem = destinoFinalEnd;
+        paradas = [
+          ...destinosIntermediarios,
+          ...[...enderecosPassageiros].reverse(),
+          enderecoPontoSaida,
+        ].filter(Boolean);
+      } else {
+        origem = enderecoPontoSaida;
+        paradas = [...enderecosPassageiros, ...enderecosDestinos];
+      }
 
-      // Mantemos a ordem definida pela aplicação. O prefixo "optimize:true|"
-      // em URLs do Maps Web pode virar uma parada fantasma ("Optimize ..."),
-      // então a URL segue sempre com waypoints explícitos e ordenados.
       const url = montarUrlGoogleMaps(origem, paradas);
 
       if (url) {
         abrirEmNovaAba(janelaMaps, url);
       } else {
-        // Cenário inesperado pós-validação — não deveria ocorrer, mas é
-        // melhor falhar graciosamente do que abrir Maps com URL quebrada.
         janelaMaps?.close();
         toast.error('Não foi possível montar o trajeto. Verifique os endereços cadastrados.');
         return;
       }
 
-      // 4) Inicia a viagem no backend
-      const r = await iniciarViagem(rotaId);
+      const r = await iniciarViagem(rotaId, direcao);
       if (r) navigate(`/viagem/${r.viagem_id}`);
     } finally {
       setRotaIniciandoId(null);
@@ -359,11 +387,19 @@ export function DashboardScreen() {
   );
   const etapaOtimizacao = ETAPAS_OTIMIZACAO[etapaOtimizacaoIndex] ?? ETAPAS_OTIMIZACAO[0];
 
+  // Stats detalhados — quebra "indo" em 3 tipos (ida e volta / só ida / só
+  // volta), mantém "não vai" e "pendente", e fecha com "total". 6 caixas no
+  // desktop ao invés das 4 antigas.
+  const det = s.detalhado ?? {
+    ida_e_volta: 0, somente_ida: 0, somente_volta: 0, nao_vai: 0, pendente: 0,
+  };
   const desktopStats = [
-    { n: s.going,   l: 'INDO',      c: '#4ADE80', bg: 'rgba(25,135,84,0.22)' },
-    { n: s.absent,  l: 'AUSENTES',  c: '#FF6B7A', bg: 'rgba(220,53,69,0.22)' },
-    { n: s.pending, l: 'PENDENTES', c: '#FD7E14', bg: 'rgba(253,126,20,0.22)' },
-    { n: s.total,   l: 'TOTAL',     c: '#FFC107', bg: 'rgba(255,193,7,0.15)'  },
+    { n: det.ida_e_volta,   l: 'IDA+VOLTA', c: '#4ADE80', bg: 'rgba(25,135,84,0.22)'  },
+    { n: det.somente_ida,   l: 'SÓ IDA',    c: '#5BA3FF', bg: 'rgba(41,121,255,0.22)' },
+    { n: det.somente_volta, l: 'SÓ VOLTA',  c: '#9B8DFF', bg: 'rgba(108,92,231,0.22)' },
+    { n: det.nao_vai,       l: 'NÃO VÃO',   c: '#FF6B7A', bg: 'rgba(220,53,69,0.22)'  },
+    { n: det.pendente,      l: 'PENDENTES', c: '#FD7E14', bg: 'rgba(253,126,20,0.22)' },
+    { n: s.total,           l: 'TOTAL',     c: '#FFC107', bg: 'rgba(255,193,7,0.15)'  },
   ];
 
   return (
@@ -452,11 +488,11 @@ export function DashboardScreen() {
         </div>
 
         {isDesktop && (
-          <div className="flex gap-4 mt-6 relative z-10">
+          <div className="flex flex-wrap gap-3 mt-6 relative z-10">
             {desktopStats.map(({ n, l, c, bg }) => (
-              <div key={l} className="flex flex-col items-center rounded-2xl px-5 py-3.5 min-w-[86px]" style={{ background: bg }}>
-                <span className="text-[32px] font-black leading-none" style={{ color: c }}>{n}</span>
-                <span className="text-[10px] font-bold text-white/45 tracking-[0.08em] mt-[3px]">{l}</span>
+              <div key={l} className="flex flex-col items-center rounded-2xl px-4 py-3 min-w-[88px] flex-1" style={{ background: bg }}>
+                <span className="text-[28px] font-black leading-none" style={{ color: c }}>{n}</span>
+                <span className="text-[10px] font-bold text-white/55 tracking-[0.06em] mt-1 whitespace-nowrap">{l}</span>
               </div>
             ))}
           </div>
@@ -511,7 +547,7 @@ export function DashboardScreen() {
                       <RouteButton
                         {...rc}
                         onClick={() => navigate(rc.rotaId ? `/routes?rota=${rc.rotaId}` : '/routes')}
-                        onIniciarViagem={handleIniciarViagem}
+                        onIniciarViagem={handleAbrirModalDirecao}
                         iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
                         onOtimizarSequencia={handleOtimizarSequencia}
                         otimizandoSequencia={rotaOtimizandoId === rc.rotaId}
@@ -573,6 +609,14 @@ export function DashboardScreen() {
           </div>
         </div>
       </div>
+
+      <DirecaoViagemModal
+        open={direcaoAlvo !== null}
+        onOpenChange={(open) => { if (!open) setDirecaoAlvo(null); }}
+        rotaNome={direcaoAlvo?.nome}
+        temDestinoFinal={direcaoAlvo?.temDestinoFinal ?? false}
+        onEscolher={handleEscolherDirecao}
+      />
 
       <GerenciarRotasModal
         open={gerenciarAberto}

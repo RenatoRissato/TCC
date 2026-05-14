@@ -134,6 +134,8 @@ export interface PassageiroRow {
   criado_em: string;
 }
 
+export type DirecaoViagem = 'buscar' | 'retorno';
+
 export interface ViagemRow {
   id: string;
   rota_id: string;
@@ -141,6 +143,7 @@ export interface ViagemRow {
   status: StatusViagem;
   iniciada_em: string;
   finalizada_em: string | null;
+  direcao: DirecaoViagem | null;
 }
 
 export interface ConfirmacaoRow {

@@ -97,6 +97,10 @@ export async function listarRotasComContagem(): Promise<RouteConfig[]> {
       bairro: r.ponto_saida_bairro,
       cep: r.ponto_saida_cep,
     });
+    const destinos = Array.isArray(r.destinos) ? r.destinos : [];
+    const temDestinoFinal = destinos.some(
+      (d) => d && ((d.rua && d.rua.trim()) || (d.rotulo && d.rotulo.trim())),
+    );
     return {
       type: r.turno,
       rotaId: r.id,
@@ -107,6 +111,7 @@ export async function listarRotasComContagem(): Promise<RouteConfig[]> {
       darkBg: meta.darkBg,
       passengerCount: contagem.get(r.id) ?? 0,
       pontoSaida: pontoSaida || null,
+      temDestinoFinal,
     };
   });
 }

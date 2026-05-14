@@ -2,6 +2,11 @@ export type StudentStatus = 'going' | 'absent' | 'pending';
 export type RouteType = 'morning' | 'afternoon' | 'night';
 export type TipoPassageiro = 'escola' | 'faculdade';
 
+// Tipo detalhado de confirmação (espelha o enum `tipo_confirmacao` do banco).
+// Usado pela UI para mostrar badges diferenciadas (ida e volta / só ida / só
+// volta / não vai) além do `status` agregado do app.
+export type TipoConfirmacaoUI = 'ida_e_volta' | 'somente_ida' | 'somente_volta' | 'nao_vai';
+
 export interface Passenger {
   id: string;
   rotaId: string;
@@ -28,6 +33,9 @@ export interface Passenger {
   // Confirmação do dia (se houver) — usado pelo botão "Reenviar" para chamar
   // a Edge Function reenviar-confirmacao. null quando não há viagem hoje.
   confirmacaoId?: string | null;
+  // Tipo detalhado da resposta do responsável. null quando ainda não respondeu
+  // (status='pending') ou quando o sistema marcou ausente sem tipo.
+  tipoConfirmacao?: TipoConfirmacaoUI | null;
 }
 
 export interface WhatsAppUpdate {
@@ -37,6 +45,8 @@ export interface WhatsAppUpdate {
   status: 'going' | 'absent';
   message: string;
   time: string;
+  /** Tipo detalhado da resposta — opcional, usado para badges coloridas. */
+  tipoConfirmacao?: TipoConfirmacaoUI | null;
 }
 
 export interface RouteConfig {
@@ -49,6 +59,8 @@ export interface RouteConfig {
   color: string;
   darkBg: boolean;
   pontoSaida?: string | null;
+  /** True quando a rota tem ao menos um destino final cadastrado. */
+  temDestinoFinal?: boolean;
 }
 
 export interface Summary {
@@ -56,6 +68,18 @@ export interface Summary {
   absent: number;
   pending: number;
   total: number;
+  /**
+   * Quebra detalhada do total — soma com `absent` = não vai, soma das 3
+   * primeiras com `going`. Opcional para não quebrar consumidores antigos
+   * que só leem o agregado.
+   */
+  detalhado?: {
+    ida_e_volta: number;
+    somente_ida: number;
+    somente_volta: number;
+    nao_vai: number;
+    pendente: number;
+  };
 }
 
 export type SomAlerta = 'default' | 'chime' | 'bell' | 'ding' | 'none';

@@ -31,6 +31,15 @@ function statusFromConfirmacao(c?: ConfirmacaoRow): StudentStatus {
   return 'pending';
 }
 
+function tipoFromConfirmacao(c?: ConfirmacaoRow): Passenger['tipoConfirmacao'] {
+  if (!c) return null;
+  if (c.status === 'confirmado' && c.tipo_confirmacao) {
+    return c.tipo_confirmacao as Passenger['tipoConfirmacao'];
+  }
+  if (c.status === 'ausente') return 'nao_vai';
+  return null;
+}
+
 function rowToPassenger(
   row: PassageiroRow,
   rota: RotaRow | undefined,
@@ -74,6 +83,7 @@ function rowToPassenger(
     serieSemestre:  obs?.serieSemestre  ?? '',
     curso:          obs?.curso          ?? '',
     confirmacaoId:  confirmacao?.id ?? null,
+    tipoConfirmacao: tipoFromConfirmacao(confirmacao),
   };
 }
 
@@ -240,11 +250,32 @@ export async function inativarPassageiro(id: string): Promise<boolean> {
 }
 
 export function calcularSummary(list: Passenger[]): Summary {
-  const summary: Summary = { going: 0, absent: 0, pending: 0, total: list.length };
+  const detalhado = {
+    ida_e_volta: 0,
+    somente_ida: 0,
+    somente_volta: 0,
+    nao_vai: 0,
+    pendente: 0,
+  };
+  const summary: Summary = {
+    going: 0, absent: 0, pending: 0, total: list.length, detalhado,
+  };
   for (const p of list) {
-    if (p.status === 'going') summary.going++;
-    else if (p.status === 'absent') summary.absent++;
-    else summary.pending++;
+    if (p.status === 'going') {
+      summary.going++;
+      // Sem tipo conhecido (fallback raro: row de confirmação antiga sem
+      // o campo), conta como ida_e_volta — comportamento mais inclusivo.
+      const tipo = p.tipoConfirmacao ?? 'ida_e_volta';
+      if (tipo === 'somente_ida') detalhado.somente_ida++;
+      else if (tipo === 'somente_volta') detalhado.somente_volta++;
+      else detalhado.ida_e_volta++;
+    } else if (p.status === 'absent') {
+      summary.absent++;
+      detalhado.nao_vai++;
+    } else {
+      summary.pending++;
+      detalhado.pendente++;
+    }
   }
   return summary;
 }

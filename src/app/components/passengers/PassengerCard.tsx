@@ -7,6 +7,9 @@ import { Avatar } from '../shared/Avatar';
 import { StatusBadge } from '../shared/StatusBadge';
 import { Spinner } from '../whatsapp/Spinner';
 import { useReenviarConfirmacao } from '../../hooks/useViagem';
+import {
+  STATUS_UI_DETALHADO_META,
+} from '../../utils/confirmacaoStatusMeta';
 import type { Passenger, RouteType } from '../../types';
 
 const SHIFT_OPTIONS: Record<RouteType, { label: string; emoji: string; color: string }> = {
@@ -94,6 +97,22 @@ export const PassengerCard = memo(function PassengerCard({
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <StatusBadge status={p.status} size="md" />
+          {/* Badge secundária com o tipo detalhado (Ida e volta / Só ida / Só
+              volta) quando o aluno respondeu confirmando. "Não vai" e
+              "Pendente" já são cobertos pelo StatusBadge principal. */}
+          {p.status === 'going' && p.tipoConfirmacao && p.tipoConfirmacao !== 'nao_vai' && (() => {
+            const meta = STATUS_UI_DETALHADO_META[p.tipoConfirmacao];
+            return (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[10px] font-bold uppercase tracking-[0.04em]"
+                style={{ background: meta.bg, color: meta.color }}
+                title={meta.label}
+              >
+                <meta.Icon size={9} strokeWidth={2.8} />
+                {meta.labelCompacto}
+              </span>
+            );
+          })()}
           <div className="flex gap-1">
             <button
               onClick={() => onEdit(p)}
