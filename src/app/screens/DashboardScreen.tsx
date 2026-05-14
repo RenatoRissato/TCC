@@ -154,8 +154,26 @@ export function DashboardScreen() {
 
       const [rota, enderecosPassageiros] = await Promise.all([
         obterRota(rotaId),
-        listarPassageirosDaRota(rotaId),
+        // Passa a direção para o service filtrar quem entra na rota com base
+        // no tipo de confirmação (ida_e_volta / somente_ida / somente_volta).
+        listarPassageirosDaRota(rotaId, direcao),
       ]);
+
+      // Se a lista ficou vazia E havia confirmações no dia (todos
+      // confirmados disseram que não vão NESTE sentido), abortamos com
+      // mensagem clara. A validarRotaParaInicio já cobre "rota sem
+      // passageiros cadastrados" — então uma lista vazia aqui só pode
+      // ser efeito do filtro por direção.
+      if (enderecosPassageiros.length === 0) {
+        janelaMaps?.close();
+        toast('Nenhum aluno confirmou presença para este trajeto.', {
+          description: direcao === 'buscar'
+            ? 'Os passageiros que responderam optaram só pela volta ou disseram que não vão.'
+            : 'Os passageiros que responderam optaram só pela ida ou disseram que não vão.',
+          duration: 6000,
+        });
+        return;
+      }
 
       const enderecoPontoSaida = rota
         ? formatarEnderecoCompleto({

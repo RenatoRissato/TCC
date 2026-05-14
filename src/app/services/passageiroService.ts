@@ -294,13 +294,23 @@ export function getSummary(list: Passenger[]): Summary {
  * são EXCLUÍDOS do trajeto. Não faz sentido o motorista passar na casa de
  * quem já avisou que não vai usar a van.
  *
+ * Se `direcao` for passada, aplica filtro adicional por sentido do trajeto:
+ *   - 'buscar'  : inclui 'ida_e_volta' e 'somente_ida'. Exclui 'somente_volta'.
+ *   - 'retorno' : inclui 'ida_e_volta' e 'somente_volta'. Exclui 'somente_ida'.
+ * Passageiros pendentes (sem confirmação) entram em AMBOS os trajetos —
+ * ainda não responderam, melhor passar na dúvida do que deixar alguém.
+ *
  * Se NÃO há viagem do dia ainda, retorna todos os ativos (cenário "ainda
  * vou iniciar a rota" — sem confirmações o trajeto é o nominal).
  */
-export async function listarPassageirosDaRota(rotaId: string): Promise<string[]> {
+export async function listarPassageirosDaRota(
+  rotaId: string,
+  direcao?: 'buscar' | 'retorno',
+): Promise<string[]> {
   const hoje = new Date().toISOString().slice(0, 10);
 
-  // 1) Busca viagem do dia (se houver) para filtrar quem disse "não vai"
+  // 1) Busca viagem do dia (se houver) para aplicar filtros baseados nas
+  //    confirmações respondidas.
   const { data: viagem } = await supabase
     .from('viagens')
     .select('id')
@@ -308,22 +318,24 @@ export async function listarPassageirosDaRota(rotaId: string): Promise<string[]>
     .eq('data', hoje)
     .maybeSingle();
 
-  // 2) Coleta IDs de passageiros que NÃO devem entrar no trajeto. Conta como
-  //    "não vai" tanto status='ausente' quanto status='confirmado' + 'nao_vai'.
-  const idsExcluir = new Set<string>();
+  // 2) Mapeia passageiro_id → { status, tipo_confirmacao } para decidir quem
+  //    entra/sai do trajeto. Usamos um Map (e não só Set de excluídos) porque
+  //    a filtragem por direção depende do tipo confirmado, não só do "vai/não".
+  const confirmacoesPorPax = new Map<
+    string,
+    { status: string; tipo: string | null }
+  >();
   if (viagem?.id) {
     const { data: confs } = await supabase
       .from('confirmacoes')
       .select('passageiro_id, status, tipo_confirmacao')
       .eq('viagem_id', viagem.id);
     for (const c of confs ?? []) {
-      const status = (c as { status: string }).status;
-      const tipo = (c as { tipo_confirmacao: string | null }).tipo_confirmacao;
-      const naoVaiHoje =
-        status === 'ausente' || (status === 'confirmado' && tipo === 'nao_vai');
-      if (naoVaiHoje) {
-        idsExcluir.add((c as { passageiro_id: string }).passageiro_id);
-      }
+      const paxId = (c as { passageiro_id: string }).passageiro_id;
+      confirmacoesPorPax.set(paxId, {
+        status: (c as { status: string }).status,
+        tipo: (c as { tipo_confirmacao: string | null }).tipo_confirmacao,
+      });
     }
   }
 
@@ -339,9 +351,33 @@ export async function listarPassageirosDaRota(rotaId: string): Promise<string[]>
     return [];
   }
 
-  // 4) Filtra os que não vão e mapeia para endereço formatado
+  // 4) Aplica regras de inclusão por passageiro:
+  //    - status='ausente' OU 'confirmado'+'nao_vai' → exclui sempre
+  //    - 'confirmado'+'somente_ida' → só entra em direcao='buscar'
+  //    - 'confirmado'+'somente_volta' → só entra em direcao='retorno'
+  //    - 'confirmado'+'ida_e_volta' → entra em ambos
+  //    - pendente / sem confirmação → entra em ambos (ainda não respondeu)
+  const incluir = (paxId: string): boolean => {
+    const conf = confirmacoesPorPax.get(paxId);
+    if (!conf) return true; // sem confirmação ainda → incluído
+    if (conf.status === 'ausente') return false;
+    if (conf.status === 'pendente') return true;
+    if (conf.status === 'confirmado') {
+      if (conf.tipo === 'nao_vai') return false;
+      // Sem direção informada, qualquer tipo de "vai" entra (compat retro).
+      if (!direcao) return true;
+      if (direcao === 'buscar') {
+        // Inclui ida_e_volta + somente_ida. Exclui somente_volta.
+        return conf.tipo !== 'somente_volta';
+      }
+      // direcao === 'retorno' — inclui ida_e_volta + somente_volta. Exclui somente_ida.
+      return conf.tipo !== 'somente_ida';
+    }
+    return true;
+  };
+
   return (data ?? [])
-    .filter((p) => !idsExcluir.has((p as { id: string }).id))
+    .filter((p) => incluir((p as { id: string }).id))
     .map((p: {
       embarque_rua: string | null;
       embarque_numero: string | null;
