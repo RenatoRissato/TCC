@@ -1,10 +1,11 @@
 import { ComponentType, useState } from 'react';
 import { toast } from 'sonner';
-import { MessageCircle, Smartphone, Bell, Volume2, Save } from 'lucide-react';
+import { MessageCircle, Volume2, Save, Play } from 'lucide-react';
 import { Toggle } from '../shared/Toggle';
 import { Spinner } from '../whatsapp/Spinner';
 import { useAuth } from '../../context/AuthContext';
 import { atualizarPreferenciasMotorista } from '../../services/motoristaService';
+import { tocarSomAlerta } from '../../utils/somAlerta';
 import type { SomAlerta } from '../../types';
 
 interface ToggleRowProps {
@@ -35,14 +36,25 @@ function ToggleRow({ icon: Icon, iconColor, title, desc, value, onChange, last }
   );
 }
 
+const OPCOES_SOM: Array<{ valor: SomAlerta; rotulo: string }> = [
+  { valor: 'default', rotulo: '🔔 Padrão' },
+  { valor: 'chime',   rotulo: '🎵 Chime Suave' },
+  { valor: 'bell',    rotulo: '🛎️ Sino' },
+  { valor: 'ding',    rotulo: '✨ Ding' },
+];
+
 export function NotificationsSection() {
   const { user, motoristaId, recarregarMotorista } = useAuth();
 
   // Hidrata a partir do user (já carregado pelo AuthContext).
-  const [notifWA,      setNotifWA]      = useState(user?.notifWhatsApp ?? true);
-  const [notifPush,    setNotifPush]    = useState(user?.notifPush ?? true);
-  const [notifPending, setNotifPending] = useState(user?.notifPendentes ?? false);
-  const [alertSound,   setAlertSound]   = useState<SomAlerta>(user?.somAlerta ?? 'default');
+  // `notif_whatsapp` controla o toast in-app. `som_alerta` controla o beep.
+  // O toggle de som é derivado: `som === 'none'` → desligado.
+  const [toastResposta, setToastResposta] = useState(user?.notifWhatsApp ?? true);
+  const somAtual = user?.somAlerta ?? 'default';
+  const [somAtivo, setSomAtivo] = useState<boolean>(somAtual !== 'none');
+  const [somEscolhido, setSomEscolhido] = useState<SomAlerta>(
+    somAtual === 'none' ? 'default' : somAtual,
+  );
   const [salvando, setSalvando] = useState(false);
 
   const handleSalvar = async () => {
@@ -53,10 +65,8 @@ export function NotificationsSection() {
     setSalvando(true);
     const r = await atualizarPreferenciasMotorista({
       motoristaId,
-      notifWhatsapp: notifWA,
-      notifPush,
-      notifPendentes: notifPending,
-      somAlerta: alertSound,
+      notifWhatsapp: toastResposta,
+      somAlerta: somAtivo ? somEscolhido : 'none',
     });
     setSalvando(false);
     if (!r.ok) {
@@ -67,45 +77,56 @@ export function NotificationsSection() {
     toast.success('Preferências de notificação salvas.');
   };
 
+  const handleTestarSom = () => {
+    // Toca o som mesmo se o toggle estiver desligado — é um preview.
+    tocarSomAlerta(somEscolhido);
+  };
+
   return (
     <>
       <ToggleRow
         icon={MessageCircle} iconColor="#25D366"
-        title="Respostas WhatsApp (Tempo real)"
-        desc="Alertas imediatos quando responsáveis responderem"
-        value={notifWA} onChange={setNotifWA}
+        title="Toast ao receber resposta"
+        desc="Mostra um alerta no canto da tela quando um responsável responder via WhatsApp."
+        value={toastResposta} onChange={setToastResposta}
       />
       <ToggleRow
-        icon={Smartphone} iconColor="#2979FF"
-        title="Push Notifications"
-        desc="Notificações mesmo com app em segundo plano"
-        value={notifPush} onChange={setNotifPush}
-      />
-      <ToggleRow
-        icon={Bell} iconColor="#FD7E14"
-        title="Lembrete de Pendentes"
-        desc="Alerta 1h antes da rota para passageiros sem resposta"
-        value={notifPending} onChange={setNotifPending}
+        icon={Volume2} iconColor="#FFC107"
+        title="Tocar som ao receber resposta"
+        desc="Reproduz um beep curto quando uma nova confirmação chega."
+        value={somAtivo} onChange={setSomAtivo}
         last
       />
 
-      <div className="pt-3.5">
-        <label className="flex items-center gap-1.5 text-xs font-bold text-ink-soft mb-2">
-          <Volume2 size={14} className="text-ink-muted" strokeWidth={2} />
-          Som de Alerta
-        </label>
-        <select
-          value={alertSound}
-          onChange={(e) => setAlertSound(e.target.value as SomAlerta)}
-          className="w-full box-border bg-field border-2 border-field-border rounded-xl px-3 py-2.5 text-sm font-medium text-ink outline-none font-sans cursor-pointer min-h-[46px]"
-        >
-          <option value="default">🔔 Padrão do Sistema</option>
-          <option value="chime">🎵 Chime Suave</option>
-          <option value="bell">🔔 Sino</option>
-          <option value="ding">✨ Ding</option>
-          <option value="none">🔇 Silencioso</option>
-        </select>
-      </div>
+      {somAtivo && (
+        <div className="pt-3.5">
+          <label className="flex items-center gap-1.5 text-xs font-bold text-ink-soft mb-2">
+            <Volume2 size={14} className="text-ink-muted" strokeWidth={2} />
+            Tipo de som
+          </label>
+          <div className="flex gap-2 items-stretch">
+            <select
+              value={somEscolhido}
+              onChange={(e) => setSomEscolhido(e.target.value as SomAlerta)}
+              className="flex-1 box-border bg-field border-2 border-field-border rounded-xl px-3 py-2.5 text-sm font-medium text-ink outline-none font-sans cursor-pointer min-h-[46px]"
+            >
+              {OPCOES_SOM.map((o) => (
+                <option key={o.valor} value={o.valor}>{o.rotulo}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleTestarSom}
+              aria-label="Testar som"
+              title="Tocar prévia"
+              className="shrink-0 flex items-center justify-center gap-1.5 rounded-xl border-2 border-pending/40 bg-pending/15 text-pending px-3.5 text-[12px] font-bold cursor-pointer min-h-[46px] hover:bg-pending/25 transition-colors"
+            >
+              <Play size={13} strokeWidth={2.8} fill="currentColor" />
+              Testar
+            </button>
+          </div>
+        </div>
+      )}
 
       <button
         onClick={handleSalvar}

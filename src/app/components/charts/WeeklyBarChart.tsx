@@ -18,6 +18,14 @@ interface TooltipPayload {
   fill: string;
 }
 
+// Tradução dos dataKeys técnicos (going/absent/pending) para os rótulos
+// em pt-BR que aparecem na legenda. Mantém o tooltip consistente com a UI.
+const LABEL_BR: Record<string, string> = {
+  going: 'Vão',
+  absent: 'Ausentes',
+  pending: 'Pendentes',
+};
+
 function ChartTip({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
@@ -25,7 +33,7 @@ function ChartTip({ active, payload, label }: { active?: boolean; payload?: Tool
       {label && <p className="text-xs font-bold text-ink mb-1.5 m-0">{label}</p>}
       {payload.map((e) => (
         <p key={e.dataKey} className="text-xs font-semibold m-0" style={{ color: e.fill }}>
-          {e.dataKey}: <strong>{e.value}</strong>
+          {LABEL_BR[e.dataKey] ?? e.dataKey}: <strong>{e.value}</strong>
         </p>
       ))}
     </div>

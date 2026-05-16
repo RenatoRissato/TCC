@@ -8,24 +8,15 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { usePassengers } from '../hooks/usePassengers';
-import { useIniciarViagem } from '../hooks/useViagem';
 import { getRecentUpdates, getRouteConfigs } from '../services/dashboardService';
-import { criarRotasPadrao, obterRota, validarRotaParaInicio } from '../services/rotaService';
-import { listarPassageirosDaRota, otimizarSequenciaPassageirosDaRota } from '../services/passageiroService';
+import { criarRotasPadrao } from '../services/rotaService';
+import { otimizarSequenciaPassageirosDaRota } from '../services/passageiroService';
 import { useNavDrawer } from '../context/NavDrawerContext';
-import {
-  montarUrlGoogleMaps,
-  abrirEmNovaAba,
-  deveAbrirMapsNoMesmoContexto,
-  formatarEnderecoCompleto,
-} from '../utils/maps';
 import type { RouteConfig, WhatsAppUpdate } from '../types';
-import type { DirecaoViagem } from '../types/database';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
-import { DirecaoViagemModal } from '../components/dashboard/DirecaoViagemModal';
 import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
 import { useNotificacoes } from '../hooks/useNotificacoes';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
@@ -73,18 +64,10 @@ export function DashboardScreen() {
   const { list: passengers, periodSummary: s, loading: loadingPassengers } = usePassengers();
   const [recentUpdates, setRecentUpdates] = useState<WhatsAppUpdate[]>([]);
   const [routeConfigs, setRouteConfigs] = useState<RouteConfig[]>([]);
-  const { iniciarViagem, loading: iniciandoViagem } = useIniciarViagem();
-  const [rotaIniciandoId, setRotaIniciandoId] = useState<string | null>(null);
   const [rotaOtimizandoId, setRotaOtimizandoId] = useState<string | null>(null);
   const [etapaOtimizacaoIndex, setEtapaOtimizacaoIndex] = useState(0);
   const [gerenciarAberto, setGerenciarAberto] = useState(false);
   const [notificacoesAberto, setNotificacoesAberto] = useState(false);
-  // Modal de direção da viagem — abre antes de qualquer ação ao clicar no play.
-  const [direcaoAlvo, setDirecaoAlvo] = useState<{
-    rotaId: string;
-    nome: string;
-    temDestinoFinal: boolean;
-  } | null>(null);
   const {
     lista: notificacoes,
     naoLidas: notificacoesNaoLidas,
@@ -107,126 +90,6 @@ export function DashboardScreen() {
       .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
     return () => { cancelado = true; };
   }, [motoristaId, user?.id]);
-
-  const handleAbrirModalDirecao = (rotaId: string) => {
-    const rota = routeConfigsVisiveis.find((rc) => rc.rotaId === rotaId);
-    setDirecaoAlvo({
-      rotaId,
-      nome: rota?.label ?? 'Rota',
-      // Pré-checagem do botão "Levar para casa" — se a rota não tem destino,
-      // o modal já mostra desabilitado sem precisar ir ao servidor.
-      temDestinoFinal: !!(rota?.temDestinoFinal),
-    });
-  };
-
-  const handleEscolherDirecao = async (direcao: DirecaoViagem) => {
-    if (!direcaoAlvo) return;
-    const rotaId = direcaoAlvo.rotaId;
-    // Pop-up blocker: abrimos uma aba vazia AGORA (ainda dentro do gesto do
-    // clique do usuário no botão do modal). A validação assíncrona e a
-    // chamada de iniciarViagem rodam depois.
-    const janelaMaps = deveAbrirMapsNoMesmoContexto() ? null : window.open('', '_blank');
-    if (janelaMaps) {
-      try {
-        janelaMaps.opener = null;
-        janelaMaps.document.title = 'Abrindo trajeto...';
-      } catch {
-        // Alguns navegadores podem restringir ajustes na janela recém-aberta.
-      }
-    }
-
-    setDirecaoAlvo(null);
-    setRotaIniciandoId(rotaId);
-    try {
-      const validacao = await validarRotaParaInicio(rotaId);
-      if (!validacao.valido) {
-        janelaMaps?.close();
-        if (validacao.codigo === 'todos_nao_vao') {
-          toast(validacao.erro ?? 'Nenhum aluno embarca hoje nesta rota.', {
-            description: 'Os responsáveis responderam "Não vai hoje" (opção 4) para todos. Não é necessário iniciar a viagem.',
-            duration: 6000,
-          });
-        } else {
-          toast.error(validacao.erro ?? 'Rota inválida para iniciar viagem.');
-        }
-        return;
-      }
-
-      const [rota, enderecosPassageiros] = await Promise.all([
-        obterRota(rotaId),
-        // Passa a direção para o service filtrar quem entra na rota com base
-        // no tipo de confirmação (ida_e_volta / somente_ida / somente_volta).
-        listarPassageirosDaRota(rotaId, direcao),
-      ]);
-
-      // Se a lista ficou vazia E havia confirmações no dia (todos
-      // confirmados disseram que não vão NESTE sentido), abortamos com
-      // mensagem clara. A validarRotaParaInicio já cobre "rota sem
-      // passageiros cadastrados" — então uma lista vazia aqui só pode
-      // ser efeito do filtro por direção.
-      if (enderecosPassageiros.length === 0) {
-        janelaMaps?.close();
-        toast('Nenhum aluno confirmou presença para este trajeto.', {
-          description: direcao === 'buscar'
-            ? 'Os passageiros que responderam optaram só pela volta ou disseram que não vão.'
-            : 'Os passageiros que responderam optaram só pela ida ou disseram que não vão.',
-          duration: 6000,
-        });
-        return;
-      }
-
-      const enderecoPontoSaida = rota
-        ? formatarEnderecoCompleto({
-            rua: rota.ponto_saida_rua,
-            numero: rota.ponto_saida_numero,
-            bairro: rota.ponto_saida_bairro,
-            cep: rota.ponto_saida_cep,
-          })
-        : '';
-
-      const enderecosDestinos = (rota?.destinos ?? [])
-        .map(d => formatarEnderecoCompleto({
-          rua: d.rua, numero: d.numero, bairro: d.bairro, cep: d.cep,
-        }))
-        .filter(Boolean);
-
-      // Monta a sequência de paradas conforme a direção escolhida:
-      //   buscar:  ponto_saida → passageiros (asc) → destino(s) final
-      //   retorno: destino_final → passageiros (desc) → ponto_saida
-      let origem: string;
-      let paradas: string[];
-      if (direcao === 'retorno') {
-        // Em "retorno", o motorista sai da escola (último destino cadastrado)
-        // e termina no ponto de saída da van.
-        const destinoFinalEnd = enderecosDestinos[enderecosDestinos.length - 1] ?? '';
-        const destinosIntermediarios = enderecosDestinos.slice(0, -1);
-        origem = destinoFinalEnd;
-        paradas = [
-          ...destinosIntermediarios,
-          ...[...enderecosPassageiros].reverse(),
-          enderecoPontoSaida,
-        ].filter(Boolean);
-      } else {
-        origem = enderecoPontoSaida;
-        paradas = [...enderecosPassageiros, ...enderecosDestinos];
-      }
-
-      const url = montarUrlGoogleMaps(origem, paradas);
-
-      if (url) {
-        abrirEmNovaAba(janelaMaps, url);
-      } else {
-        janelaMaps?.close();
-        toast.error('Não foi possível montar o trajeto. Verifique os endereços cadastrados.');
-        return;
-      }
-
-      const r = await iniciarViagem(rotaId, direcao);
-      if (r) navigate(`/viagem/${r.viagem_id}`);
-    } finally {
-      setRotaIniciandoId(null);
-    }
-  };
 
   const handleOtimizarSequencia = async (rotaId: string) => {
     const rota = routeConfigsVisiveis.find((rc) => rc.rotaId === rotaId);
@@ -565,8 +428,6 @@ export function DashboardScreen() {
                       <RouteButton
                         {...rc}
                         onClick={() => navigate(rc.rotaId ? `/routes?rota=${rc.rotaId}` : '/routes')}
-                        onIniciarViagem={handleAbrirModalDirecao}
-                        iniciandoViagem={iniciandoViagem && rotaIniciandoId === rc.rotaId}
                         onOtimizarSequencia={handleOtimizarSequencia}
                         otimizandoSequencia={rotaOtimizandoId === rc.rotaId}
                       />
@@ -627,14 +488,6 @@ export function DashboardScreen() {
           </div>
         </div>
       </div>
-
-      <DirecaoViagemModal
-        open={direcaoAlvo !== null}
-        onOpenChange={(open) => { if (!open) setDirecaoAlvo(null); }}
-        rotaNome={direcaoAlvo?.nome}
-        temDestinoFinal={direcaoAlvo?.temDestinoFinal ?? false}
-        onEscolher={handleEscolherDirecao}
-      />
 
       <GerenciarRotasModal
         open={gerenciarAberto}
