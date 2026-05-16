@@ -190,7 +190,7 @@ corrigido para Evolution v2 — usa `sections` em vez de `values`).
 
 ### 4. Configurar webhook
 
-Registra a URL da Edge Function `webhook-evolution` na Evolution API para receber as respostas dos responsáveis. Executado uma única vez após o deploy, ou via chamada da Edge Function `criar-perfil-motorista`.
+Registra a URL da Edge Function `webhook-evolution` na Evolution API para receber respostas, eventos de conexão e atualizações de status das mensagens. Pode ser executado após o deploy e também é chamado pelo frontend quando a tela WhatsApp detecta a instância conectada, garantindo que a lista de eventos permaneça atualizada.
 
 **Endpoint:**
 ```
@@ -215,6 +215,7 @@ POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE_NAME}
     "webhook_base64": false,
     "events": [
       "MESSAGES_UPSERT",
+      "MESSAGES_UPDATE",
       "QRCODE_UPDATED",
       "CONNECTION_UPDATE"
     ],
@@ -228,8 +229,9 @@ POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE_NAME}
 **Campos:**
 - `url` — URL da Edge Function que vai receber os eventos
 - `webhook_by_events` — `true` para receber apenas os eventos listados em `events`
-- `events` — três eventos que o SmartRoutes processa:
+- `events` — quatro eventos que o SmartRoutes processa:
   - `MESSAGES_UPSERT` — resposta do responsável (fluxo principal de confirmação)
+  - `MESSAGES_UPDATE` — atualização de status das mensagens enviadas, usada para marcar `mensagens.status_envio = 'entregue'` ou `falha`
   - `QRCODE_UPDATED` — novo QR Code emitido (sincroniza `instancias_whatsapp` para `aguardando_qr`)
   - `CONNECTION_UPDATE` — mudança de estado (sincroniza `conectado`, `desconectado`, `numero_conta`, `nome_conta_wa`)
 - `headers` — headers customizados enviados em cada chamada do webhook. Usar para passar o `WEBHOOK_SECRET` que a Edge Function vai validar
@@ -248,7 +250,7 @@ POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE_NAME}
       "url": "https://xxx.supabase.co/functions/v1/webhook-evolution",
       "webhookByEvents": true,
       "webhookBase64": false,
-      "events": ["MESSAGES_UPSERT"]
+      "events": ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "QRCODE_UPDATED", "CONNECTION_UPDATE"]
     }
   }
 }
@@ -350,6 +352,40 @@ com `selectedRowId` no formato `{numero}_{confirmacao_id}`:
 **Importante:** O controller não contém a regra de negócio da conversa. Ele
 apenas adapta o payload da Evolution API para o service compartilhado.
 
+### Payload de atualização de status (`messages.update`)
+
+Quando a Evolution informa mudança de status de uma mensagem enviada pelo bot,
+ela envia um evento parecido com:
+
+```json
+{
+  "event": "messages.update",
+  "instance": "smartroute",
+  "data": {
+    "key": {
+      "id": "BAE594145F4C59B4",
+      "fromMe": true,
+      "remoteJid": "5519999999999@s.whatsapp.net"
+    },
+    "status": "DELIVERY_ACK"
+  }
+}
+```
+
+O `webhook-evolution` cruza esse `key.id` com
+`mensagens.whatsapp_message_id` e atualiza apenas mensagens com
+`direcao='saida'`.
+
+Mapeamento usado hoje:
+
+| Status Evolution | `mensagens.status_envio` |
+|---|---|
+| `DELIVERY_ACK`, `READ_ACK`, `READ`, `PLAYED_ACK` | `entregue` |
+| `ERROR`, `FAILED`, `FAIL` | `falha` |
+| `SERVER_ACK`, `SENT`, `PENDING` | `enviada` |
+
+O webhook não regride uma mensagem já `entregue` ou `falha` para `enviada`.
+
 ---
 
 ## Implementação do cliente — _shared/evolution.ts
@@ -445,11 +481,12 @@ O telefone salvo na tabela `passageiros.telefone_responsavel` deve seguir o form
 
 ## Eventos do webhook usados
 
-O SmartRoutes assina 3 eventos:
+O SmartRoutes assina 4 eventos:
 
 | Evento | Quando dispara | Tratamento na `webhook-evolution` |
 |---|---|---|
 | `MESSAGES_UPSERT` | Mensagem recebida do responsável | Processa resposta (texto puro 1-4 ou `listResponseMessage` legado) e atualiza `confirmacoes` |
+| `MESSAGES_UPDATE` | Status de mensagem enviada muda | Atualiza `mensagens.status_envio` para `entregue`, `falha` ou `enviada` conforme o receipt da Evolution |
 | `QRCODE_UPDATED` | Evolution emite novo QR | Marca `instancias_whatsapp.status_conexao = 'aguardando_qr'` |
 | `CONNECTION_UPDATE` | Estado da conexão muda | `state=open` → `conectado` + persiste `numero_conta`/`nome_conta_wa`. `state=close|refused` → `desconectado`. `state=connecting` → `conectando` |
 

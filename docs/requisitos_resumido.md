@@ -96,7 +96,7 @@ Aguardo sua resposta. Obrigado!
 - **RN30** — Telefone no formato brasileiro com código do país: `55` + DDD + número (ex: `5519999999999`)
 - **RN32** — Respostas recebidas via webhook da Evolution API, processadas em tempo real
 - **RN33** — Última resposta prevalece (update, não insert)
-- **RN34** — Registrar timestamp de cada interação em `mensagens_log`
+- **RN34** — Registrar timestamp de cada interação em `mensagens` e eventos operacionais em `log_mensagens`
 - **RN35** — Mensagens não entregues geram alerta visual para o motorista
 - **RN36** — Sistema continua funcionando sem WhatsApp (fallback: marcação manual na lista diária)
 - **RN37** — QR Code escaneado uma vez só — sessão persistida pela Evolution API
@@ -149,7 +149,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
   de tolerância)
 - **RN67** — Horários configuráveis entre 05:00 e 22:00 apenas
 - **RN68** — Envio automático só para passageiros ativos da rota
-- **RN69** — Se WhatsApp desconectado no horário, alertar motorista em vez de falhar silenciosamente
+- **RN69** — Se WhatsApp estiver desconectado, o cron não processa a instância; a UI bloqueia ativação do envio automático e orienta conectar o WhatsApp primeiro
 - **RN70** — Motorista não precisa abrir o app para o envio ocorrer (cron job roda no servidor)
 - **RN73** — Cron **multi-pass**: se a viagem do dia ainda não existe →
   cria + envia para todos. Se já existe → reenvia mensagem apenas para
@@ -164,7 +164,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 ### Configuração e monitoramento WhatsApp
 
 - **RN49** — QR Code renovado automaticamente a cada 60 segundos via polling na Evolution API
-- **RN50** — Estatísticas de mensagens resetam mensalmente
+- **RN50** — Estatísticas de mensagens exibidas na tela WhatsApp agregam os últimos 7 dias
 - **RN51** — Envio automático pode ser desativado sem desconectar a instância WhatsApp
 - **RN52** — Horários configuráveis somente entre 6h e 22h
 - **RN53** — Mensagens de teste enviadas apenas ao próprio número do motorista
@@ -276,8 +276,10 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 2. Frontend valida via `validarRotaParaInicio` (ponto de saída, destinos,
    passageiros ativos, e se TODOS ainda não recusaram). Se todos disseram
    "não vai hoje", bloqueia abrir o Maps e mostra toast informativo
-3. Frontend chama Edge Function `iniciar-viagem`
-4. A partir daqui: mesmo que o fluxo automático (passos 3–8 acima)
+3. Motorista escolhe a direção da viagem: `buscar` ou `retorno`
+4. Frontend chama Edge Function `iniciar-viagem`
+5. A função cria/abre a viagem e confirmações pendentes, mas não envia WhatsApp pelo botão play
+6. O envio WhatsApp fica concentrado no cron `automacao-diaria` ou no botão manual de reenviar confirmação
 
 ### Botão Reenviar manual
 1. Motorista vê passageiro pendente no PassengerCard
@@ -294,7 +296,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 
 ## O que NÃO implementar (fora do escopo)
 
-- Integração com mapas ou GPS para calcular distância entre paradas
+- Cálculo próprio de distância/tempo com GPS em tempo real; o app monta rotas para Google Maps, mas não calcula rota internamente
 - Pagamentos ou cobranças
 - Chat entre motorista e responsável
 - Notificações push (funcionalidade futura)

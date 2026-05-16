@@ -17,12 +17,16 @@ supabase/functions/
 │   ├── responses.ts          → helpers `ok()`, `erroCliente()`, `erroServidor()`
 │   ├── auth.ts               → JWT helper + criarClienteUsuario / criarClienteServico
 │   ├── evolution.ts          → cliente HTTP da Evolution API
-│   └── viagem.ts             → processarIniciarViagem + helpers compartilhados
-│                                (aplicarVariaveis, obterSaudacaoBrasil)
+│   ├── viagem.ts             → processarIniciarViagem + helpers compartilhados
+│   │                            (aplicarVariaveis, obterSaudacaoBrasil)
+│   ├── conversaConfirmacao.ts → regra de conversa WhatsApp
+│   ├── conversaValidacao.ts   → validações 1-4 e decisão de alteração
+│   ├── conversaMensagens.ts   → mensagens automáticas da conversa
+│   └── conversaRepository.ts  → consultas/persistência do fluxo de conversa
 ├── criar-perfil-motorista/   → chamada após primeiro login
-├── iniciar-viagem/           → cria viagem + dispara mensagens
-├── finalizar-viagem/         → finaliza viagem + popula histórico
-├── webhook-evolution/        → recebe respostas + eventos de conexão do WhatsApp
+├── iniciar-viagem/           → cria/abre viagem manual sem disparo automático
+├── finalizar-viagem/         → finaliza viagem preservando pendentes
+├── webhook-evolution/        → recebe respostas, conexão e status de mensagens
 ├── enviar-mensagem/          → envio manual avulso
 ├── reenviar-confirmacao/     → reenvia mensagem para quem não respondeu
 ├── automacao-diaria/         → cron job multi-pass (envio inicial + reenvio)
@@ -171,7 +175,8 @@ Helper que extrai e valida o motorista da requisição.
 **Recebe no body:**
 ```json
 {
-  "rota_id": "uuid-da-rota"
+  "rota_id": "uuid-da-rota",
+  "direcao": "buscar"
 }
 ```
 
@@ -179,33 +184,28 @@ Helper que extrai e valida o motorista da requisição.
 1. Valida JWT e busca o motorista
 2. Verifica se a rota existe e pertence ao motorista — se não, retorna 403
 3. Verifica se já existe uma viagem para essa rota hoje (`unique rota_id + data`) — se sim, retorna a viagem existente sem criar duplicata
-4. Insere em `viagens` com `rota_id`, `data = hoje`, `status = 'em_andamento'`, `iniciada_em = now()`
+4. Insere em `viagens` com `rota_id`, `data = hoje`, `status = 'em_andamento'`, `direcao`, `iniciada_em = now()`
 5. Insere em `listas_diarias` com `viagem_id`
 6. Busca todos os passageiros `ativos` da rota, ordenados por `ordem_na_rota`
-7. Para cada passageiro:
-   - Insere/recupera em `confirmacoes` com `viagem_id`, `passageiro_id`, `status = 'pendente'`
-   - Busca o template ativo do motorista e as opções de resposta ativas
-   - Aplica variáveis `{nome_passageiro}`, `{data_formatada}` e `{saudacao}` no cabeçalho e rodapé
-   - Monta o corpo TEXTO PURO (sendText) com as opções numeradas no corpo — **não** usa mais `sendList`/`evolutionEnviarLista` (decisão arquitetural: Baileys tem bugs em mensagens de lista; texto puro nunca é bloqueado pelo WhatsApp)
-   - Chama `evolutionEnviarTexto(telefone, corpo)`
-   - Se o envio der erro, registra em `mensagens` com `status_envio = 'falha'` e segue para o próximo passageiro (log explícito via `console.error '[processarIniciarViagem] sendText FALHOU'`)
-   - Se o envio der certo, insere em `mensagens` com `tipo = 'confirmacao_diaria'`, `status_envio = 'enviada'`, `direcao = 'saida'`, `whatsapp_message_id` retornado pela Evolution API
-8. Cria notificação `viagem_iniciada` para o motorista (primeira vez no dia)
-9. Retorna o resumo
+7. Para cada passageiro, insere ou recupera `confirmacoes` com `status = 'pendente'`
+8. Quando chamada pelo botão play do PWA, **não envia WhatsApp**; apenas cria/abre a viagem e confirmações
+9. Quando chamada pela `automacao-diaria` com `enviarMensagens=true`, monta o texto puro com template/opções e envia via `evolutionEnviarTexto`
+10. Cria notificação `viagem_iniciada` para o motorista (primeira vez no dia)
+11. Retorna o resumo
 
 A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
-`automacao-diaria` (cron) sem duplicação.
+`automacao-diaria` (cron) sem duplicação. O default interno é `enviarMensagens=false`; o cron passa `true`.
 
 **Retorna:**
 ```json
 {
   "viagem_id": "uuid",
   "total_passageiros": 8,
-  "mensagens_enviadas": 7,
-  "mensagens_com_falha": 1,
+  "mensagens_enviadas": 0,
+  "mensagens_com_falha": 0,
   "resultados": [
     { "passageiro_id": "uuid", "nome": "Ana", "sucesso": true },
-    { "passageiro_id": "uuid", "nome": "João", "sucesso": false, "erro": "..." }
+    { "passageiro_id": "uuid", "nome": "João", "sucesso": true }
   ]
 }
 ```
@@ -234,16 +234,17 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 **O que faz:**
 1. Valida JWT e busca o motorista
 2. Verifica se a viagem existe e pertence ao motorista (via rota) — se não, 403
-3. Marca todas as confirmações ainda `pendentes` dessa viagem como `ausente`
-4. Atualiza `viagens` com `status = 'finalizada'`, `finalizada_em = now()`
-5. O trigger `trigger_finalizar_viagem` no banco popula `historico_presenca` automaticamente
+3. Atualiza `viagens` com `status = 'finalizada'`, `finalizada_em = now()`
+4. Preserva confirmações `pendente`; elas só mudam por resposta WhatsApp ou marcação manual
+5. Cria notificação `viagem_finalizada`
+6. O trigger `trigger_finalizar_viagem` no banco popula `historico_presenca` automaticamente com os status atuais
 
 **Retorna:**
 ```json
 {
   "viagem_id": "uuid",
   "finalizadaEm": "2025-04-21T18:00:00Z",
-  "ausentes_marcados": 2
+  "ausentes_marcados": 0
 }
 ```
 
@@ -260,6 +261,7 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 
 **Eventos tratados:**
 - `messages.upsert` — resposta do responsável (fluxo de confirmação)
+- `messages.update` — status de mensagem enviada; `DELIVERY_ACK`/`READ_ACK` viram `status_envio='entregue'`
 - `qrcode.updated` — Evolution emitiu novo QR; marca `status_conexao = 'aguardando_qr'`
 - `connection.update` — `state=open` marca `conectado` + persiste `numero_conta`/`nome_conta_wa` (extraídos do payload); `state=close|refused` marca `desconectado`; `connecting` marca `conectando`
 
@@ -291,6 +293,14 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 **Importante:** A mensagem inicial de confirmação não fica neste webhook e não foi alterada. Ela continua sendo montada pelos fluxos de envio (`iniciar-viagem`, `automacao-diaria`, `reenviar-confirmacao`). O webhook trata apenas as respostas recebidas e as mensagens seguintes da conversa.
 
 **Importante:** O Supabase Realtime notifica o frontend automaticamente quando `confirmacoes` ou `instancias_whatsapp` são atualizadas — nenhuma lógica extra necessária.
+
+**O que faz para `messages.update`:**
+1. Extrai o ID da mensagem enviada (`key.id`, `keyId`, `messageId` ou equivalente)
+2. Normaliza o status recebido pela Evolution API
+3. Atualiza a linha em `mensagens` com `direcao='saida'` e `whatsapp_message_id` correspondente
+4. Mapeia `DELIVERY_ACK`, `READ_ACK`, `READ` e equivalentes para `status_envio='entregue'`
+5. Mapeia `ERROR`/`FAILED` para `status_envio='falha'`
+6. Não regride uma mensagem já `entregue` ou `falha` para `enviada`
 
 ---
 
@@ -347,7 +357,7 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 3. Se o status não for `pendente`, retorna erro — não faz sentido reenviar para quem já respondeu
 4. Busca o passageiro para pegar o `telefone_responsavel`
 5. Busca o template ativo e as opções de resposta do motorista
-6. Monta e envia a mensagem novamente via `evolutionEnviarLista()` com os mesmos `rowId` da confirmação original
+6. Monta e envia a mensagem novamente via `evolutionEnviarTexto()` com as opções numeradas no corpo
 7. Insere em `mensagens` como novo envio com `tipo = 'confirmacao_diaria'`, incrementa a contagem de tentativas buscando mensagens anteriores dessa confirmação
 8. Registra em `log_mensagens` o evento `reenvio`
 
@@ -383,11 +393,13 @@ A lógica fica em `_shared/viagem.ts::processarIniciarViagem` — reusada por
 
 **O que faz:**
 1. Valida o header `x-cron-secret`
-2. Busca todos os motoristas com `envio_automatico_ativo = true` em `configuracoes_automacao` (com `instancias_whatsapp` joined)
+2. Busca todos os motoristas com `envio_automatico_ativo = true` em `configuracoes_automacao` e instância WhatsApp `status_conexao = 'conectado'`
 3. Aplica filtro `motorista_id` se passado
 4. Para cada motorista elegível:
-   - Verifica se a hora atual em `America/Sao_Paulo` bate **exatamente** com `horario_envio_automatico` (comparação `hh:mm === hh:mm`, sem janela de tolerância). Se não bate e não veio `ignorar_horario`, registra `cenario=fora_da_janela` e segue
-   - Para cada rota ativa, decide o **cenário**:
+   - Se existir `configuracoes_automacao_rotas`, usa o horário/toggle de cada rota
+   - Se não existir configuração por rota, usa o modo legado `horario_envio_automatico` + `route_mode/route_id`
+   - Verifica se a hora atual em `America/Sao_Paulo` bate **exatamente** com o horário aplicável (comparação `hh:mm === hh:mm`, sem janela de tolerância). Se não bate e não veio `ignorar_horario`, registra `cenario=fora_da_janela` ou `cenario=fora_da_janela_por_rota` e segue
+   - Para cada rota ativa elegível, decide o **cenário**:
      - **Cenário 1 — rota nova**: não existe viagem hoje → chama `processarIniciarViagem` (cria viagem + confirmações pendentes + envia para todos)
      - **Cenário 2 — viagem existe**: chama `processarReenvioPendentes` que busca confirmações `pendente` e reenvia apenas para esses (incrementa `mensagens.tentativas`)
      - **Cenário 2b — sem pendentes**: viagem existe mas todas confirmações já foram respondidas → encerra silenciosamente
@@ -512,9 +524,9 @@ Códigos de erro padronizados:
 
 **Autenticação:** JWT obrigatório.
 
-**Body opcional:** `{ "eventos": ["MESSAGES_UPSERT", "QRCODE_UPDATED", "CONNECTION_UPDATE"] }`. Sem body, usa o padrão `EVENTOS_WEBHOOK_PADRAO` exportado por `_shared/evolution.ts` (lista exatamente esses 3 eventos).
+**Body opcional:** `{ "eventos": ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "QRCODE_UPDATED", "CONNECTION_UPDATE"] }`. Sem body, usa o padrão `EVENTOS_WEBHOOK_PADRAO` exportado por `_shared/evolution.ts`.
 
-**O que faz:** chama `POST /webhook/set/{instance}` na Evolution com `webhook_by_events: true`, `webhook_base64: false`, URL apontando para `webhook-evolution` e header `x-webhook-secret`.
+**O que faz:** chama `POST /webhook/set/{instance}` na Evolution com `webhook_by_events: true`, `webhook_base64: false`, URL apontando para `webhook-evolution` e header `x-webhook-secret`. O frontend também chama essa função automaticamente quando a tela WhatsApp detecta a instância conectada, para manter a assinatura de eventos atualizada.
 
 ---
 
@@ -599,9 +611,9 @@ export function useConfirmacoes(viagemId: string) {
 | Função | Chamada por | Autenticação | Propósito |
 |---|---|---|---|
 | `criar-perfil-motorista` | Frontend (primeiro login) | JWT | Cria motorista + dados iniciais (instância, template, opções, 3 rotas padrão) |
-| `iniciar-viagem` | Frontend (botão iniciar) | JWT | Cria viagem + envia mensagens via sendText |
-| `finalizar-viagem` | Frontend (botão finalizar) | JWT | Finaliza viagem + marca ausentes |
-| `webhook-evolution` | Evolution API | Webhook secret | Processa respostas (texto/listResponse) + eventos de conexão |
+| `iniciar-viagem` | Frontend (botão iniciar) | JWT | Cria/abre viagem manual sem disparar WhatsApp |
+| `finalizar-viagem` | Frontend (botão finalizar) | JWT | Finaliza viagem preservando pendentes |
+| `webhook-evolution` | Evolution API | Webhook secret | Processa respostas, eventos de conexão e `messages.update` |
 | `enviar-mensagem` | Frontend (envio manual) | JWT | Mensagem avulsa para responsável |
 | `reenviar-confirmacao` | Frontend (botão reenviar) | JWT | Reenvia mensagem para confirmação ainda pendente |
 | `automacao-diaria` | Cron pg_cron | Cron secret | Multi-pass: cria viagem nova OU reenvia só pendentes |
@@ -609,7 +621,7 @@ export function useConfirmacoes(viagemId: string) {
 | `status-whatsapp` | Frontend (polling) | JWT | Polling do estado da Evolution, atualiza `instancias_whatsapp` |
 | `verificar-whatsapp` | Frontend (botão Verificar) | JWT | Snapshot rápido do estado da conexão |
 | `desconectar-whatsapp` | Frontend (botão Desconectar) | JWT | Logout resiliente (força local mesmo se Evolution falhar) |
-| `registrar-webhook` | One-shot do motorista | JWT | (Re)registra webhook na Evolution com 3 eventos |
+| `registrar-webhook` | Frontend / one-shot do motorista | JWT | (Re)registra webhook na Evolution com eventos de mensagem, status, QR e conexão |
 | `otimizar-sequencia-passageiros` | Frontend (botão Otimizar) | JWT | Reordena `ordem_na_rota` via algoritmo |
 
 

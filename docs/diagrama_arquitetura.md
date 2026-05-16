@@ -51,10 +51,11 @@ O fluxo central do sistema ocorre em seis etapas:
 
 1. **Motorista inicia a rota** no PWA (manual) **ou** o cron `pg_cron`
    dispara `automacao-diaria` no horário configurado.
-2. **Edge Function `iniciar-viagem` / `automacao-diaria`** é chamada. Cria o
-   registro da viagem no banco, busca os passageiros ativos da rota e
-   monta a mensagem aplicando as variáveis `{saudacao}`, `{nome_passageiro}`
-   e `{data_formatada}`.
+2. **Edge Function `iniciar-viagem` / `automacao-diaria`** é chamada. A
+   chamada manual cria/abre a viagem e confirmações pendentes sem disparar
+   WhatsApp; a chamada do cron cria a viagem quando necessário, busca os
+   passageiros ativos da rota e monta a mensagem aplicando as variáveis
+   `{saudacao}`, `{nome_passageiro}` e `{data_formatada}`.
 3. **Evolution API envia mensagem de texto puro** (`sendText`) para o
    WhatsApp de cada responsável, com as 4 opções numeradas no corpo. A
    credencial da Evolution fica protegida no servidor.

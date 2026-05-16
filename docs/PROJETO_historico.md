@@ -2243,6 +2243,78 @@ do evento. O controller apenas extrai telefone/texto e chama o service.
 
 ---
 
+## Fase 16 — Ajustes de operação: direção, automação por rota, perfil e status de entrega (maio/2026)
+
+Os commits mais recentes consolidaram ajustes que já estão no código e no
+banco.
+
+### 16.1 — Direção da viagem e filtro do Maps
+
+- Migration `20260514000000_viagens_direcao.sql` adicionou
+  `viagens.direcao` com valores `buscar` ou `retorno`
+- `iniciar-viagem` aceita `direcao` no body e atualiza a viagem existente do
+  dia quando necessário
+- A UI ganhou modal de escolha de direção antes de abrir a rota
+- `passageiroService.listarPassageirosDaRota` filtra `somente_ida` e
+  `somente_volta` conforme a direção escolhida
+
+### 16.2 — Botão play não dispara WhatsApp
+
+- `_shared/viagem.ts::processarIniciarViagem` passou a ter
+  `enviarMensagens=false` como padrão
+- O botão play cria/abre a viagem e confirmações pendentes, mas não envia
+  mensagens automáticas
+- O envio automático ficou concentrado no cron `automacao-diaria`; reenvio
+  pontual continua pelo botão de reenviar confirmação
+
+### 16.3 — Automação por rota
+
+- Migration `20260514090000_configuracao_automacao_por_rota.sql` criou
+  `configuracoes_automacao_rotas`
+- A tela WhatsApp passou a listar todas as rotas com toggle e horário próprios
+- `automacao-diaria` respeita os horários individuais quando essa tabela
+  possui registros
+- O cron ignora instâncias WhatsApp desconectadas
+
+### 16.4 — Rotas padrão e múltiplas rotas por turno
+
+- Migration `20260513030000_rotas_padrao_unicas.sql` limpou duplicatas legadas
+  das rotas padrão
+- Migration `20260514103000_permitir_multiplas_rotas_por_turno.sql` removeu o
+  índice único por `motorista_id + turno`, permitindo várias rotas no mesmo
+  turno
+- `criar-perfil-motorista` e `rotaService` foram ajustados para criação
+  idempotente das 3 rotas padrão sem bloquear novas rotas no mesmo turno
+
+### 16.5 — Perfil com foto e validações
+
+- Migration `20260514112000_foto_perfil_motorista.sql` adicionou
+  `motoristas.foto_url` e criou o bucket público `profile-photos`
+- `ProfileEditModal` valida campos obrigatórios, máscara WhatsApp, placa,
+  marca e ano
+- `ProfileHeader` e `SideNav` exibem a foto de perfil quando existir
+- A UI de idioma foi removida das preferências; o campo `motoristas.idioma`
+  permanece legado no banco
+
+### 16.6 — Finalização preserva pendentes
+
+- `finalizar-viagem` não converte mais confirmações `pendente` para
+  `ausente`
+- Pendentes só mudam por resposta WhatsApp ou marcação manual na tela da rota
+- O retorno mantém `ausentes_marcados: 0` por compatibilidade com o frontend
+
+### 16.7 — Status de entrega da Evolution API
+
+- `EVENTOS_WEBHOOK_PADRAO` passou a incluir `MESSAGES_UPDATE`
+- `webhook-evolution` trata `messages.update` e atualiza
+  `mensagens.status_envio` usando `whatsapp_message_id`
+- `useWhatsApp` re-registra o webhook automaticamente quando a instância está
+  conectada
+- A UI de KPIs do WhatsApp removeu o card `Total`; o backend ainda calcula o
+  total para compatibilidade
+
+---
+
 ## O que NÃO existe (ainda)
 
 - **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
