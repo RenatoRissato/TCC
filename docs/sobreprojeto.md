@@ -225,19 +225,24 @@ automaticamente.
 - **Automação por rota**: cada rota pode ter seu próprio horário e toggle de envio na tela WhatsApp
 - **Proteção do cron por conexão**: o cron só roda para instâncias WhatsApp conectadas; a UI bloqueia ativação quando desconectado
 - **Início manual de rota sem disparo automático**: o botão play cria/abre a viagem, mas não envia WhatsApp; envio fica no cron ou no reenvio manual
+- **FAB Play no BottomNav + fluxo de 3 etapas**: única porta de entrada para iniciar viagem (`PlayFlowSheet` — escolha de rota → otimização → direção). O FAB aparece **apenas na tela Home** (`/home`); em outras telas o slot central fica vazio. O botão Play dos cards de rota foi removido em favor do FAB
 - **Direção da viagem**: o motorista escolhe `buscar` ou `retorno`, e a lista do Maps filtra `somente_ida`/`somente_volta` conforme a direção
+- **5 status de confirmação na UI**: `ida_e_volta` / `somente_ida` / `somente_volta` / `nao_vai` / `pendente` com cores e ícones próprios em LiveTripScreen, Dashboard, OccupancySummary, UpdateRow e PassengerCard. Metadados centralizados em `confirmacaoStatusMeta.ts`
+- **Otimização opcional de sequência**: a etapa 2 do fluxo do FAB chama `otimizar-sequencia-passageiros` (reescreve `ordem_na_rota` no banco) antes de abrir o Maps. O Maps Web não usa `optimize:true` propositalmente (cria parada fantasma em algumas contas)
 - Variável `{saudacao}` automática no template
 - Status UI unificado: `confirmado + nao_vai` é tratado como "não vai hoje" em todas as telas e no trajeto do Google Maps
 - Finalização de viagem preserva confirmações `pendente`; elas só mudam por resposta WhatsApp ou marcação manual
 - Histórico em `historico_presenca` populado automaticamente via trigger ao finalizar viagem
-- Notificações in-app em tempo real (sino do dashboard) via Realtime
+- **Dashboard de estatísticas conectado ao banco** (`estatisticasService` + `useEstatisticas`): status de hoje em 5 buckets, confirmações da semana, distribuição por rota, métricas de WhatsApp (Enviadas/Entregues/Falhas/Recebidas) e taxa mensal com delta vs mês anterior
+- **Notificações in-app reais (toast + som)**: hook `useNotificacoesRespostas` no AppLayout escuta Realtime em `confirmacoes` e dispara toast + beep gerado via Web Audio quando um responsável responde. Configurável em Configurações → Notificações (toggle de toast, toggle de som, select do tipo de som com botão Testar)
+- Notificações in-app via tabela `notificacoes` (sino do dashboard) — independente do toast acima, mostra histórico persistente de eventos
 - Foto de perfil do motorista persistida em `motoristas.foto_url` e Storage
 
 ## O que ainda falta
 
 - Implementar telas e consultas de **histórico/relatórios** no frontend (os dados já existem em `historico_presenca` e `mensagens`, falta visualização)
 - Completar a camada PWA real com manifest, service worker e instalação offline
-- Notificações push reais (toggle `notif_push` já persiste; falta FCM/service worker)
+- **Push notifications externas (browser/SO)** — não implementadas. O sistema já entrega alertas in-app (toast + som via Web Audio) enquanto o PWA está aberto. Push externo exigiria service worker + FCM/VAPID
 - Internacionalização real não existe; o campo `motoristas.idioma` permanece no banco como legado, mas a UI de idioma foi removida
 - CI/CD para deploy automático
 

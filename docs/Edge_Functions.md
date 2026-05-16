@@ -168,7 +168,10 @@ Helper que extrai e valida o motorista da requisição.
 
 ## Função: iniciar-viagem
 
-**Quando é chamada:** motorista aperta o botão "Iniciar rota" no PWA.
+**Quando é chamada:** motorista conclui o `PlayFlowSheet` (FAB Play do
+BottomNav) escolhendo rota, otimização e direção. Não há mais botão
+"Iniciar viagem" nos cards de rota — o FAB é a única porta de entrada
+e é renderizado apenas na tela Home (`/home`).
 
 **Autenticação:** JWT obrigatório.
 
@@ -180,15 +183,22 @@ Helper que extrai e valida o motorista da requisição.
 }
 ```
 
+`direcao` é opcional. Valores aceitos: `'buscar'` ou `'retorno'`. Qualquer
+outro valor é gravado como `null`.
+
 **O que faz:**
 1. Valida JWT e busca o motorista
 2. Verifica se a rota existe e pertence ao motorista — se não, retorna 403
-3. Verifica se já existe uma viagem para essa rota hoje (`unique rota_id + data`) — se sim, retorna a viagem existente sem criar duplicata
-4. Insere em `viagens` com `rota_id`, `data = hoje`, `status = 'em_andamento'`, `direcao`, `iniciada_em = now()`
+3. Verifica se já existe uma viagem para essa rota hoje (`unique rota_id + data`).
+   Se já existir, **apenas atualiza `direcao`** da viagem existente e segue
+   o fluxo de criar/recuperar confirmações pendentes (idempotente — útil
+   quando o motorista inicia "buscar" de manhã e "retorno" à tarde).
+4. Caso contrário, insere em `viagens` com `rota_id`, `data = hoje`,
+   `status = 'em_andamento'`, `direcao`, `iniciada_em = now()`
 5. Insere em `listas_diarias` com `viagem_id`
 6. Busca todos os passageiros `ativos` da rota, ordenados por `ordem_na_rota`
 7. Para cada passageiro, insere ou recupera `confirmacoes` com `status = 'pendente'`
-8. Quando chamada pelo botão play do PWA, **não envia WhatsApp**; apenas cria/abre a viagem e confirmações
+8. Quando chamada pelo FAB Play do PWA, **não envia WhatsApp**; apenas cria/abre a viagem e confirmações
 9. Quando chamada pela `automacao-diaria` com `enviarMensagens=true`, monta o texto puro com template/opções e envia via `evolutionEnviarTexto`
 10. Cria notificação `viagem_iniciada` para o motorista (primeira vez no dia)
 11. Retorna o resumo
@@ -611,7 +621,7 @@ export function useConfirmacoes(viagemId: string) {
 | Função | Chamada por | Autenticação | Propósito |
 |---|---|---|---|
 | `criar-perfil-motorista` | Frontend (primeiro login) | JWT | Cria motorista + dados iniciais (instância, template, opções, 3 rotas padrão) |
-| `iniciar-viagem` | Frontend (botão iniciar) | JWT | Cria/abre viagem manual sem disparar WhatsApp |
+| `iniciar-viagem` | Frontend (FAB Play do BottomNav) | JWT | Cria/abre viagem manual ou atualiza `direcao` da viagem do dia, sem disparar WhatsApp |
 | `finalizar-viagem` | Frontend (botão finalizar) | JWT | Finaliza viagem preservando pendentes |
 | `webhook-evolution` | Evolution API | Webhook secret | Processa respostas, eventos de conexão e `messages.update` |
 | `enviar-mensagem` | Frontend (envio manual) | JWT | Mensagem avulsa para responsável |

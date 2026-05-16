@@ -33,6 +33,22 @@ A `automacao-diaria` opera em três cenários conforme o estado da rota no dia:
 | Horário não bate com o configurado | Não roda o loop da rota | `cenario=fora_da_janela` |
 | Horário por rota não bate | Não roda a rota fora do horário individual | `cenario=fora_da_janela_por_rota` |
 
+### Filtro `route_mode` da configuração
+
+Cada `configuracoes_automacao` tem um campo `route_mode` que pode ser:
+
+- **`'all'`** — o cron processa **todas as rotas ativas** do motorista
+- **`'specific'`** — o cron processa **apenas a rota** apontada por
+  `configuracoes_automacao.route_id`
+
+**Regra atual (após Fase 17.9):** o `route_mode` é honrado em **ambos os
+cenários** (Cenário 1 cria viagem e Cenário 2 reenvia pendentes — só na
+rota configurada). Uma iteração intermediária da Fase 17 havia tornado o
+Cenário 2 universal (reenviar pendentes em qualquer rota com viagem do
+dia), mas isso foi revertido a pedido explícito do motorista: se ele
+escolheu uma rota específica, só essa rota recebe mensagens — mesmo que
+existam pendentes em outras rotas com viagem aberta.
+
 Não existe mais `horario_limite_resposta` como regra operacional. As
 confirmações valem apenas para a viagem do dia; no dia seguinte, uma nova
 viagem cria novamente todas as confirmações como `pendente`. O cron continua

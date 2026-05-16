@@ -989,6 +989,16 @@ create table motoristas (
 );
 ```
 
+**Semântica atual dos campos de preferência (Fase 17):**
+
+| Campo | Significado hoje |
+|---|---|
+| `notif_whatsapp` | Liga/desliga o **toast in-app** quando o responsável responde via WhatsApp (lido por `useNotificacoesRespostas`) |
+| `som_alerta` | Tipo de som tocado via Web Audio quando chega resposta. Valor `'none'` representa **som desligado**. Outros valores: `'default'`, `'chime'`, `'bell'`, `'ding'` |
+| `notif_push` | **Legado.** Foi pensado para push notifications externas (FCM/VAPID), nunca implementadas. Continua no schema mas nenhum consumidor lê |
+| `notif_pendentes` | **Legado.** Pensado para lembretes 1h antes da rota — não há cron/job que faça isso. Sem leitor |
+| `idioma` | **Legado.** A UI de seleção de idioma foi removida; o app é PT-BR fixo. O campo permanece para retrocompatibilidade |
+
 ---
 
 ## Tabela `notificacoes` (migration 20260507)
