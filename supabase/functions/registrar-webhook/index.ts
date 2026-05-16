@@ -8,8 +8,8 @@ import {
 } from '../_shared/evolution.ts'
 
 // One-shot: registra (ou re-registra) o webhook na Evolution API com os
-// eventos atuais que o sistema processa: MESSAGES_UPSERT, QRCODE_UPDATED,
-// CONNECTION_UPDATE. Pode ser chamada novamente sempre que a lista de
+// eventos atuais que o sistema processa: MESSAGES_UPSERT, MESSAGES_UPDATE,
+// QRCODE_UPDATED, CONNECTION_UPDATE. Pode ser chamada novamente sempre que a lista de
 // eventos mudar.
 
 Deno.serve(async (req: Request) => {

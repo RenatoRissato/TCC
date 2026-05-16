@@ -60,15 +60,6 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Marca pendentes como ausente
-    const { data: ausentes, error: updPaxErr } = await supabase
-      .from('confirmacoes')
-      .update({ status: 'ausente' })
-      .eq('viagem_id', viagemId)
-      .eq('status', 'pendente')
-      .select('id')
-    if (updPaxErr) throw updPaxErr
-
     // Atualiza viagem
     const finalizadaEm = new Date().toISOString()
     const { error: updViagemErr } = await supabase
@@ -96,7 +87,7 @@ Deno.serve(async (req: Request) => {
     return ok({
       viagem_id: viagemId,
       finalizadaEm,
-      ausentes_marcados: ausentes?.length ?? 0,
+      ausentes_marcados: 0,
     })
   } catch (err) {
     if (err instanceof AuthError) {

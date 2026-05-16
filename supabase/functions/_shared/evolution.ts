@@ -244,6 +244,7 @@ export async function evolutionEnviarLista(
 
 export const EVENTOS_WEBHOOK_PADRAO = [
   'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE',
   'QRCODE_UPDATED',
   'CONNECTION_UPDATE',
 ] as const

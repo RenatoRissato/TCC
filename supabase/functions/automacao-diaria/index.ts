@@ -380,7 +380,7 @@ Deno.serve(async (req: Request) => {
     const { data: configs, error: cfgErr } = await supabase
       .from('configuracoes_automacao')
       .select(
-        'id, horario_envio_automatico, route_mode, route_id, instancia_whatsapp_id, instancias_whatsapp(motorista_id)',
+        'id, horario_envio_automatico, route_mode, route_id, instancia_whatsapp_id, instancias_whatsapp(motorista_id, status_conexao)',
       )
       .eq('envio_automatico_ativo', true)
 
@@ -389,12 +389,16 @@ Deno.serve(async (req: Request) => {
     // Aplica filtro de motorista (se passado). Como o motorista_id está em
     // join com instancias_whatsapp, filtramos em memória — economiza um round-trip
     // que custaria mais que filtrar a lista pequena de motoristas.
+    const configsConectados = (configs ?? []).filter(
+      (c: any) => (c as any).instancias_whatsapp?.status_conexao === 'conectado',
+    )
+
     const configsParaProcessar = motoristaIdFilter
-      ? (configs ?? []).filter(
+      ? configsConectados.filter(
           (c: any) =>
             (c as any).instancias_whatsapp?.motorista_id === motoristaIdFilter,
         )
-      : (configs ?? [])
+      : configsConectados
 
     const detalhes: Detalhe[] = []
     let processados = 0

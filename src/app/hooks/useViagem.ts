@@ -49,7 +49,7 @@ export function useFinalizarViagem() {
     setLoading(true);
     try {
       const r = await svcFinalizarViagem(viagemId);
-      toast.success(`Viagem finalizada · ${r.ausentes_marcados} marcados como ausentes`);
+      toast.success('Viagem finalizada. Passageiros pendentes foram preservados.');
       return r;
     } catch (e) {
       toast.error(mensagemDeErro(e, 'Não foi possível finalizar a viagem'));

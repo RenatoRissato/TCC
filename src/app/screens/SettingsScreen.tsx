@@ -101,7 +101,7 @@ export function SettingsScreen() {
           icon={<Settings2 size={22} color="#8B5CF6" strokeWidth={2} />}
           iconBg="rgba(139,92,246,0.12)"
           title="Preferências"
-          subtitle="Tema escuro e idioma do aplicativo"
+          subtitle="Tema visual do aplicativo"
           accent="#8B5CF6"
         >
           <PreferencesSection

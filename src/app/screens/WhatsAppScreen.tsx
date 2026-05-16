@@ -1,4 +1,5 @@
-import { AlertTriangle, BarChart3 } from 'lucide-react';
+import { AlertTriangle, BarChart3, Smartphone, X } from 'lucide-react';
+import { useState } from 'react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { useWhatsApp } from '../hooks/useWhatsApp';
@@ -7,6 +8,7 @@ import { ConnectionStatus } from '../components/whatsapp/ConnectionStatus';
 import { ScheduleCard } from '../components/whatsapp/ScheduleCard';
 import { TemplateEditor } from '../components/whatsapp/TemplateEditor';
 import { QrCodeModal } from '../components/whatsapp/QrCodeModal';
+import { BottomSheetModal } from '../components/shared/BottomSheetModal';
 
 function StatPill({ valor, rotulo, cor }: { valor: number; rotulo: string; cor: string }) {
   return (
@@ -27,9 +29,10 @@ export function WhatsAppScreen() {
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
   const wa = useWhatsApp();
+  const [modalCronBloqueado, setModalCronBloqueado] = useState(false);
   const px = isDesktop ? 32 : isMd ? 24 : 16;
 
-  const desabilitarSalvarConfig = !wa.instancia;
+  const desabilitarSalvarConfig = !wa.instancia || !wa.conectado;
   const desabilitarSalvarTemplate = !wa.template;
 
   return (
@@ -55,8 +58,7 @@ export function WhatsAppScreen() {
                 Mensagens últimos 7 dias
               </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              <StatPill valor={wa.estatisticas.total}     rotulo="Total"     cor="#FFC107" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <StatPill valor={wa.estatisticas.enviadas}  rotulo="Enviadas"  cor="#2979FF" />
               <StatPill valor={wa.estatisticas.entregues} rotulo="Entregues" cor="#198754" />
               <StatPill valor={wa.estatisticas.recebidas} rotulo="Recebidas" cor="#25D366" />
@@ -82,9 +84,11 @@ export function WhatsAppScreen() {
             <div className="flex flex-col gap-5">
               <ScheduleCard
                 envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
+                conectado={wa.conectado}
                 rotasEnvioAuto={wa.rotasEnvioAuto}
                 onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
                 onRotaAutomacaoChange={wa.editarRotaEnvioAutomatico}
+                onAtivacaoBloqueada={() => setModalCronBloqueado(true)}
                 salvando={wa.salvandoConfig}
                 onSalvar={wa.salvarHorarios}
                 desabilitado={desabilitarSalvarConfig}
@@ -117,9 +121,11 @@ export function WhatsAppScreen() {
             />
             <ScheduleCard
               envioAutomaticoAtivo={wa.envioAutomaticoAtivo}
+              conectado={wa.conectado}
               rotasEnvioAuto={wa.rotasEnvioAuto}
               onEnvioAutomaticoChange={wa.setEnvioAutomaticoAtivo}
               onRotaAutomacaoChange={wa.editarRotaEnvioAutomatico}
+              onAtivacaoBloqueada={() => setModalCronBloqueado(true)}
               salvando={wa.salvandoConfig}
               onSalvar={wa.salvarHorarios}
               desabilitado={desabilitarSalvarConfig}
@@ -162,6 +168,46 @@ export function WhatsAppScreen() {
         onGerarNovo={wa.gerarNovoQr}
         onFechar={wa.fecharQr}
       />
+
+      <BottomSheetModal
+        open={modalCronBloqueado}
+        onOpenChange={setModalCronBloqueado}
+        title="Conectar WhatsApp Primeiro"
+        hideHandle
+        maxWidth={380}
+        forceCenter
+      >
+        <div className="p-6 font-sans">
+          <div className="w-14 h-14 rounded-[18px] bg-whatsapp/15 flex items-center justify-center mx-auto mb-4">
+            <Smartphone size={26} className="text-whatsapp" strokeWidth={2.1} />
+          </div>
+          <p className="text-lg font-extrabold text-ink m-0 mb-2 text-center">
+            Ative o WhatsApp antes do cron
+          </p>
+          <p className="text-[13px] text-ink-soft m-0 mb-6 text-center leading-normal">
+            Para habilitar o envio automatico, conecte primeiro o WhatsApp escaneando o QR Code nesta tela.
+          </p>
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => setModalCronBloqueado(false)}
+              className="flex-1 bg-transparent border-2 border-app-border rounded-[13px] py-3 text-sm font-bold text-ink-soft cursor-pointer min-h-12 flex items-center justify-center gap-2"
+            >
+              <X size={15} strokeWidth={2.5} />
+              Fechar
+            </button>
+            <button
+              onClick={() => {
+                setModalCronBloqueado(false);
+                void wa.abrirConexao();
+              }}
+              className="flex-1 border-0 rounded-[13px] py-3 text-sm font-bold text-white cursor-pointer min-h-12"
+              style={{ background: 'linear-gradient(135deg,#25D366,#128C7E)' }}
+            >
+              Conectar Agora
+            </button>
+          </div>
+        </div>
+      </BottomSheetModal>
     </div>
   );
 }

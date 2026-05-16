@@ -373,8 +373,8 @@ export function LiveTripScreen() {
           <p className="text-lg font-extrabold text-ink m-0 mb-2 text-center">Finalizar viagem?</p>
           <p className="text-[13px] text-ink-soft m-0 mb-6 text-center leading-normal">
             {totalPendentes > 0
-              ? <>Os {totalPendentes} passageiro{totalPendentes > 1 ? 's' : ''} pendentes serão marcados como <strong>ausentes</strong>.</>
-              : 'Esta ação encerra a viagem e gera o histórico do dia.'}
+              ? <>Os {totalPendentes} passageiro{totalPendentes > 1 ? 's' : ''} pendentes continuarao como <strong>pendentes</strong> ate responderem ou serem alterados manualmente.</>
+              : 'Esta acao encerra a viagem e gera o historico do dia.'}
           </p>
           <div className="flex gap-2.5">
             <button
@@ -399,3 +399,4 @@ export function LiveTripScreen() {
     </div>
   );
 }
+

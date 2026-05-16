@@ -6,12 +6,14 @@ import type { RotaAutomacaoState } from '../../hooks/useWhatsApp';
 
 interface ScheduleCardProps {
   envioAutomaticoAtivo: boolean;
+  conectado: boolean;
   rotasEnvioAuto: RotaAutomacaoState[];
   onEnvioAutomaticoChange: (v: boolean) => void;
   onRotaAutomacaoChange: (
     rotaId: string,
     patch: Partial<Pick<RotaAutomacaoState, 'envioAutomaticoAtivo' | 'horarioEnvio'>>,
   ) => void;
+  onAtivacaoBloqueada: () => void;
   salvando: boolean;
   onSalvar: () => void;
   desabilitado?: boolean;
@@ -25,15 +27,20 @@ const CORES_TURNO: Record<RotaAutomacaoState['turno'], string> = {
 
 function RouteScheduleRow({
   rota,
+  conectado,
   disabled,
   onChange,
+  onBlocked,
 }: {
   rota: RotaAutomacaoState;
+  conectado: boolean;
   disabled: boolean;
   onChange: ScheduleCardProps['onRotaAutomacaoChange'];
+  onBlocked: () => void;
 }) {
   const color = CORES_TURNO[rota.turno] ?? '#25D366';
   const rowDisabled = disabled || !rota.ativa;
+  const toggleVisualValue = conectado ? rota.envioAutomaticoAtivo : false;
 
   return (
     <div
@@ -55,8 +62,12 @@ function RouteScheduleRow({
           </p>
         </div>
         <Toggle
-          value={rota.envioAutomaticoAtivo}
+          value={toggleVisualValue}
           onChange={(v) => {
+            if (!conectado) {
+              onBlocked();
+              return;
+            }
             if (!rowDisabled) onChange(rota.rotaId, { envioAutomaticoAtivo: v });
           }}
           color={rota.turno === 'morning' ? 'pending' : rota.turno === 'afternoon' ? 'warning' : 'night'}
@@ -82,13 +93,17 @@ function RouteScheduleRow({
 
 export function ScheduleCard({
   envioAutomaticoAtivo,
+  conectado,
   rotasEnvioAuto,
   onEnvioAutomaticoChange,
   onRotaAutomacaoChange,
+  onAtivacaoBloqueada,
   salvando,
   onSalvar,
   desabilitado,
 }: ScheduleCardProps) {
+  const envioAutomaticoVisual = conectado ? envioAutomaticoAtivo : false;
+
   return (
     <section>
       <SLabel>Envio Automatico</SLabel>
@@ -110,12 +125,18 @@ export function ScheduleCard({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-ink m-0">Envio automatico</p>
             <p className="text-[11px] text-ink-soft m-0">
-              {envioAutomaticoAtivo ? 'Cron diario ativo' : 'Cron desativado'}
+              {envioAutomaticoVisual ? 'Cron diario ativo' : 'Cron desativado'}
             </p>
           </div>
           <Toggle
-            value={envioAutomaticoAtivo}
-            onChange={onEnvioAutomaticoChange}
+            value={envioAutomaticoVisual}
+            onChange={(v) => {
+              if (!conectado && v) {
+                onAtivacaoBloqueada();
+                return;
+              }
+              onEnvioAutomaticoChange(v);
+            }}
             color="success"
           />
         </div>
@@ -146,8 +167,10 @@ export function ScheduleCard({
                 <RouteScheduleRow
                   key={rota.rotaId}
                   rota={rota}
-                  disabled={!envioAutomaticoAtivo}
+                  conectado={conectado}
+                  disabled={!envioAutomaticoVisual}
                   onChange={onRotaAutomacaoChange}
+                  onBlocked={onAtivacaoBloqueada}
                 />
               ))
             )}
@@ -170,7 +193,7 @@ export function ScheduleCard({
           </button>
           {desabilitado && (
             <p className="text-[11px] text-ink-muted text-center mt-2 m-0">
-              Salvar fica disponivel assim que a instancia WhatsApp estiver carregada.
+              Salvar fica disponivel depois que o WhatsApp estiver conectado.
             </p>
           )}
         </div>

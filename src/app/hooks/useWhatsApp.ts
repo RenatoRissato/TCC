@@ -11,6 +11,7 @@ import {
   obterInstancia,
   obterTemplate,
   OPCOES_PADRAO,
+  registrarWebhookEvolution,
   salvarConfiguracaoAutomacao,
   salvarConfiguracoesRotasAutomacao,
   salvarTemplate,
@@ -124,6 +125,7 @@ export function useWhatsApp() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expiraTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollDeadlineRef = useRef<number>(0);
+  const webhookRegistradoRef = useRef<string | null>(null);
 
   const [instancia,    setInstancia]    = useState<InstanciaWhatsAppRow | null>(null);
   const [configuracao, setConfiguracao] = useState<ConfiguracaoAutomacaoRow | null>(null);
@@ -261,9 +263,41 @@ export function useWhatsApp() {
     }
   }, [motoristaId, verificandoConexao]);
 
+  const conectado = instancia?.status_conexao === 'conectado';
+
+  useEffect(() => {
+    if (!instancia?.id || !conectado) {
+      webhookRegistradoRef.current = null;
+      return;
+    }
+    if (webhookRegistradoRef.current === instancia.id) return;
+
+    let cancelado = false;
+    void (async () => {
+      const r = await registrarWebhookEvolution();
+      if (cancelado) return;
+
+      if (r.ok) {
+        webhookRegistradoRef.current = instancia.id;
+        debug('registrarWebhookEvolution:auto', r);
+      } else {
+        console.error('Falha ao registrar webhook automaticamente:', r.erro);
+        toast.error('WhatsApp conectado, mas nao foi possivel sincronizar o webhook.');
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [instancia?.id, conectado]);
+
   const salvarHorarios = useCallback(async () => {
     if (!instancia) {
       toast.error('Instância WhatsApp não encontrada para salvar.');
+      return;
+    }
+    if (!conectado) {
+      toast.error('Conecte o WhatsApp antes de ativar o cron automatico.');
       return;
     }
     if (envioAutomaticoAtivo && rotasEnvioAuto.length === 0) {
@@ -315,6 +349,7 @@ export function useWhatsApp() {
     }
   }, [
     instancia,
+    conectado,
     envioAutomaticoAtivo,
     horarioEnvioAuto,
     rotasEnvioAuto,
@@ -382,8 +417,6 @@ export function useWhatsApp() {
       prev.map((o) => (o.numero === numero ? { ...o, texto_exibido: texto } : o)),
     );
   }, []);
-
-  const conectado = instancia?.status_conexao === 'conectado';
 
   // ---- Fluxo de QR Code ----
   // Importante: polling e contagem regressiva são timers SEPARADOS.
@@ -612,3 +645,5 @@ export function useWhatsApp() {
     fecharQr,
   };
 }
+
+
