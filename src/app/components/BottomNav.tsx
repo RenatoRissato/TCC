@@ -25,6 +25,7 @@ export function BottomNav() {
 
   const navBg     = isDark ? '#0A0D12' : '#212529';
   const navBorder = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)';
+  const isHomeScreen = pathname === '/home';
 
   const renderItem = ({
     path, label, Icon, badge,
@@ -119,7 +120,7 @@ export function BottomNav() {
           O FabPlay é absolutamente posicionado e sobreposto a este slot. */}
       <div style={{ flex: 1, minHeight: 62 }} aria-hidden="true" />
       {NAV_RIGHT.map(renderItem)}
-      <FabPlay variante="absolute" />
+      {isHomeScreen && <FabPlay variante="absolute" />}
     </nav>
   );
 }

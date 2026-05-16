@@ -34,6 +34,7 @@ export function AppLayout() {
   const { pathname }         = useLocation();
   const { motoristaId, user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isHomeScreen = pathname === '/home';
 
   // Notificações in-app de respostas de WhatsApp — toast e som configuráveis
   // pelo motorista em Configurações → Notificações. Vive no layout porque
@@ -149,7 +150,7 @@ export function AppLayout() {
       </div>
 
       {/* Desktop: FAB Play fixo no canto inferior direito (sem BottomNav). */}
-      {isLg && <FabPlay variante="fixed" />}
+      {isLg && isHomeScreen && <FabPlay variante="fixed" />}
 
       {/* Sheet global do FAB — vive no layout para abrir de qualquer tela
           sem precisar redeclarar em cada uma. */}
