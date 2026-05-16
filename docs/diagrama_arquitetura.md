@@ -49,12 +49,16 @@ Esta é a camada mais importante do ponto de vista de segurança:
 
 O fluxo central do sistema ocorre em seis etapas:
 
-1. **Motorista inicia a rota** no PWA (manual) **ou** o cron `pg_cron`
-   dispara `automacao-diaria` no horário configurado.
-2. **Edge Function `iniciar-viagem` / `automacao-diaria`** é chamada. Cria o
-   registro da viagem no banco, busca os passageiros ativos da rota e
-   monta a mensagem aplicando as variáveis `{saudacao}`, `{nome_passageiro}`
-   e `{data_formatada}`.
+1. **Motorista inicia a rota** no PWA (manual via FAB Play do BottomNav
+   na tela Home) **ou** o cron `pg_cron` dispara `automacao-diaria` no
+   horário configurado.
+2. **Edge Function `iniciar-viagem` / `automacao-diaria`** é chamada. A
+   chamada manual cria/abre a viagem e confirmações pendentes sem disparar
+   WhatsApp; também grava `viagens.direcao` (`buscar` ou `retorno`). Se a
+   viagem do dia já existe, apenas atualiza a direção. A chamada do cron
+   cria a viagem quando necessário, busca os passageiros ativos da rota
+   e monta a mensagem aplicando as variáveis `{saudacao}`,
+   `{nome_passageiro}` e `{data_formatada}`.
 3. **Evolution API envia mensagem de texto puro** (`sendText`) para o
    WhatsApp de cada responsável, com as 4 opções numeradas no corpo. A
    credencial da Evolution fica protegida no servidor.
@@ -63,13 +67,38 @@ O fluxo central do sistema ocorre em seis etapas:
    Evolution API, valida o `x-webhook-secret`, identifica o passageiro
    pelo telefone do remetente, atualiza `confirmacoes.status` e
    `tipo_confirmacao`, e envia uma mensagem de retorno automática.
-6. **Supabase Realtime** notifica o frontend instantaneamente, atualizando
-   a lista de confirmações no PWA do motorista e disparando notificação
-   in-app no sino do dashboard.
+6. **Supabase Realtime** notifica o frontend instantaneamente. Duas
+   reações no PWA do motorista:
+   - A lista de confirmações na `LiveTripScreen` atualiza ao vivo
+   - O hook `useNotificacoesRespostas` (montado no `AppLayout`) dispara
+     um toast e/ou um beep gerado via Web Audio API, conforme as
+     preferências do motorista em Configurações → Notificações
+   - Em paralelo, uma notificação `whatsapp_resposta` persiste na tabela
+     `notificacoes` e aparece no sino do dashboard
 
 > Em chamadas subsequentes ao cron no mesmo dia, a `automacao-diaria` não
 > recria a viagem — ela **reenvia apenas para confirmações pendentes**
 > (cenário multi-pass). Quem já respondeu não recebe mensagem duplicada.
+
+### Fluxo do FAB Play (3 etapas)
+
+Quando o motorista quer iniciar manualmente uma viagem, segue:
+
+1. Clica no FAB Play no centro do BottomNav (renderizado **apenas na
+   tela `/home`**)
+2. `PlayFlowSheet` abre com 3 etapas: **rota → otimização → direção**
+3. Se escolher "Otimizar automaticamente", o frontend chama
+   `otimizar-sequencia-passageiros` (reescreve `ordem_na_rota` no banco)
+   antes de seguir para a etapa 3
+4. `listarPassageirosDaRota(rotaId, direcao)` filtra os passageiros
+   conforme o `tipo_confirmacao` (somente_ida só entra em `buscar`,
+   somente_volta só entra em `retorno`)
+5. URL do Google Maps é montada com origem e paradas conforme a direção
+   e aberta em nova aba (sem `optimize:true`, que cria parada fantasma
+   em algumas contas)
+6. `iniciar-viagem` é chamada com `rota_id` e `direcao` — cria a viagem
+   se não existe, ou atualiza a direção da existente
+7. Frontend navega para `/viagem/:id`
 
 ---
 

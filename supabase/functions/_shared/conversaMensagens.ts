@@ -60,7 +60,7 @@ export function montarRespostaConfirmacao(
   if (tipo === 'nao_vai') {
     return `Entendido! ${nome} não vai hoje. Obrigado por avisar.`
   }
-  return `Confirmado! ${nome} estará aguardando a van. Bom dia!`
+  return `Confirmado! ${nome} estará aguardando a van.`
 }
 
 export function montarRespostaAlteracao(

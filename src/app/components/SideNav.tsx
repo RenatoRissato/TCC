@@ -184,8 +184,16 @@ export function SideNav({ onClose }: { onClose?: () => void } = {}) {
 
         {/* User card */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER_COLOR}`, borderRadius: 12, padding: '9px 10px' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 11, background: 'linear-gradient(135deg,#FFC107,#E6A800)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#212529', flexShrink: 0 }}>
-            {(user?.name ?? 'CA').split(' ').map(n => n[0]).slice(0, 2).join('')}
+          <div style={{ width: 36, height: 36, borderRadius: 11, overflow: 'hidden', background: 'linear-gradient(135deg,#FFC107,#E6A800)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#212529', flexShrink: 0 }}>
+            {user?.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user?.name ?? 'Foto de perfil'}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              (user?.name ?? 'CA').split(' ').map(n => n[0]).slice(0, 2).join('')
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name ?? 'Motorista'}</p>

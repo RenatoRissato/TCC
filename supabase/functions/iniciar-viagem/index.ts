@@ -6,6 +6,7 @@ import { processarIniciarViagem } from '../_shared/viagem.ts'
 
 interface Body {
   rota_id?: string
+  direcao?: 'buscar' | 'retorno'
 }
 
 Deno.serve(async (req: Request) => {
@@ -31,8 +32,12 @@ Deno.serve(async (req: Request) => {
       return erroCliente('rota_id é obrigatório', 'ROTA_OBRIGATORIA', 400)
     }
 
+    const direcao = body.direcao === 'buscar' || body.direcao === 'retorno'
+      ? body.direcao
+      : null
+
     try {
-      const resumo = await processarIniciarViagem(supabase, motorista.id, rotaId)
+      const resumo = await processarIniciarViagem(supabase, motorista.id, rotaId, { direcao })
       return ok(resumo, resumo.ja_existia ? 200 : 201)
     } catch (err: any) {
       if (err?.codigo === 'ROTA_NAO_ENCONTRADA') {

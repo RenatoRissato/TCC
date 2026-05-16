@@ -147,17 +147,23 @@ async function buscarInstanciaWhatsApp(
   return data?.id ?? null
 }
 
+export type DirecaoViagem = 'buscar' | 'retorno'
+
 export async function processarIniciarViagem(
   supabase: SupabaseClient,
   motoristaId: string,
   rotaId: string,
-  options: { dataViagem?: string; enviarMensagens?: boolean } = {},
+  options: { dataViagem?: string; enviarMensagens?: boolean; direcao?: DirecaoViagem | null } = {},
 ): Promise<ResumoViagem> {
   // Regra de negócio: o botão "play" (iniciar viagem) NÃO dispara WhatsApp.
   // Mensagens automáticas saem apenas do cron `automacao-diaria` no horário
   // configurado, ou via `reenviar-confirmacao` quando o motorista pede
   // explicitamente. Default false; o cron passa true.
   const enviarMensagens = options.enviarMensagens === true
+  const direcao: DirecaoViagem | null =
+    options.direcao === 'buscar' || options.direcao === 'retorno'
+      ? options.direcao
+      : null
   // 1. Verifica rota
   const { data: rota, error: rotaErr } = await supabase
     .from('rotas')
@@ -182,6 +188,7 @@ export async function processarIniciarViagem(
       rota_id: rotaId,
       data: hoje,
       status: 'em_andamento',
+      direcao,
     })
     .select('id')
     .maybeSingle()
@@ -198,6 +205,14 @@ export async function processarIniciarViagem(
     if (!existente) throw new Error(`Erro ao criar viagem: ${insertErr.message}`)
     viagemId = existente.id
     viagemJaExistia = true
+    // Viagem já existe (caso típico: motorista iniciou "buscar" cedo e agora
+    // está iniciando "retorno"). Atualiza só a direção — nada mais.
+    if (direcao) {
+      await supabase
+        .from('viagens')
+        .update({ direcao })
+        .eq('id', viagemId)
+    }
   } else if (!viagemNova) {
     throw new Error('Falha ao criar viagem (sem retorno do insert)')
   } else {

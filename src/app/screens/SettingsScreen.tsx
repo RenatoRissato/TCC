@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  BarChart3, Users, Bell, Settings2, Sun, Lock, HelpCircle, LogOut,
+  BarChart3, Users, Bell, Settings2, Lock, HelpCircle, LogOut,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -14,18 +14,17 @@ import { StatsSection } from '../components/settings/StatsSection';
 import { PassengersSection } from '../components/settings/PassengersSection';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
 import { PreferencesSection } from '../components/settings/PreferencesSection';
-import { ShiftsSection } from '../components/settings/ShiftsSection';
 import { PasswordSection } from '../components/settings/PasswordSection';
 import { SupportSection } from '../components/settings/SupportSection';
 import { ProfileHeader } from '../components/settings/ProfileHeader';
 import { ProfileEditModal } from '../components/settings/ProfileEditModal';
 
 type OpenKey = 'stats' | 'passengers' | 'notifications' | 'preferences'
-             | 'shifts' | 'password' | 'support' | null;
+             | 'password' | 'support' | null;
 
 export function SettingsScreen() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, motoristaId, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { isDesktop, isLg, isMd } = useBreakpoints();
   const { openDrawer } = useNavDrawer();
@@ -65,7 +64,7 @@ export function SettingsScreen() {
           subtitle="Presença hoje, confirmações semanais, taxa mensal"
           accent="#6C5CE7"
         >
-          <StatsSection summary={summary} />
+          <StatsSection motoristaId={motoristaId} ativo={open === 'stats'} />
         </AccordionItem>
 
         <AccordionItem
@@ -90,7 +89,7 @@ export function SettingsScreen() {
           icon={<Bell size={22} color="#F59E0B" strokeWidth={2} />}
           iconBg="rgba(245,158,11,0.12)"
           title="Notificações"
-          subtitle="Alertas do WhatsApp, push e sons"
+          subtitle="Toast e som ao receber respostas via WhatsApp"
           accent="#F59E0B"
         >
           <NotificationsSection />
@@ -101,23 +100,12 @@ export function SettingsScreen() {
           icon={<Settings2 size={22} color="#8B5CF6" strokeWidth={2} />}
           iconBg="rgba(139,92,246,0.12)"
           title="Preferências"
-          subtitle="Tema escuro e idioma do aplicativo"
+          subtitle="Tema visual do aplicativo"
           accent="#8B5CF6"
         >
           <PreferencesSection
             isDark={isDark} toggleTheme={toggleTheme}
           />
-        </AccordionItem>
-
-        <AccordionItem
-          id="shifts" open={open === 'shifts'} onToggle={toggle}
-          icon={<Sun size={22} color="#FFC107" strokeWidth={2} />}
-          iconBg="rgba(255,193,7,0.12)"
-          title="Configurações de Turnos"
-          subtitle="Ativar/desativar turnos e horários de saída"
-          accent="#FFC107"
-        >
-          <ShiftsSection isDesktop={isDesktop} />
         </AccordionItem>
 
         <AccordionItem

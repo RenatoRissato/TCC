@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
-  ArrowLeft, CheckCircle2, XCircle, Clock, RotateCcw, Send, Flag,
+  ArrowLeft, CheckCircle2, RotateCcw, Send, Flag,
   ChevronDown, Loader2, Menu,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,24 +11,16 @@ import { useConfirmacoesRealtime } from '../hooks/useConfirmacoesRealtime';
 import { useFinalizarViagem, useReenviarConfirmacao } from '../hooks/useViagem';
 import { buscarViagem, marcarConfirmacaoManual } from '../services/viagemService';
 import { BottomSheetModal } from '../components/shared/BottomSheetModal';
-import { statusUIDaConfirmacao, type StatusUI } from '../utils/confirmacaoStatus';
+import {
+  statusUIDetalhadoDaConfirmacao,
+  type StatusUIDetalhado,
+} from '../utils/confirmacaoStatus';
+import {
+  STATUS_UI_DETALHADO_META,
+  STATUS_UI_DETALHADO_ORDEM,
+} from '../utils/confirmacaoStatusMeta';
 import type { ConfirmacaoComPassageiro } from '../hooks/useConfirmacoesRealtime';
 import type { RotaRow, StatusConfirmacao, TipoConfirmacao, ViagemRow } from '../types/database';
-
-const TIPO_LABEL: Record<TipoConfirmacao, string> = {
-  ida_e_volta: 'Ida e volta',
-  somente_ida: 'Somente ida',
-  somente_volta: 'Somente volta',
-  nao_vai: 'Não vai',
-};
-
-// Metadados pelo status EFETIVO de UI — leva em conta `tipo_confirmacao`.
-// "Confirmado + nao_vai" e "ausente" caem em `nao_vai_hoje` (vermelho).
-const STATUS_UI_META: Record<StatusUI, { label: string; color: string; bg: string; Icon: typeof CheckCircle2 }> = {
-  vai:          { label: 'Vai hoje',      color: '#198754', bg: 'rgba(25,135,84,0.12)',  Icon: CheckCircle2 },
-  nao_vai_hoje: { label: 'Não vai hoje',  color: '#DC3545', bg: 'rgba(220,53,69,0.12)',  Icon: XCircle },
-  pendente:     { label: 'Pendente',      color: '#FD7E14', bg: 'rgba(253,126,20,0.12)', Icon: Clock },
-};
 
 function iniciais(nome: string): string {
   return nome.trim().split(/\s+/).filter(Boolean).map(p => p[0]?.toUpperCase() ?? '').slice(0, 2).join('');
@@ -42,10 +34,9 @@ interface PassageiroRowProps {
 }
 
 function ConfirmacaoRowItem({ c, onReenviar, onAbrirManual, reenviando }: PassageiroRowProps) {
-  const statusUI = statusUIDaConfirmacao(c.status, c.tipo_confirmacao);
-  const meta = STATUS_UI_META[statusUI];
+  const statusDetalhado = statusUIDetalhadoDaConfirmacao(c.status, c.tipo_confirmacao);
+  const meta = STATUS_UI_DETALHADO_META[statusDetalhado];
   const nome = c.passageiros?.nome_completo ?? '—';
-  const tipoLabel = c.tipo_confirmacao ? TIPO_LABEL[c.tipo_confirmacao] : null;
 
   return (
     <div className="flex items-center gap-3 bg-panel border-[1.5px] border-app-border rounded-[16px] px-3.5 py-3 transition-colors">
@@ -65,9 +56,6 @@ function ConfirmacaoRowItem({ c, onReenviar, onAbrirManual, reenviando }: Passag
             <meta.Icon size={10} strokeWidth={2.8} />
             {meta.label}
           </span>
-          {tipoLabel && (
-            <span className="text-[11px] text-ink-soft font-medium">· {tipoLabel}</span>
-          )}
           {c.origem && (
             <span className="text-[10px] text-ink-muted">· {c.origem}</span>
           )}
@@ -192,20 +180,25 @@ export function LiveTripScreen() {
     [confirmacoes],
   );
 
-  // Contagem baseada no status EFETIVO de UI:
-  //   - vai            (status='confirmado' + tipo ∈ ida_e_volta/somente_ida/somente_volta)
-  //   - nao_vai_hoje   (status='ausente' OU 'confirmado' + tipo='nao_vai')
-  //   - pendente       (sem resposta)
-  const contagem = useMemo(() => {
-    const r = { vai: 0, nao_vai: 0, pendente: 0, total: confirmacoes.length };
+  // Contagem detalhada — uma entrada para cada um dos 5 status de UI.
+  // O cálculo de "pendentes" para o modal de finalizar usa essa mesma fonte.
+  const contagemDetalhada = useMemo(() => {
+    const base: Record<StatusUIDetalhado, number> = {
+      ida_e_volta: 0,
+      somente_ida: 0,
+      somente_volta: 0,
+      nao_vai: 0,
+      pendente: 0,
+    };
     for (const c of confirmacoes) {
-      const ui = statusUIDaConfirmacao(c.status, c.tipo_confirmacao);
-      if (ui === 'vai') r.vai++;
-      else if (ui === 'nao_vai_hoje') r.nao_vai++;
-      else r.pendente++;
+      const ui = statusUIDetalhadoDaConfirmacao(c.status, c.tipo_confirmacao);
+      base[ui]++;
     }
-    return r;
+    return base;
   }, [confirmacoes]);
+
+  const totalConfirmacoes = confirmacoes.length;
+  const totalPendentes = contagemDetalhada.pendente;
 
   const handleReenviar = async (id: string) => {
     setReenviandoId(id);
@@ -275,18 +268,43 @@ export function LiveTripScreen() {
           )}
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { n: contagem.vai,      l: 'VÃO',       c: '#4ADE80' },
-            { n: contagem.nao_vai,  l: 'NÃO VÃO',   c: '#FF6B7A' },
-            { n: contagem.pendente, l: 'PENDENTES', c: '#FD7E14' },
-            { n: contagem.total,    l: 'TOTAL',     c: '#FFC107' },
-          ].map(({ n, l, c }) => (
-            <div key={l} className="flex flex-col items-center bg-white/[0.05] rounded-[14px] py-2.5">
-              <span className="text-2xl font-black leading-none" style={{ color: c }}>{n}</span>
-              <span className="text-[9px] font-bold text-white/45 tracking-[0.06em] mt-1">{l}</span>
-            </div>
-          ))}
+        {/* Contadores detalhados — 5 status + total.
+            Desktop: 6 colunas em linha única.
+            Mobile/tablet: 3 colunas × 2 linhas (6 células). */}
+        <div className={`grid gap-2 ${isMd ? 'grid-cols-6' : 'grid-cols-3'}`}>
+          {STATUS_UI_DETALHADO_ORDEM.map((status) => {
+            const meta = STATUS_UI_DETALHADO_META[status];
+            const valor = contagemDetalhada[status];
+            return (
+              <div
+                key={status}
+                className="flex flex-col items-center bg-white/[0.05] rounded-[14px] py-2.5 px-1"
+                title={meta.label}
+              >
+                <span
+                  className="text-2xl font-black leading-none"
+                  style={{ color: meta.color }}
+                >
+                  {valor}
+                </span>
+                <div className="flex items-center gap-1 mt-1">
+                  <meta.Icon size={9} strokeWidth={2.8} style={{ color: meta.color }} />
+                  <span className="text-[9px] font-bold text-white/55 tracking-[0.04em] uppercase truncate">
+                    {meta.labelCompacto}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div
+            className="flex flex-col items-center bg-white/[0.05] rounded-[14px] py-2.5 px-1"
+            title="Total de passageiros"
+          >
+            <span className="text-2xl font-black leading-none text-pending">{totalConfirmacoes}</span>
+            <span className="text-[9px] font-bold text-white/55 tracking-[0.04em] uppercase mt-1">
+              Total
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 mt-3">
@@ -354,9 +372,9 @@ export function LiveTripScreen() {
           </div>
           <p className="text-lg font-extrabold text-ink m-0 mb-2 text-center">Finalizar viagem?</p>
           <p className="text-[13px] text-ink-soft m-0 mb-6 text-center leading-normal">
-            {contagem.pendente > 0
-              ? <>Os {contagem.pendente} passageiro{contagem.pendente > 1 ? 's' : ''} pendentes serão marcados como <strong>ausentes</strong>.</>
-              : 'Esta ação encerra a viagem e gera o histórico do dia.'}
+            {totalPendentes > 0
+              ? <>Os {totalPendentes} passageiro{totalPendentes > 1 ? 's' : ''} pendentes continuarao como <strong>pendentes</strong> ate responderem ou serem alterados manualmente.</>
+              : 'Esta acao encerra a viagem e gera o historico do dia.'}
           </p>
           <div className="flex gap-2.5">
             <button
@@ -381,3 +399,4 @@ export function LiveTripScreen() {
     </div>
   );
 }
+

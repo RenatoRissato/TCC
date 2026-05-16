@@ -11,6 +11,137 @@ import {
 } from '../_shared/conversaRepository.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+function normalizarStatusEnvioWebhook(
+  status: unknown,
+): 'enviada' | 'entregue' | 'falha' | null {
+  if (typeof status !== 'string') return null
+  const valor = status.trim().toUpperCase()
+  if (!valor) return null
+
+  if (
+    valor === 'DELIVERY_ACK' ||
+    valor === 'READ' ||
+    valor === 'READ_ACK' ||
+    valor === 'PLAYED' ||
+    valor === 'PLAYED_ACK'
+  ) {
+    return 'entregue'
+  }
+
+  if (
+    valor === 'ERROR' ||
+    valor === 'FAILED' ||
+    valor === 'FAIL'
+  ) {
+    return 'falha'
+  }
+
+  if (
+    valor === 'PENDING' ||
+    valor === 'SERVER_ACK' ||
+    valor === 'SENT'
+  ) {
+    return 'enviada'
+  }
+
+  return null
+}
+
+function extrairAtualizacoesMensagem(payload: any): Array<{
+  whatsappMessageId: string
+  statusOriginal: string
+  statusLocal: 'enviada' | 'entregue' | 'falha'
+}> {
+  const bruto = payload?.data
+  const itens = Array.isArray(bruto)
+    ? bruto
+    : Array.isArray(bruto?.messages)
+      ? bruto.messages
+      : bruto
+        ? [bruto]
+        : []
+
+  return itens
+    .map((item: any) => {
+      const whatsappMessageId =
+        item?.keyId ??
+        item?.key?.id ??
+        item?.messageId ??
+        item?.id ??
+        item?.update?.key?.id ??
+        null
+
+      const statusOriginal =
+        item?.status ??
+        item?.update?.status ??
+        item?.messageStatus ??
+        item?.message?.status ??
+        null
+
+      const statusLocal = normalizarStatusEnvioWebhook(statusOriginal)
+
+      if (
+        typeof whatsappMessageId !== 'string' ||
+        !whatsappMessageId.trim() ||
+        typeof statusOriginal !== 'string' ||
+        !statusLocal
+      ) {
+        return null
+      }
+
+      return {
+        whatsappMessageId: whatsappMessageId.trim(),
+        statusOriginal,
+        statusLocal,
+      }
+    })
+    .filter(Boolean) as Array<{
+      whatsappMessageId: string
+      statusOriginal: string
+      statusLocal: 'enviada' | 'entregue' | 'falha'
+    }>
+}
+
+async function atualizarStatusMensagemSaida(
+  supabase: SupabaseClient,
+  update: {
+    whatsappMessageId: string
+    statusOriginal: string
+    statusLocal: 'enviada' | 'entregue' | 'falha'
+  },
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('mensagens')
+    .select('id, status_envio')
+    .eq('whatsapp_message_id', update.whatsappMessageId)
+    .eq('direcao', 'saida')
+    .order('enviada_em', { ascending: false })
+    .limit(1)
+
+  if (error) throw error
+
+  const mensagem = data?.[0] ?? null
+  if (!mensagem?.id) return false
+
+  const statusAtual = mensagem.status_envio as
+    | 'pendente'
+    | 'enviada'
+    | 'entregue'
+    | 'falha'
+
+  if (statusAtual === update.statusLocal) return false
+  if (statusAtual === 'entregue' && update.statusLocal === 'enviada') return false
+  if (statusAtual === 'falha' && update.statusLocal === 'enviada') return false
+
+  const { error: updateErr } = await supabase
+    .from('mensagens')
+    .update({ status_envio: update.statusLocal })
+    .eq('id', mensagem.id)
+
+  if (updateErr) throw updateErr
+  return true
+}
+
 async function buscarIdsInstanciasParaEvento(
   supabase: SupabaseClient,
 ): Promise<string[]> {
@@ -159,6 +290,45 @@ Deno.serve(async (req: Request) => {
         }
       }
       return ok({ tratado: 'connection.update', state, instancias_atualizadas: 0 })
+    }
+
+    if (evento === 'messages.update') {
+      const supabase = criarClienteServico()
+      const atualizacoes = extrairAtualizacoesMensagem(payload)
+
+      if (atualizacoes.length === 0) {
+        return ok({
+          tratado: 'messages.update',
+          atualizadas: 0,
+          ignorado: true,
+          motivo: 'sem messageId/status suportados',
+        })
+      }
+
+      let atualizadas = 0
+      for (const atualizacao of atualizacoes) {
+        const mudou = await atualizarStatusMensagemSaida(supabase, atualizacao)
+        if (mudou) atualizadas++
+      }
+
+      console.log(
+        '[webhook] messages.update processado',
+        JSON.stringify({
+          recebidas: atualizacoes.length,
+          atualizadas,
+          updates: atualizacoes.map((u) => ({
+            whatsapp_message_id: u.whatsappMessageId,
+            status_original: u.statusOriginal,
+            status_local: u.statusLocal,
+          })),
+        }),
+      )
+
+      return ok({
+        tratado: 'messages.update',
+        recebidas: atualizacoes.length,
+        atualizadas,
+      })
     }
 
     if (evento !== 'messages.upsert') {

@@ -2,8 +2,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { BottomNav } from './BottomNav';
 import { SideNav } from './SideNav';
+import { FabPlay } from './FabPlay';
+import { PlayFlowSheet } from './PlayFlowSheet';
+import { ViagemAtivaProvider } from '../context/ViagemAtivaContext';
 import { useColors } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
+import { useNotificacoesRespostas } from '../hooks/useNotificacoesRespostas';
 import { NavDrawerContext } from '../context/NavDrawerContext';
 import { Toaster } from './ui/sonner';
 
@@ -27,7 +32,17 @@ export function AppLayout() {
   const c                    = useColors();
   const { isLg }             = useBreakpoints();
   const { pathname }         = useLocation();
+  const { motoristaId, user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isHomeScreen = pathname === '/home';
+
+  // Notificações in-app de respostas de WhatsApp — toast e som configuráveis
+  // pelo motorista em Configurações → Notificações. Vive no layout porque
+  // deve disparar em qualquer tela onde o motorista esteja.
+  useNotificacoesRespostas(motoristaId, {
+    toastAtivo: user?.notifWhatsApp ?? true,
+    som: user?.somAlerta ?? 'default',
+  });
 
   const openDrawer  = useCallback(() => setDrawerOpen(true),  []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
@@ -47,6 +62,7 @@ export function AppLayout() {
 
   return (
     <NavDrawerContext.Provider value={{ openDrawer }}>
+      <ViagemAtivaProvider>
       {/*
         Root flex-row: SideNav (fixed width) + column (main + BottomNav)
         height:100dvh + overflow:hidden keeps everything inside the viewport.
@@ -132,7 +148,16 @@ export function AppLayout() {
         </div>
 
       </div>
+
+      {/* Desktop: FAB Play fixo no canto inferior direito (sem BottomNav). */}
+      {isLg && isHomeScreen && <FabPlay variante="fixed" />}
+
+      {/* Sheet global do FAB — vive no layout para abrir de qualquer tela
+          sem precisar redeclarar em cada uma. */}
+      <PlayFlowSheet />
+
       <Toaster richColors position="top-right" />
+      </ViagemAtivaProvider>
     </NavDrawerContext.Provider>
   );
 }

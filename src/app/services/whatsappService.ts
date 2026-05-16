@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type {
+  ConfiguracaoAutomacaoRotaRow,
   ConfiguracaoAutomacaoRow,
   InstanciaWhatsAppRow,
   OpcaoRespostaRow,
@@ -124,6 +125,26 @@ export async function obterConfiguracaoAutomacao(
   return data as ConfiguracaoAutomacaoRow | null;
 }
 
+export async function obterConfiguracoesRotasAutomacao(
+  instanciaId: string,
+): Promise<ConfiguracaoAutomacaoRotaRow[]> {
+  const { data, error } = await supabase
+    .from('configuracoes_automacao_rotas')
+    .select('*')
+    .eq('instancia_whatsapp_id', instanciaId);
+  if (error) {
+    // A tabela existe apos a migration nova. Se ela ainda nao foi aplicada,
+    // mantemos compatibilidade com a configuracao antiga de horario unico.
+    if (error.code === '42P01' || error.code === 'PGRST205') {
+      console.warn('obterConfiguracoesRotasAutomacao: tabela ainda nao existe.');
+      return [];
+    }
+    console.error('obterConfiguracoesRotasAutomacao:', error);
+    return [];
+  }
+  return (data ?? []) as ConfiguracaoAutomacaoRotaRow[];
+}
+
 export interface SalvarConfiguracaoInput {
   instanciaId: string;
   envioAutomaticoAtivo: boolean;
@@ -152,6 +173,41 @@ export async function salvarConfiguracaoAutomacao(
     return null;
   }
   return data as ConfiguracaoAutomacaoRow | null;
+}
+
+export interface SalvarConfiguracaoRotaInput {
+  instanciaId: string;
+  rotaId: string;
+  envioAutomaticoAtivo: boolean;
+  horarioEnvio: string;
+}
+
+export async function salvarConfiguracoesRotasAutomacao(
+  instanciaId: string,
+  rotas: SalvarConfiguracaoRotaInput[],
+): Promise<ConfiguracaoAutomacaoRotaRow[] | null> {
+  if (rotas.length === 0) return [];
+
+  const payload = rotas.map((rota) => ({
+    instancia_whatsapp_id: instanciaId,
+    rota_id: rota.rotaId,
+    envio_automatico_ativo: rota.envioAutomaticoAtivo,
+    horario_envio: rota.horarioEnvio,
+  }));
+
+  const { data, error } = await supabase
+    .from('configuracoes_automacao_rotas')
+    .upsert(payload, {
+      onConflict: 'instancia_whatsapp_id,rota_id',
+    })
+    .select('*');
+
+  if (error) {
+    console.error('salvarConfiguracoesRotasAutomacao:', error);
+    return null;
+  }
+
+  return (data ?? []) as ConfiguracaoAutomacaoRotaRow[];
 }
 
 export async function obterTemplate(
@@ -260,11 +316,21 @@ export async function obterEstatisticasMensagens(
     base().eq('direcao', 'entrada'),
   ]);
 
+  // Em parte do historico legado, a Evolution nao devolveu receipts de entrega
+  // para mensagens ja registradas como `enviada`. Nesses casos, mantemos um
+  // fallback visual: se ainda nao existe nenhuma linha `entregue`, exibimos
+  // `enviadas - falhas` para o KPI de entregues, que bate com a expectativa
+  // operacional da tela.
+  const enviadasCount = enviadas ?? 0;
+  const entreguesCount = entregues ?? 0;
+  const falhasCount = falhas ?? 0;
+  const entreguesFallback = Math.max(0, enviadasCount - falhasCount);
+
   return {
     total: total ?? 0,
-    enviadas: enviadas ?? 0,
-    entregues: entregues ?? 0,
-    falhas: falhas ?? 0,
+    enviadas: enviadasCount,
+    entregues: entreguesCount > 0 ? entreguesCount : entreguesFallback,
+    falhas: falhasCount,
     recebidas: recebidas ?? 0,
     desde,
   };

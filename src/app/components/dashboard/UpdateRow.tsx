@@ -1,9 +1,18 @@
 import { memo } from 'react';
 import { Avatar } from '../shared/Avatar';
+import {
+  STATUS_UI_DETALHADO_META,
+} from '../../utils/confirmacaoStatusMeta';
+import type { StatusUIDetalhado } from '../../utils/confirmacaoStatus';
 import type { WhatsAppUpdate } from '../../types';
 
 export const UpdateRow = memo(function UpdateRow({ update }: { update: WhatsAppUpdate }) {
-  const going = update.status === 'going';
+  // Mapeia o tipo detalhado da resposta para os metadados de cor/ícone/label.
+  // Fallback: sem tipo conhecido, usa o agregado (going → ida_e_volta, absent → nao_vai).
+  const tipoUi: StatusUIDetalhado =
+    update.tipoConfirmacao ?? (update.status === 'going' ? 'ida_e_volta' : 'nao_vai');
+  const meta = STATUS_UI_DETALHADO_META[tipoUi];
+
   return (
     <div className="flex items-center gap-3 py-[11px] border-b border-divider">
       <Avatar initials={update.initials} status={update.status} size={40} />
@@ -15,13 +24,11 @@ export const UpdateRow = memo(function UpdateRow({ update }: { update: WhatsAppU
         <p className="text-xs text-ink-soft m-0 truncate">{update.message}</p>
       </div>
       <div
-        className={`shrink-0 px-[9px] py-1 rounded-lg text-[10px] font-extrabold ${
-          going
-            ? 'bg-going-soft text-success'
-            : 'bg-absent-soft text-danger'
-        }`}
+        className="shrink-0 inline-flex items-center gap-1 px-[9px] py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-[0.04em]"
+        style={{ background: meta.bg, color: meta.color }}
       >
-        {going ? 'VAI' : 'NÃO'}
+        <meta.Icon size={10} strokeWidth={2.8} />
+        {meta.labelCompacto}
       </div>
     </div>
   );

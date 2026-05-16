@@ -20,6 +20,7 @@ export interface MotoristaRow {
   marca_van: string | null;
   modelo_van: string | null;
   ano_van: number | null;
+  foto_url: string | null;
   notif_whatsapp: boolean;
   notif_push: boolean;
   notif_pendentes: boolean;
@@ -49,6 +50,16 @@ export interface ConfiguracaoAutomacaoRow {
   saudacao_personalizada: string | null;
   max_tentativas_envio: number;
   intervalo_tentativas: number;
+}
+
+export interface ConfiguracaoAutomacaoRotaRow {
+  id: string;
+  instancia_whatsapp_id: string;
+  rota_id: string;
+  envio_automatico_ativo: boolean;
+  horario_envio: string;
+  criado_em: string;
+  atualizado_em: string;
 }
 
 export interface TemplateMensagemRow {
@@ -124,6 +135,8 @@ export interface PassageiroRow {
   criado_em: string;
 }
 
+export type DirecaoViagem = 'buscar' | 'retorno';
+
 export interface ViagemRow {
   id: string;
   rota_id: string;
@@ -131,6 +144,7 @@ export interface ViagemRow {
   status: StatusViagem;
   iniciada_em: string;
   finalizada_em: string | null;
+  direcao: DirecaoViagem | null;
 }
 
 export interface ConfirmacaoRow {

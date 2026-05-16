@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import type { ViagemRow, RotaRow, StatusConfirmacao, TipoConfirmacao } from '../types/database';
+import type { ViagemRow, RotaRow, StatusConfirmacao, TipoConfirmacao, DirecaoViagem } from '../types/database';
 
 export interface IniciarViagemResultado {
   viagem_id: string;
@@ -69,10 +69,17 @@ async function extrairErro(error: unknown, fallback = 'Erro inesperado'): Promis
   return { erro: fallback };
 }
 
-export async function iniciarViagem(rotaId: string): Promise<IniciarViagemResultado> {
+export async function iniciarViagem(
+  rotaId: string,
+  direcao?: DirecaoViagem | null,
+): Promise<IniciarViagemResultado> {
+  const body: Record<string, unknown> = { rota_id: rotaId };
+  if (direcao === 'buscar' || direcao === 'retorno') {
+    body.direcao = direcao;
+  }
   const { data, error } = await supabase.functions.invoke<IniciarViagemResultado>(
     'iniciar-viagem',
-    { body: { rota_id: rotaId } },
+    { body },
   );
   if (error) throw await extrairErro(error, 'Falha ao iniciar viagem');
   if (!data) throw { erro: 'Resposta vazia da função iniciar-viagem' };

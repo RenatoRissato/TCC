@@ -26,8 +26,8 @@ O problema central resolvido: motoristas não sabem antecipadamente quais alunos
    - `3` → Somente volta
    - `4` → Não vai hoje
 4. Sistema registra a resposta automaticamente e atualiza o status do aluno
-5. Motorista visualiza a lista diária com todos os confirmados, pendentes e ausentes
-6. Sistema sugere a rota otimizada com base nos alunos confirmados
+5. Motorista visualiza a lista diária com os 5 estados de UI: ida e volta, somente ida, somente volta, não vai e pendente
+6. Motorista escolhe o sentido da viagem ao iniciar a rota, e o Google Maps considera apenas passageiros compatíveis com a direção escolhida
 
 ---
 
@@ -107,11 +107,14 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 - CRUD de rotas com nome, descrição e horário de saída
 - Associação de passageiros à rota com ordem de embarque
 - Status da rota: ativa, inativa
+- Cada motorista pode ter mais de uma rota no mesmo turno
+- Ao criar conta, o sistema garante 3 rotas padrão iniciais: manhã, tarde e noite
 
 ### Lista diária
-- Geração automática ao iniciar uma viagem
+- Geração automática ao iniciar uma viagem manualmente ou pelo cron
 - Separação em: confirmados, pendentes, ausentes
 - Tipos de confirmação: ida e volta, somente ida, somente volta, não vai
+- Sentido da viagem: `buscar` ou `retorno`
 - Taxa de ocupação calculada automaticamente
 - Atualização em tempo real via Supabase Realtime
 
@@ -120,12 +123,15 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 - Registro manual pelo motorista no PWA
 - Status: pendente, confirmado, ausente
 - Canal: whatsapp, manual
+- Mensagens inválidas recebem orientação automática com as opções válidas
+- Responsável pode alterar uma confirmação já feita após confirmar a alteração
 
 ### Integração WhatsApp (via Edge Functions)
 - Envio automático de mensagens no horário configurado
 - Recebimento e processamento de respostas via webhook
 - Envio de confirmação de recebimento para o responsável
 - Log completo de todas as mensagens enviadas e recebidas
+- Atualização de status de entrega via evento `MESSAGES_UPDATE` da Evolution API
 
 ### Templates de mensagem
 - Motorista personaliza o texto da mensagem enviada
@@ -134,10 +140,17 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 - Template padrão disponível
 
 ### Automação
-- Horário configurável para envio automático das mensagens
+- Horário configurável por rota para envio automático das mensagens
 - Controle de tentativas de reenvio
 - Reinício diário natural do ciclo de confirmações: cada nova viagem começa com todos em `pendente`
 - Agendamento via cron na Edge Function
+- Cron só processa instâncias WhatsApp com `status_conexao = 'conectado'`
+
+### Perfil do motorista
+- Edição de dados pessoais, WhatsApp e dados da van
+- Validação para impedir campos obrigatórios vazios
+- Upload de foto de perfil no Supabase Storage (`profile-photos`)
+- Sidebar e cabeçalho exibem a foto quando existir
 
 ### Histórico e relatórios
 - Histórico de presença por data e por aluno
@@ -209,18 +222,28 @@ automaticamente.
 - Banco com migrations, RLS, Realtime e Edge Functions versionados no repositório
 - **WhatsApp ponta a ponta**: QR Code real, status de conexão sincronizado via webhook, envio automático via cron, reenvio manual e em massa, processamento de respostas via texto puro
 - **Cron multi-pass** (`automacao-diaria`): cria viagem nova no horário OU reenvia apenas para confirmações pendentes em chamadas subsequentes
+- **Automação por rota**: cada rota pode ter seu próprio horário e toggle de envio na tela WhatsApp
+- **Proteção do cron por conexão**: o cron só roda para instâncias WhatsApp conectadas; a UI bloqueia ativação quando desconectado
+- **Início manual de rota sem disparo automático**: o botão play cria/abre a viagem, mas não envia WhatsApp; envio fica no cron ou no reenvio manual
+- **FAB Play no BottomNav + fluxo de 3 etapas**: única porta de entrada para iniciar viagem (`PlayFlowSheet` — escolha de rota → otimização → direção). O FAB aparece **apenas na tela Home** (`/home`); em outras telas o slot central fica vazio. O botão Play dos cards de rota foi removido em favor do FAB
+- **Direção da viagem**: o motorista escolhe `buscar` ou `retorno`, e a lista do Maps filtra `somente_ida`/`somente_volta` conforme a direção
+- **5 status de confirmação na UI**: `ida_e_volta` / `somente_ida` / `somente_volta` / `nao_vai` / `pendente` com cores e ícones próprios em LiveTripScreen, Dashboard, OccupancySummary, UpdateRow e PassengerCard. Metadados centralizados em `confirmacaoStatusMeta.ts`
+- **Otimização opcional de sequência**: a etapa 2 do fluxo do FAB chama `otimizar-sequencia-passageiros` (reescreve `ordem_na_rota` no banco) antes de abrir o Maps. O Maps Web não usa `optimize:true` propositalmente (cria parada fantasma em algumas contas)
 - Variável `{saudacao}` automática no template
 - Status UI unificado: `confirmado + nao_vai` é tratado como "não vai hoje" em todas as telas e no trajeto do Google Maps
+- Finalização de viagem preserva confirmações `pendente`; elas só mudam por resposta WhatsApp ou marcação manual
 - Histórico em `historico_presenca` populado automaticamente via trigger ao finalizar viagem
-- Notificações in-app em tempo real (sino do dashboard) via Realtime
+- **Dashboard de estatísticas conectado ao banco** (`estatisticasService` + `useEstatisticas`): status de hoje em 5 buckets, confirmações da semana, distribuição por rota, métricas de WhatsApp (Enviadas/Entregues/Falhas/Recebidas) e taxa mensal com delta vs mês anterior
+- **Notificações in-app reais (toast + som)**: hook `useNotificacoesRespostas` no AppLayout escuta Realtime em `confirmacoes` e dispara toast + beep gerado via Web Audio quando um responsável responde. Configurável em Configurações → Notificações (toggle de toast, toggle de som, select do tipo de som com botão Testar)
+- Notificações in-app via tabela `notificacoes` (sino do dashboard) — independente do toast acima, mostra histórico persistente de eventos
+- Foto de perfil do motorista persistida em `motoristas.foto_url` e Storage
 
 ## O que ainda falta
 
 - Implementar telas e consultas de **histórico/relatórios** no frontend (os dados já existem em `historico_presenca` e `mensagens`, falta visualização)
 - Completar a camada PWA real com manifest, service worker e instalação offline
-- Notificações push reais (toggle `notif_push` já persiste; falta FCM/service worker)
-- Mensagem automática para respostas inválidas (hoje "xyz" é ignorado silenciosamente — poderia avisar o pai a responder 1-4)
-- Internacionalização (campo `motoristas.idioma` já existe, falta i18n no frontend)
+- **Push notifications externas (browser/SO)** — não implementadas. O sistema já entrega alertas in-app (toast + som via Web Audio) enquanto o PWA está aberto. Push externo exigiria service worker + FCM/VAPID
+- Internacionalização real não existe; o campo `motoristas.idioma` permanece no banco como legado, mas a UI de idioma foi removida
 - CI/CD para deploy automático
 
 

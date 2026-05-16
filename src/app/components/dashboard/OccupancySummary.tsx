@@ -1,19 +1,30 @@
-import { CheckCircle2, XCircle, Clock, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { DonutRing } from '../charts/DonutRing';
+import {
+  STATUS_UI_DETALHADO_META,
+  STATUS_UI_DETALHADO_ORDEM,
+} from '../../utils/confirmacaoStatusMeta';
 import type { Summary } from '../../types';
 
 interface OccupancySummaryProps {
   summary: Summary;
 }
 
-const STATS = [
-  { key: 'going',   color: '#4ADE80', border: 'rgba(25,135,84,0.3)',  bg: 'rgba(25,135,84,0.18)',  label: 'VAI',      Icon: CheckCircle2 },
-  { key: 'absent',  color: '#FF6B7A', border: 'rgba(220,53,69,0.3)',  bg: 'rgba(220,53,69,0.18)',  label: 'NÃO VAI',  Icon: XCircle },
-  { key: 'pending', color: '#FD7E14', border: 'rgba(253,126,20,0.3)', bg: 'rgba(253,126,20,0.18)', label: 'PENDENTE', Icon: Clock },
-] as const;
-
 export function OccupancySummary({ summary }: OccupancySummaryProps) {
-  const pct = summary.total > 0 ? Math.round(((summary.going + summary.absent) / summary.total) * 100) : 0;
+  // Resposta = quem deixou de estar pendente. Inclui as 3 confirmações + não vai.
+  const respostas = summary.total - summary.pending;
+  const pct = summary.total > 0 ? Math.round((respostas / summary.total) * 100) : 0;
+
+  // Quebra detalhada — fallback para zeros se o consumer não preencheu.
+  const det = summary.detalhado ?? {
+    ida_e_volta: 0, somente_ida: 0, somente_volta: 0, nao_vai: 0, pendente: 0,
+  };
+
+  // Fatias do donut na ordem canônica (mesma ordem da lista lateral).
+  const segmentos = STATUS_UI_DETALHADO_ORDEM.map((status) => ({
+    valor: det[status],
+    cor: STATUS_UI_DETALHADO_META[status].color,
+  }));
 
   return (
     <div className="rounded-3xl overflow-hidden mb-4 shadow-[0_8px_32px_rgba(0,0,0,0.25)] bg-[linear-gradient(145deg,#1C2128,#2C3440)] dark:bg-[linear-gradient(145deg,#161B22,#1C2128)]">
@@ -28,24 +39,33 @@ export function OccupancySummary({ summary }: OccupancySummaryProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 px-3.5 py-4">
-        <DonutRing {...summary} size={152} />
-        <div className="flex-1 flex flex-col gap-[7px]">
-          {STATS.map(({ key, color, border, bg, label, Icon }) => (
-            <div
-              key={key}
-              className="flex items-center gap-[9px] rounded-[13px] px-[11px] py-[9px]"
-              style={{ background: bg, border: `1.5px solid ${border}` }}
-            >
-              <Icon size={17} color={color} strokeWidth={2.5} />
-              <div>
-                <p className="text-[22px] font-black m-0 leading-none" style={{ color }}>
-                  {summary[key]}
-                </p>
-                <p className="text-[9px] font-bold text-white/50 m-0 tracking-[0.04em]">{label}</p>
+      <div className="flex items-center gap-3 px-3.5 py-4">
+        <DonutRing total={summary.total} segmentos={segmentos} size={152} />
+        <div className="flex-1 flex flex-col gap-[6px] min-w-0">
+          {STATUS_UI_DETALHADO_ORDEM.map((status) => {
+            const meta = STATUS_UI_DETALHADO_META[status];
+            const valor = det[status];
+            return (
+              <div
+                key={status}
+                className="flex items-center gap-[9px] rounded-[12px] px-[10px] py-[7px]"
+                style={{
+                  background: `${meta.color}1F`,
+                  border: `1.5px solid ${meta.color}4D`,
+                }}
+              >
+                <meta.Icon size={15} color={meta.color} strokeWidth={2.5} />
+                <div className="min-w-0">
+                  <p className="text-[18px] font-black m-0 leading-none" style={{ color: meta.color }}>
+                    {valor}
+                  </p>
+                  <p className="text-[9px] font-bold text-white/55 m-0 tracking-[0.04em] truncate uppercase">
+                    {meta.labelCompacto}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

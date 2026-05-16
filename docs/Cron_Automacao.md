@@ -10,10 +10,16 @@ assim cada horário cadastrado é coberto exatamente quando o relógio bate.
 
 A função sozinha já filtra:
 - motoristas com `configuracoes_automacao.envio_automatico_ativo = false` → ignora
+- instâncias WhatsApp com `status_conexao != 'conectado'` → ignora
 - rotas com `status != 'ativa'` → ignora
 - motoristas sem `horario_envio_automatico` → ignora
 - viagens já criadas para o dia → **NÃO duplica e ainda reenvia apenas para
   passageiros com confirmação pendente** (multi-pass; ver "Cenários" abaixo)
+
+Quando existir configuração por rota em `configuracoes_automacao_rotas`, o
+cron usa o horário e o toggle de cada rota. O horário único em
+`configuracoes_automacao.horario_envio_automatico` permanece como legado e
+fallback para contas sem registros por rota.
 
 ## Cenários cobertos pela função
 
@@ -25,6 +31,23 @@ A `automacao-diaria` opera em três cenários conforme o estado da rota no dia:
 | Viagem existe, pendentes > 0 | Reenvia mensagem **só** para confirmações `pendente` | `cenario=reenvio_pendentes` |
 | Viagem existe, todos respondidos | Não faz nada | `cenario=sem_pendentes` |
 | Horário não bate com o configurado | Não roda o loop da rota | `cenario=fora_da_janela` |
+| Horário por rota não bate | Não roda a rota fora do horário individual | `cenario=fora_da_janela_por_rota` |
+
+### Filtro `route_mode` da configuração
+
+Cada `configuracoes_automacao` tem um campo `route_mode` que pode ser:
+
+- **`'all'`** — o cron processa **todas as rotas ativas** do motorista
+- **`'specific'`** — o cron processa **apenas a rota** apontada por
+  `configuracoes_automacao.route_id`
+
+**Regra atual (após Fase 17.9):** o `route_mode` é honrado em **ambos os
+cenários** (Cenário 1 cria viagem e Cenário 2 reenvia pendentes — só na
+rota configurada). Uma iteração intermediária da Fase 17 havia tornado o
+Cenário 2 universal (reenviar pendentes em qualquer rota com viagem do
+dia), mas isso foi revertido a pedido explícito do motorista: se ele
+escolheu uma rota específica, só essa rota recebe mensagens — mesmo que
+existam pendentes em outras rotas com viagem aberta.
 
 Não existe mais `horario_limite_resposta` como regra operacional. As
 confirmações valem apenas para a viagem do dia; no dia seguinte, uma nova
@@ -110,6 +133,19 @@ A Edge Function retorna JSON com contadores por motorista:
   }]
 }
 ```
+
+## Observações operacionais atuais
+
+- O botão play do PWA não dispara WhatsApp. Ele cria/abre a viagem e registra
+  as confirmações como `pendente`; o disparo automático fica sob
+  responsabilidade deste cron.
+- Se o WhatsApp estiver desconectado, a configuração pode existir no banco, mas
+  a `automacao-diaria` não processa o motorista até a instância voltar para
+  `status_conexao = 'conectado'`.
+- Passageiros adicionados novamente à mesma rota ou a outra rota no mesmo dia
+  são reconciliados antes do reenvio: se ainda não existir confirmação para a
+  viagem do dia, a função cria a confirmação como `pendente` e então pode
+  enviar/re-enviar a mensagem.
 
 ## Rollback
 

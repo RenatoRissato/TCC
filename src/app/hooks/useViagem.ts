@@ -8,6 +8,7 @@ import {
   type FinalizarViagemResultado,
   type ReenviarConfirmacaoResultado,
 } from '../services/viagemService';
+import type { DirecaoViagem } from '../types/database';
 
 function mensagemDeErro(e: unknown, fallback: string): string {
   if (e && typeof e === 'object') {
@@ -19,10 +20,13 @@ function mensagemDeErro(e: unknown, fallback: string): string {
 
 export function useIniciarViagem() {
   const [loading, setLoading] = useState(false);
-  const executar = useCallback(async (rotaId: string): Promise<IniciarViagemResultado | null> => {
+  const executar = useCallback(async (
+    rotaId: string,
+    direcao?: DirecaoViagem | null,
+  ): Promise<IniciarViagemResultado | null> => {
     setLoading(true);
     try {
-      const r = await svcIniciarViagem(rotaId);
+      const r = await svcIniciarViagem(rotaId, direcao);
       if (r.ja_existia) {
         toast.info('Viagem do dia já estava em andamento.');
       } else {
@@ -45,7 +49,7 @@ export function useFinalizarViagem() {
     setLoading(true);
     try {
       const r = await svcFinalizarViagem(viagemId);
-      toast.success(`Viagem finalizada · ${r.ausentes_marcados} marcados como ausentes`);
+      toast.success('Viagem finalizada. Passageiros pendentes foram preservados.');
       return r;
     } catch (e) {
       toast.error(mensagemDeErro(e, 'Não foi possível finalizar a viagem'));

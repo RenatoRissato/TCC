@@ -9,6 +9,7 @@ export interface AtualizarPerfilInput {
   marcaVan?: string | null;
   modeloVan?: string | null;
   anoVan?: number | null;
+  fotoUrl?: string | null;
 }
 
 export async function atualizarPerfilMotorista(
@@ -21,6 +22,7 @@ export async function atualizarPerfilMotorista(
   if (input.marcaVan !== undefined)  patch.marca_van = input.marcaVan;
   if (input.modeloVan !== undefined) patch.modelo_van = input.modeloVan;
   if (input.anoVan !== undefined)    patch.ano_van = input.anoVan;
+  if (input.fotoUrl !== undefined)   patch.foto_url = input.fotoUrl;
 
   if (Object.keys(patch).length === 0) return { ok: true };
 

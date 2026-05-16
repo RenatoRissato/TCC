@@ -60,6 +60,15 @@ export async function getRecentUpdates(): Promise<WhatsAppUpdate[]> {
     // vai" — a UI mostrava "Confirmou presença + VAI" pra quem havia recusado.
     // O helper centraliza essa regra.
     const indo = alunoVaiHoje(c.status, c.tipo_confirmacao);
+    // Mapeia para o tipo detalhado da UI. Confirmação ausente sem tipo cai
+    // em 'nao_vai' (sistema marcou). Sem confirmação, o feed nem aparece.
+    const tipoUi: WhatsAppUpdate['tipoConfirmacao'] = indo
+      ? (c.tipo_confirmacao === 'somente_ida'
+          ? 'somente_ida'
+          : c.tipo_confirmacao === 'somente_volta'
+            ? 'somente_volta'
+            : 'ida_e_volta')
+      : 'nao_vai';
     return {
       id: c.id,
       name: nome,
@@ -67,6 +76,7 @@ export async function getRecentUpdates(): Promise<WhatsAppUpdate[]> {
       status: indo ? 'going' : 'absent',
       message: mensagemPorTipo(c.tipo_confirmacao, indo),
       time: formatarTempoRelativo(c.respondida_em),
+      tipoConfirmacao: tipoUi,
     };
   });
 }

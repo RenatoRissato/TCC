@@ -1906,7 +1906,7 @@ A Edge Function `criar-perfil-motorista` foi fortalecida para ficar realmente id
 **Resultado:** perfis parcialmente criados ou contas abertas durante janelas de inconsistência passaram a poder se auto-reparar no primeiro login/refresh.
 
 ---
-
+                          
 #### 14.13 — Fallbacks adicionais no AuthContext e no Dashboard
 
 Além do backend, o frontend também recebeu mecanismos extras de autorreparo.
@@ -2243,12 +2243,240 @@ do evento. O controller apenas extrai telefone/texto e chama o service.
 
 ---
 
+## Fase 16 — Ajustes de operação: direção, automação por rota, perfil e status de entrega (maio/2026)
+
+Os commits mais recentes consolidaram ajustes que já estão no código e no
+banco.
+
+### 16.1 — Direção da viagem e filtro do Maps
+
+- Migration `20260514000000_viagens_direcao.sql` adicionou
+  `viagens.direcao` com valores `buscar` ou `retorno`
+- `iniciar-viagem` aceita `direcao` no body e atualiza a viagem existente do
+  dia quando necessário
+- A UI ganhou modal de escolha de direção antes de abrir a rota
+- `passageiroService.listarPassageirosDaRota` filtra `somente_ida` e
+  `somente_volta` conforme a direção escolhida
+
+### 16.2 — Botão play não dispara WhatsApp
+
+- `_shared/viagem.ts::processarIniciarViagem` passou a ter
+  `enviarMensagens=false` como padrão
+- O botão play cria/abre a viagem e confirmações pendentes, mas não envia
+  mensagens automáticas
+- O envio automático ficou concentrado no cron `automacao-diaria`; reenvio
+  pontual continua pelo botão de reenviar confirmação
+
+### 16.3 — Automação por rota
+
+- Migration `20260514090000_configuracao_automacao_por_rota.sql` criou
+  `configuracoes_automacao_rotas`
+- A tela WhatsApp passou a listar todas as rotas com toggle e horário próprios
+- `automacao-diaria` respeita os horários individuais quando essa tabela
+  possui registros
+- O cron ignora instâncias WhatsApp desconectadas
+
+### 16.4 — Rotas padrão e múltiplas rotas por turno
+
+- Migration `20260513030000_rotas_padrao_unicas.sql` limpou duplicatas legadas
+  das rotas padrão
+- Migration `20260514103000_permitir_multiplas_rotas_por_turno.sql` removeu o
+  índice único por `motorista_id + turno`, permitindo várias rotas no mesmo
+  turno
+- `criar-perfil-motorista` e `rotaService` foram ajustados para criação
+  idempotente das 3 rotas padrão sem bloquear novas rotas no mesmo turno
+
+### 16.5 — Perfil com foto e validações
+
+- Migration `20260514112000_foto_perfil_motorista.sql` adicionou
+  `motoristas.foto_url` e criou o bucket público `profile-photos`
+- `ProfileEditModal` valida campos obrigatórios, máscara WhatsApp, placa,
+  marca e ano
+- `ProfileHeader` e `SideNav` exibem a foto de perfil quando existir
+- A UI de idioma foi removida das preferências; o campo `motoristas.idioma`
+  permanece legado no banco
+
+### 16.6 — Finalização preserva pendentes
+
+- `finalizar-viagem` não converte mais confirmações `pendente` para
+  `ausente`
+- Pendentes só mudam por resposta WhatsApp ou marcação manual na tela da rota
+- O retorno mantém `ausentes_marcados: 0` por compatibilidade com o frontend
+
+### 16.7 — Status de entrega da Evolution API
+
+- `EVENTOS_WEBHOOK_PADRAO` passou a incluir `MESSAGES_UPDATE`
+- `webhook-evolution` trata `messages.update` e atualiza
+  `mensagens.status_envio` usando `whatsapp_message_id`
+- `useWhatsApp` re-registra o webhook automaticamente quando a instância está
+  conectada
+- A UI de KPIs do WhatsApp removeu o card `Total`; o backend ainda calcula o
+  total para compatibilidade
+
+---
+
+## Fase 17 — FAB Play, dashboard real e notificações in-app
+
+Reorganização da entrada principal do fluxo de viagem (botão Play), conexão
+do painel de estatísticas com dados reais e introdução de alertas in-app
+(toast + som) substituindo a UI placeholder de notificações.
+
+### 17.1 — BottomNav com FAB central + fluxo de 3 etapas
+
+- `BottomNav` reestruturado em 5 slots (2 + slot central invisível + 2),
+  com `FabPlay` absolutamente posicionado no slot central, elevado 22px
+  acima da barra. No desktop, `FabPlay` aparece como fixed bottom-right
+  porque a `SideNav` não tem barra inferior.
+- **O FAB só é renderizado na rota `/home`** (Dashboard). Em qualquer
+  outra tela (Rotas, WhatsApp, Settings, Viagem em andamento) o slot
+  central fica vazio. A intenção é manter o "iniciar trajeto" como
+  ação contextual da Home, evitando que o motorista aperte Play sem
+  querer enquanto navega em outras telas.
+- Novo componente `PlayFlowSheet` — bottom sheet com 3 etapas guiadas:
+  1. **Escolha de rota** (pulada quando há apenas 1 rota ativa)
+  2. **Otimização** — "Otimizar automaticamente" chama
+     `otimizarSequenciaPassageirosDaRota`, que reescreve `ordem_na_rota`
+     no banco antes do passo 3. "Já organizei" mantém a ordem manual.
+  3. **Direção** — `buscar` ou `retorno`. "Levar para casa" fica
+     desabilitado em rotas sem destino final cadastrado.
+- Submit final reaproveita o caminho do play antigo: validação,
+  filtragem por `tipo_confirmacao`, montagem da URL do Maps, chamada
+  `iniciarViagem(rotaId, direcao)` e navegação para `/viagem/:id`.
+- O Maps Web **não** usa `optimize:true` nos waypoints — em algumas contas
+  ele cria parada fantasma ("Optimize Consultoria"). A otimização roda no
+  banco via `otimizar-sequencia-passageiros` ANTES da URL ser montada.
+- Novo `ViagemAtivaContext` controla `playFlowAberto` (não detecta mais
+  viagem em andamento; o FAB é sempre amarelo e sempre abre o flow).
+
+### 17.2 — Remoção do botão "Iniciar viagem" dos cards de rota
+
+- `RouteButton` perdeu o botão Play; o botão Shuffle (otimizar avulso)
+  permanece como atalho.
+- DashboardScreen ficou enxuto: handlers `handleAbrirModalDirecao` e
+  `handleEscolherDirecao` removidos; o componente `DirecaoViagemModal` foi
+  deletado, substituído pelo PlayFlowSheet vivendo no AppLayout.
+- O `FabPlay` é a única porta de entrada para iniciar uma viagem.
+  Comportamento idempotente: se a viagem do dia já existe,
+  `processarIniciarViagem` apenas atualiza `direcao`.
+
+### 17.3 — 5 status de confirmação na UI
+
+Helper `statusUIDetalhadoDaConfirmacao` quebra a confirmação em 5 buckets
+(ida_e_volta / somente_ida / somente_volta / nao_vai / pendente), mantendo
+o helper agregado antigo de 3 buckets para contagens compactas. Metadados
+centralizados em `confirmacaoStatusMeta.ts` (cor, ícone Lucide, label e
+emoji). Telas adaptadas:
+
+- `LiveTripScreen` — contadores no header expandidos para **5 + Total**
+  (6 colunas no desktop, 2 linhas × 3 no mobile); badges das linhas usam
+  o status detalhado.
+- `DashboardScreen` (desktop) — 6 caixas no header (Ida+Volta / Só Ida /
+  Só Volta / Não Vão / Pendentes / Total) com `flex-wrap`.
+- `OccupancySummary` (mobile) — donut com 5 fatias coloridas e legenda
+  lateral detalhada; `DonutRing` foi generalizado para aceitar
+  `segmentos` arbitrários (mantém compat com chamadas legadas).
+- `UpdateRow` (feed de respostas) — badge específica por tipo.
+- `PassengerCard` — badge secundária com tipo (Ida+Volta / Só Ida /
+  Só Volta) quando o aluno confirmou.
+
+### 17.4 — Estatísticas e dashboards conectados ao banco
+
+Antes: `StatsSection` exibia `WeeklyBarChart` com mock estático e taxa
+mensal `91%` fixa. Agora tudo é consulta real.
+
+- Novo `estatisticasService.ts` com 5 funções:
+  - `getEstatisticasHoje` — confirmações de hoje em 5 buckets
+  - `getConfirmacoesSemana` — últimos 7 dias, preserva dias vazios
+  - `getTaxaMensal` — % do mês corrente + delta em pontos vs mês anterior
+  - `getEstatisticasPorRota` — distribuição hoje por rota ativa
+  - `getEstatisticasMensagensSemana` — agregação leve da tabela `mensagens`
+  - `getEstatisticasCompletas` — wrapper paralelo
+- Helpers de data no fuso `America/Sao_Paulo` espelham o `shared/viagem.ts`
+  do backend.
+- Hook `useEstatisticas(motoristaId, { ativo })` orquestra a query e
+  aceita `ativo=false` enquanto o accordion está fechado, evitando carga
+  desnecessária.
+- `StatsSection` reescrita com 5 blocos visuais (status de hoje, semana,
+  distribuição por rota, mensagens WhatsApp, taxa mensal). Estados
+  cobertos: loading, erro com botão "Tentar novamente", vazio, primeiro
+  mês sem histórico anterior. Botão "Atualizar" no rodapé.
+- `WeeklyBarChart` traduzido para pt-BR no tooltip (`Vão / Ausentes /
+  Pendentes` em vez de `going / absent / pending`).
+
+### 17.5 — Notificações in-app reais (toast + som via Web Audio)
+
+A seção "Notificações" do Settings era inteiramente cosmética (4 toggles
+salvos no banco mas não consumidos por nenhum lugar). Substituída por
+implementação real.
+
+- Novo `utils/somAlerta.ts` — gera beeps via Web Audio API sem precisar
+  de arquivos de áudio. 4 perfis sonoros distintos (`default / chime /
+  bell / ding`), envelope ADSR simples. Resolve política de autoplay via
+  `audioCtx.resume()`.
+- Novo hook `useNotificacoesRespostas(motoristaId, { toastAtivo, som })`
+  — subscribe Realtime único em `confirmacoes`. Filtra por motorista
+  (cruza com `rotas.motorista_id`), ignora respostas com `respondida_em`
+  anterior ao mount, busca o nome do passageiro e dispara toast + som.
+  Usa `useRef` para ler valores atuais sem recriar a subscription a cada
+  toggle.
+- `AppLayout` monta o hook no nível autenticado — toasts e som funcionam
+  em qualquer tela.
+- `NotificationsSection` reescrita com apenas controles que **funcionam**:
+  toggle de toast, toggle de som, select de tipo de som com botão
+  "Testar" (preview local). Removidos "Push Notifications" e "Lembrete
+  de Pendentes", ambos sem implementação real.
+- **Sem migration**: a UI reusa colunas existentes — `notif_whatsapp`
+  agora controla o toast; `som_alerta = 'none'` representa "som
+  desligado". Campos `notif_push` e `notif_pendentes` ficam como legado
+  no banco, sem leitor.
+
+### 17.6 — Remoção da seção "Configurações de Turnos"
+
+`ShiftsSection` editava `rotas.horario_saida` e `rotas.status`, mas o
+modal `GerenciarRotasModal` já era a fonte canônica desses campos. A
+duplicação confundia o usuário. Removida — arquivo deletado, accordion
+desativado em `SettingsScreen`.
+
+### 17.7 — Limpeza de copy automática no webhook
+
+- `conversaMensagens.ts::montarRespostaConfirmacao` retirou o sufixo
+  `Bom dia!` que aparecia no final das respostas automáticas das opções
+  1, 2 e 3. Agora é só `Confirmado! {nome} estará aguardando a van.`
+- A saudação `{saudacao}` permanece no **cabeçalho** das mensagens
+  diárias enviadas pelo cron — só a resposta automática do bot perdeu
+  o duplo cumprimento.
+
+### 17.8 — Filtragem do Maps respeita o tipo de confirmação
+
+- `listarPassageirosDaRota(rotaId, direcao?)` agora monta um Map
+  `(passageiro_id → status, tipo_confirmacao)` e aplica as regras:
+  - `confirmado + somente_ida` → entra só em `buscar`
+  - `confirmado + somente_volta` → entra só em `retorno`
+  - `confirmado + ida_e_volta` → entra em ambos
+  - `pendente` ou sem confirmação → entra em ambos (responsável ainda
+    pode responder)
+  - `ausente` ou `confirmado + nao_vai` → fora dos dois
+- Se o filtro resulta em lista vazia, o `PlayFlowSheet` fecha a aba do
+  Maps pré-aberta, mostra toast contextual e aborta sem chamar
+  `iniciarViagem`.
+
+### 17.9 — Cron `automacao-diaria` respeita `route_mode` estritamente
+
+Iteração intermediária tinha feito o cron processar todas as rotas no
+Cenário 2 (reenvio de pendentes) mesmo com `route_mode='specific'`. O
+motorista deixou explícito que prefere o oposto: se selecionou uma
+rota específica, só essa rota deve receber mensagens, mesmo em
+reenvio. O comportamento foi revertido — `route_mode` é honrado em
+ambos os cenários.
+
+---
+
 ## O que NÃO existe (ainda)
 
 - **Testes de integração / E2E** — existem testes unitários (Vitest), mas sem testes end-to-end (Playwright, Cypress)
 - **Deploy** — sem CI/CD configurado, sem service worker completo, sem manifest PWA
 - **Internacionalização** — strings hardcoded em PT-BR (o campo `motoristas.idioma` já existe mas não há i18n no frontend ainda)
-- **Notificações push reais** — só UI; toggle `notif_push` é persistido mas sem service worker / FCM
+- **Notificações push reais (browser/SO)** — não implementadas. O sistema entrega alertas **in-app** (toast + som via Web Audio) enquanto o motorista tem o PWA aberto. Push externo exigiria service worker + FCM/VAPID.
 - **Cron por motorista** — o cron atual é único e itera todos os motoristas a cada minuto. Para multi-tenant em escala, cada motorista poderia ter seu próprio job no `pg_cron` com `horario_envio_automatico` no schedule
 - **Reativação do sendList** — está implementada em `_shared/evolution.ts::evolutionEnviarLista` com payload correto (Evolution v2 `sections`), mas não usada porque Baileys instável. Voltar a usar quando a Evolution/Baileys estabilizar
 ---

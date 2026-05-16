@@ -35,6 +35,7 @@ class Motorista {
   - marcaVan: String
   - modeloVan: String
   - anoVan: int
+  - fotoUrl: String
   - criadoEm: DateTime
 }
 
@@ -78,6 +79,7 @@ class Viagem {
   - rotaId: UUID
   - data: Date
   - status: StatusViagem
+  - direcao: String
   - iniciadaEm: DateTime
   - finalizadaEm: DateTime
 }
@@ -150,6 +152,16 @@ class ConfiguracaoAutomacao {
   - saudacaoPersonalizada: String
   - maxTentativasEnvio: int
   - intervaloTentativas: int
+}
+
+class ConfiguracaoAutomacaoRota {
+  - id: UUID
+  - instanciaWhatsAppId: UUID
+  - rotaId: UUID
+  - envioAutomaticoAtivo: boolean
+  - horarioEnvio: Time
+  - criadoEm: DateTime
+  - atualizadoEm: DateTime
 }
 
 class TemplateMensagem {
@@ -234,6 +246,8 @@ Viagem "1" *-- "0..*" Confirmacao : coleta >
 Confirmacao "0..*" --> "1" Passageiro : pertence a >
 TemplateMensagem "1" *-- "2..4" OpcaoResposta : define >
 InstanciaWhatsApp "1" *-- "1" ConfiguracaoAutomacao : configurada por >
+InstanciaWhatsApp "1" *-- "0..*" ConfiguracaoAutomacaoRota : agenda por rota >
+Rota "1" *-- "0..*" ConfiguracaoAutomacaoRota : possui agenda >
 InstanciaWhatsApp "1" *-- "0..*" Mensagem : envia/recebe >
 Mensagem "0..*" --> "1" Passageiro : destinada a >
 Mensagem "0..*" ..> "1" Confirmacao : atualiza >
@@ -288,6 +302,7 @@ create table if not exists motoristas (
   email       text not null,
   telefone    text,
   cnh         text,
+  foto_url    text,
   criado_em   timestamptz not null default now()
 );
 
@@ -353,6 +368,7 @@ create table if not exists viagens (
   rota_id         uuid not null references rotas(id) on delete cascade,
   data            date not null default current_date,
   status          status_viagem not null default 'em_andamento',
+  direcao         text check (direcao is null or direcao in ('buscar', 'retorno')),
   iniciada_em     timestamptz not null default now(),
   finalizada_em   timestamptz,
   unique (rota_id, data)
@@ -445,7 +461,26 @@ comment on column configuracoes_automacao.horario_limite_resposta is 'Campo lega
 
 ---
 
-### 11. Tabela: templates_mensagem
+### 11. Tabela: configuracoes_automacao_rotas
+
+Configuração individual de envio automático por rota. Quando existem registros nessa tabela, o cron usa o horário de cada rota em vez do horário legado único de `configuracoes_automacao`.
+
+```sql
+create table if not exists configuracoes_automacao_rotas (
+  id                     uuid primary key default gen_random_uuid(),
+  instancia_whatsapp_id  uuid not null references instancias_whatsapp(id) on delete cascade,
+  rota_id                uuid not null references rotas(id) on delete cascade,
+  envio_automatico_ativo boolean not null default true,
+  horario_envio          time not null,
+  criado_em              timestamptz not null default now(),
+  atualizado_em          timestamptz not null default now(),
+  unique (instancia_whatsapp_id, rota_id)
+);
+```
+
+---
+
+### 12. Tabela: templates_mensagem
 
 Mensagem personalizável pelo motorista. Cada motorista tem um template ativo.
 
@@ -465,7 +500,7 @@ comment on table templates_mensagem is 'Modelo de mensagem personalizável pelo 
 
 ---
 
-### 12. Tabela: opcoes_resposta
+### 13. Tabela: opcoes_resposta
 
 As opções numeradas (1 a 4) dentro do template. Mapeiam para um tipo de confirmação.
 
@@ -485,7 +520,7 @@ comment on table opcoes_resposta is 'Opções numeradas do template. Cada númer
 
 ---
 
-### 13. Tabela: mensagens
+### 14. Tabela: mensagens
 
 Log completo de todas as mensagens trocadas com a Evolution API (enviadas e recebidas).
 
@@ -511,7 +546,7 @@ comment on column mensagens.whatsapp_message_id is 'ID retornado pela Evolution 
 
 ---
 
-### 14. Tabela: log_mensagens
+### 15. Tabela: log_mensagens
 
 Eventos de ciclo de vida de cada mensagem (enviada, entregue, falha, etc.).
 
@@ -529,7 +564,7 @@ comment on table log_mensagens is 'Log de eventos do ciclo de vida de cada mensa
 
 ---
 
-### 15. Tabela: conversas_confirmacao_whatsapp
+### 16. Tabela: conversas_confirmacao_whatsapp
 
 Estado diário da conversa do responsável no WhatsApp. Essa tabela permite que
 o webhook saiba se o responsável ainda não respondeu, já confirmou, está
@@ -566,7 +601,7 @@ create table if not exists conversas_confirmacao_whatsapp (
 
 ---
 
-### 16. Tabela: historico_presenca
+### 17. Tabela: historico_presenca
 
 Desnormalização intencional para performance de relatórios. Evita varredura completa de confirmacoes.
 
@@ -587,7 +622,7 @@ comment on table historico_presenca is 'Desnormalização intencional para relat
 
 ---
 
-### 17. Índices para performance
+### 18. Índices para performance
 
 ```sql
 create index if not exists idx_rotas_motorista_id on rotas(motorista_id);
@@ -602,11 +637,13 @@ create index if not exists idx_mensagens_passageiro_id on mensagens(passageiro_i
 create index if not exists idx_conversas_confirmacao_passageiro_data on conversas_confirmacao_whatsapp(passageiro_id, data);
 create index if not exists idx_conversas_confirmacao_confirmacao_id on conversas_confirmacao_whatsapp(confirmacao_id);
 create index if not exists idx_historico_passageiro_data on historico_presenca(passageiro_id, data);
+create index if not exists idx_config_automacao_rotas_instancia on configuracoes_automacao_rotas(instancia_whatsapp_id);
+create index if not exists idx_config_automacao_rotas_rota on configuracoes_automacao_rotas(rota_id);
 ```
 
 ---
 
-### 18. Trigger: atualizar atualizado_em no template
+### 19. Trigger: atualizar atualizado_em no template
 
 ```sql
 create or replace function atualizar_timestamp()
@@ -624,7 +661,7 @@ create trigger trigger_template_atualizado
 
 ---
 
-### 18. Trigger: popular historico_presenca ao finalizar viagem
+### 20. Trigger: popular historico_presenca ao finalizar viagem
 
 ```sql
 create or replace function popular_historico_ao_finalizar()
@@ -674,6 +711,7 @@ alter table opcoes_resposta enable row level security;
 alter table mensagens enable row level security;
 alter table log_mensagens enable row level security;
 alter table historico_presenca enable row level security;
+alter table configuracoes_automacao_rotas enable row level security;
 
 -- motoristas: acessa apenas o próprio perfil
 create policy "motorista_proprio_perfil" on motoristas
@@ -739,6 +777,21 @@ create policy "motorista_propria_configuracao" on configuracoes_automacao
     instancia_whatsapp_id in (
       select i.id from instancias_whatsapp i
       join motoristas m on m.id = i.motorista_id
+      where m.user_id = auth.uid()
+    )
+  );
+
+-- configuracoes_automacao_rotas: acessa apenas configurações das próprias rotas e instância
+create policy "motorista_proprias_configuracoes_automacao_rotas" on configuracoes_automacao_rotas
+  for all using (
+    instancia_whatsapp_id in (
+      select i.id from instancias_whatsapp i
+      join motoristas m on m.id = i.motorista_id
+      where m.user_id = auth.uid()
+    )
+    and rota_id in (
+      select r.id from rotas r
+      join motoristas m on m.id = r.motorista_id
       where m.user_id = auth.uid()
     )
   );
@@ -866,6 +919,7 @@ $$ language plpgsql security definer;
 | `confirmacoes` | Uma por passageiro por viagem | Alto volume |
 | `instancias_whatsapp` | Uma por motorista | Baixo |
 | `configuracoes_automacao` | Uma por instância | Baixo |
+| `configuracoes_automacao_rotas` | Horário/toggle de envio automático por rota | Baixo |
 | `templates_mensagem` | Um por motorista | Baixo |
 | `opcoes_resposta` | 2 a 4 por template | Baixo |
 | `mensagens` | Histórico completo WhatsApp | Alto volume |
@@ -895,6 +949,14 @@ para o mais novo. Todas já foram aplicadas no remoto via `supabase db push`.
 | `20260509000000_motoristas_preferencias.sql` | Adiciona `notif_whatsapp`, `notif_push`, `notif_pendentes`, `som_alerta`, `idioma` em `motoristas` |
 | `20260510000000_grants_service_role.sql` | `GRANT all` para `service_role` + `ALTER DEFAULT PRIVILEGES` (fix do erro 42501 em Edge Functions que usam `criarClienteServico`) |
 | `20260510010000_saudacao_template.sql` | `DEFAULT` do `templates_mensagem.cabecalho` passa a usar `{saudacao}`; sobrescreve templates antigos no formato padrão exato; reescreve `criar_dados_iniciais_motorista` |
+| `20260513000000_remover_limite_resposta_logico.sql` | Zera `horario_limite_resposta`; campo fica legado sem regra operacional |
+| `20260513010000_configuracao_automacao_rota.sql` | Adiciona `route_mode` e `route_id` em `configuracoes_automacao` |
+| `20260513020000_conversas_confirmacao_whatsapp.sql` | Cria estado diário da conversa WhatsApp por passageiro |
+| `20260513030000_rotas_padrao_unicas.sql` | Remove duplicatas legadas de rotas padrão e cria índice único temporário por `motorista_id + turno` |
+| `20260514000000_viagens_direcao.sql` | Adiciona `viagens.direcao` com valores `buscar` ou `retorno` |
+| `20260514090000_configuracao_automacao_por_rota.sql` | Cria `configuracoes_automacao_rotas` com RLS, grants e trigger de `atualizado_em` |
+| `20260514103000_permitir_multiplas_rotas_por_turno.sql` | Remove o índice único por `motorista_id + turno`, permitindo várias rotas no mesmo turno |
+| `20260514112000_foto_perfil_motorista.sql` | Adiciona `motoristas.foto_url` e cria bucket/policies `profile-photos` no Supabase Storage |
 
 ---
 
@@ -916,6 +978,7 @@ create table motoristas (
   marca_van       text,
   modelo_van      text,
   ano_van         integer,
+  foto_url        text,
   -- preferências (20260509)
   notif_whatsapp  boolean not null default true,
   notif_push      boolean not null default true,
@@ -925,6 +988,16 @@ create table motoristas (
   criado_em       timestamptz not null default now()
 );
 ```
+
+**Semântica atual dos campos de preferência (Fase 17):**
+
+| Campo | Significado hoje |
+|---|---|
+| `notif_whatsapp` | Liga/desliga o **toast in-app** quando o responsável responde via WhatsApp (lido por `useNotificacoesRespostas`) |
+| `som_alerta` | Tipo de som tocado via Web Audio quando chega resposta. Valor `'none'` representa **som desligado**. Outros valores: `'default'`, `'chime'`, `'bell'`, `'ding'` |
+| `notif_push` | **Legado.** Foi pensado para push notifications externas (FCM/VAPID), nunca implementadas. Continua no schema mas nenhum consumidor lê |
+| `notif_pendentes` | **Legado.** Pensado para lembretes 1h antes da rota — não há cron/job que faça isso. Sem leitor |
+| `idioma` | **Legado.** A UI de seleção de idioma foi removida; o app é PT-BR fixo. O campo permanece para retrocompatibilidade |
 
 ---
 

@@ -19,7 +19,7 @@ Este arquivo é a referência de requisitos para implementação. Leia antes de 
 | Automação de envio | RF19 | Alta | Alta | ✅ Implementado (cron multi-pass, horário exato) |
 | Visualização de rota | RF13 | Média | Média | ✅ Implementado (LiveTripScreen + Maps) |
 | Histórico de presenças | RF14 | Média | Média | 🟡 Dados em `historico_presenca`, falta tela |
-| Dashboard | RF15 | Média | Baixa | ✅ Implementado |
+| Dashboard | RF15 | Média | Baixa | ✅ Implementado (estatísticas conectadas ao banco — `estatisticasService`) |
 | Logout | RF16 | Alta | Baixa | ✅ Implementado |
 
 ---
@@ -96,7 +96,7 @@ Aguardo sua resposta. Obrigado!
 - **RN30** — Telefone no formato brasileiro com código do país: `55` + DDD + número (ex: `5519999999999`)
 - **RN32** — Respostas recebidas via webhook da Evolution API, processadas em tempo real
 - **RN33** — Última resposta prevalece (update, não insert)
-- **RN34** — Registrar timestamp de cada interação em `mensagens_log`
+- **RN34** — Registrar timestamp de cada interação em `mensagens` e eventos operacionais em `log_mensagens`
 - **RN35** — Mensagens não entregues geram alerta visual para o motorista
 - **RN36** — Sistema continua funcionando sem WhatsApp (fallback: marcação manual na lista diária)
 - **RN37** — QR Code escaneado uma vez só — sessão persistida pela Evolution API
@@ -139,6 +139,35 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 - **RN72** — `confirmado + nao_vai` é semanticamente igual a `ausente` na UI:
   ambos viram `nao_vai_hoje` via `statusUIDaConfirmacao()` e o aluno é
   excluído do trajeto do Google Maps
+- **RN81** — A UI apresenta **5 status detalhados** via
+  `statusUIDetalhadoDaConfirmacao` (`ida_e_volta`, `somente_ida`,
+  `somente_volta`, `nao_vai`, `pendente`), com cores e ícones definidos em
+  `confirmacaoStatusMeta.ts`. O helper agregado de 3 buckets continua
+  disponível para contagens compactas
+- **RN82** — Filtragem do Maps por direção em `listarPassageirosDaRota(rotaId, direcao?)`:
+  `somente_ida` entra só em `buscar`; `somente_volta` entra só em `retorno`;
+  `ida_e_volta` entra em ambos; `pendente` ou sem confirmação entra em ambos
+  (responsável ainda pode responder); `ausente` ou `confirmado + nao_vai` fica
+  fora dos dois sentidos
+- **RN83** — Resposta automática do bot para opções 1/2/3 termina em
+  "Confirmado! {nome} estará aguardando a van." (sem sufixo de saudação).
+  Opção 4 mantém "Entendido! {nome} não vai hoje. Obrigado por avisar."
+
+### Notificações in-app (toast + som)
+
+- **RN84** — Hook `useNotificacoesRespostas`, montado no AppLayout, escuta
+  Realtime em `confirmacoes` filtrando por motorista. Quando chega uma
+  resposta nova (`respondida_em` posterior ao mount e `status ≠ 'pendente'`),
+  dispara toast `"{nome} respondeu — {tipo}"` e/ou beep gerado via Web Audio
+- **RN85** — Configuração em **Configurações → Notificações** com 2 toggles:
+  - **Toast ao receber resposta** → mapeado para `motoristas.notif_whatsapp`
+  - **Tocar som ao receber resposta** → controlado por `motoristas.som_alerta`
+    (`'none'` quando desligado; demais valores ligado)
+- **RN86** — Select de tipo de som tem 4 opções (default, chime, bell, ding)
+  geradas via Web Audio API. Botão "Testar" toca preview local sem salvar
+- **RN87** — Campos legados `notif_push` e `notif_pendentes` permanecem no
+  banco mas não são lidos por nenhum consumidor — herança das versões
+  anteriores quando a UI tinha placeholders sem implementação
 
 ### Automação de envio (diferencial principal)
 
@@ -149,7 +178,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
   de tolerância)
 - **RN67** — Horários configuráveis entre 05:00 e 22:00 apenas
 - **RN68** — Envio automático só para passageiros ativos da rota
-- **RN69** — Se WhatsApp desconectado no horário, alertar motorista em vez de falhar silenciosamente
+- **RN69** — Se WhatsApp estiver desconectado, o cron não processa a instância; a UI bloqueia ativação do envio automático e orienta conectar o WhatsApp primeiro
 - **RN70** — Motorista não precisa abrir o app para o envio ocorrer (cron job roda no servidor)
 - **RN73** — Cron **multi-pass**: se a viagem do dia ainda não existe →
   cria + envia para todos. Se já existe → reenvia mensagem apenas para
@@ -164,7 +193,7 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 ### Configuração e monitoramento WhatsApp
 
 - **RN49** — QR Code renovado automaticamente a cada 60 segundos via polling na Evolution API
-- **RN50** — Estatísticas de mensagens resetam mensalmente
+- **RN50** — Estatísticas de mensagens exibidas na tela WhatsApp agregam os últimos 7 dias
 - **RN51** — Envio automático pode ser desativado sem desconectar a instância WhatsApp
 - **RN52** — Horários configuráveis somente entre 6h e 22h
 - **RN53** — Mensagens de teste enviadas apenas ao próprio número do motorista
@@ -272,12 +301,16 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 8. Notificação `whatsapp_resposta` aparece no sino do dashboard
 
 ### Fluxo manual (complementar)
-1. Motorista aperta "Iniciar rota" no PWA
-2. Frontend valida via `validarRotaParaInicio` (ponto de saída, destinos,
-   passageiros ativos, e se TODOS ainda não recusaram). Se todos disseram
-   "não vai hoje", bloqueia abrir o Maps e mostra toast informativo
-3. Frontend chama Edge Function `iniciar-viagem`
-4. A partir daqui: mesmo que o fluxo automático (passos 3–8 acima)
+1. Motorista aperta o **FAB Play** no centro do BottomNav (mobile) ou no canto inferior direito (desktop). O FAB só é renderizado na rota `/home`; em outras telas o motorista volta para a Home primeiro
+2. `PlayFlowSheet` abre com 3 etapas guiadas:
+   - **Etapa 1** — escolha de rota (pulada se houver apenas 1 ativa)
+   - **Etapa 2** — otimização ("Otimizar automaticamente" reescreve `ordem_na_rota` via `otimizar-sequencia-passageiros` antes de seguir; "Já organizei" mantém)
+   - **Etapa 3** — direção da viagem: `buscar` ou `retorno`. "Levar para casa" desabilita em rotas sem destino final
+3. Submit valida via `validarRotaParaInicio` (ponto de saída, destinos, passageiros ativos, e se TODOS ainda não recusaram). Se todos disseram "não vai hoje", bloqueia abrir o Maps e mostra toast informativo
+4. Frontend filtra passageiros com `listarPassageirosDaRota(rotaId, direcao)` aplicando regras de `tipo_confirmacao`. Se a lista filtrada vier vazia, fecha a aba pré-aberta do Maps e mostra toast contextual
+5. Monta URL do Google Maps (origem/paradas conforme direção) e abre em nova aba. **Sem `optimize:true`** — a otimização rolou na etapa 2 no banco
+6. Frontend chama Edge Function `iniciar-viagem` com `rota_id` e `direcao`
+7. A função cria/abre a viagem e confirmações pendentes, mas não envia WhatsApp pelo FAB. O envio WhatsApp fica concentrado no cron `automacao-diaria` ou no botão manual de reenviar confirmação
 
 ### Botão Reenviar manual
 1. Motorista vê passageiro pendente no PassengerCard
@@ -294,10 +327,10 @@ restrição do WhatsApp para APIs não-Business). Detalhes em
 
 ## O que NÃO implementar (fora do escopo)
 
-- Integração com mapas ou GPS para calcular distância entre paradas
+- Cálculo próprio de distância/tempo com GPS em tempo real; o app monta rotas para Google Maps, mas não calcula rota internamente
 - Pagamentos ou cobranças
 - Chat entre motorista e responsável
-- Notificações push (funcionalidade futura)
+- **Push notifications externas (browser/SO)** — não implementadas. O sistema entrega alertas **in-app** (toast + som via Web Audio) enquanto o PWA está aberto. Push externo exigiria service worker + FCM/VAPID
 - Exportação para PDF (funcionalidade futura)
 - WhatsApp Business API oficial (usa Evolution API não-oficial)
 - Múltiplos usuários por conta de motorista
