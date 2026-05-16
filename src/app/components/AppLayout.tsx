@@ -70,8 +70,13 @@ export function AppLayout() {
       <div style={{
         display: 'flex',
         width: '100%',
+        // Usamos `100dvh` em AMBOS height e minHeight. `100vh` ignora a barra
+        // de URL/abas do navegador mobile (Chrome, Samsung Internet) — com
+        // `minHeight: 100vh` o container ficava maior que a tela visível e
+        // empurrava a BottomNav para fora, atrás da barra do sistema.
+        // `100dvh` (dynamic viewport) responde ao show/hide da barra.
         height: '100dvh',
-        minHeight: '100vh',
+        minHeight: '100dvh',
         overflow: 'hidden',
         background: c.bg,
         fontFamily: 'Inter, -apple-system, sans-serif',
