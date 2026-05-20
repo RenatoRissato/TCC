@@ -4,9 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { APP_VERSION } from '../utils/appVersion';
 
-interface ResetPasswordScreenProps {
-  onDone: () => void;
-}
+// Sem props — após o reset (sucesso ou link inválido) fazemos hard navigation
+// via window.location.replace('/'), que recarrega o app e reseta o AuthGate.
 
 function Spinner() {
   return (
@@ -18,7 +17,7 @@ function Spinner() {
   );
 }
 
-export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
+export function ResetPasswordScreen() {
   const { isDark } = useTheme();
 
   // O Supabase consome o token na URL via detectSessionInUrl e cria uma
@@ -70,9 +69,11 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
     } catch { /* ok */ }
     await supabase.auth.signOut({ scope: 'local' });
 
-    // Tira o /redefinir-senha da URL antes de devolver pro AuthGate.
-    window.history.replaceState({}, '', '/');
-    onDone();
+    // Navegação dura (reload) — necessária porque o createBrowserRouter
+    // captura a URL na criação e não reage a history.replaceState. Sem
+    // o reload, ao montar o RouterProvider ele acha que está em
+    // /redefinir-senha (rota inexistente) e cai no ErrorBoundary default.
+    window.location.replace('/');
   };
 
   const bg       = isDark ? '#0F1117'              : '#F0F2F5';
@@ -82,53 +83,6 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
   const inputBg  = isDark ? 'rgba(255,255,255,0.06)' : '#F8F9FA';
   const inputBdr = isDark ? 'rgba(255,255,255,0.12)' : '#E9ECEF';
   const labelClr = isDark ? '#ADB5BD'              : '#495057';
-
-  const PasswordField = ({
-    id, label, value, onChange, show, onToggle, placeholder,
-  }: {
-    id: string;
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    show: boolean;
-    onToggle: () => void;
-    placeholder: string;
-  }) => (
-    <div style={{ marginBottom: 18 }}>
-      <label htmlFor={id} style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
-        {label}
-      </label>
-      <div style={{ position: 'relative' }}>
-        <Lock size={18} color={textSec} strokeWidth={2}
-          style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-        <input
-          id={id}
-          type={show ? 'text' : 'password'}
-          placeholder={placeholder}
-          value={value}
-          onChange={e => { onChange(e.target.value); setErro(''); }}
-          autoComplete="new-password"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: inputBg, border: `2px solid ${inputBdr}`,
-            borderRadius: 14, padding: '14px 52px 14px 46px',
-            fontSize: 15, fontFamily: 'Inter, sans-serif',
-            color: textPri, outline: 'none', minHeight: 52,
-            transition: 'border-color 0.2s, box-shadow 0.2s',
-          }}
-          onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
-          onBlur={e => { e.currentTarget.style.borderColor = inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
-        />
-        <button type="button" onClick={onToggle}
-          aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
-          style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0 }}>
-          {show
-            ? <EyeOff size={20} color={textSec} strokeWidth={2} />
-            : <Eye    size={20} color={textSec} strokeWidth={2} />}
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <div style={{
@@ -193,7 +147,7 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                 Esse link de redefinição não é mais válido. Solicite um novo
                 link na tela de login.
               </p>
-              <button type="button" onClick={() => { window.history.replaceState({}, '', '/'); onDone(); }}
+              <button type="button" onClick={() => window.location.replace('/')}
                 style={{
                   width: '100%', background: '#FFC107', color: '#212529',
                   border: 'none', borderRadius: 16, padding: '14px 24px',
@@ -222,19 +176,77 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                   </div>
                 )}
 
-                <PasswordField
-                  id="reset-pw" label="Nova senha"
-                  value={senha} onChange={setSenha}
-                  show={mostrarSenha} onToggle={() => setMostrarSenha(v => !v)}
-                  placeholder="Mínimo 6 caracteres"
-                />
+                {/* Nova senha */}
+                <div style={{ marginBottom: 18 }}>
+                  <label htmlFor="reset-pw" style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
+                    Nova senha
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Lock size={18} color={textSec} strokeWidth={2}
+                      style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <input
+                      id="reset-pw"
+                      type={mostrarSenha ? 'text' : 'password'}
+                      placeholder="Mínimo 6 caracteres"
+                      value={senha}
+                      onChange={e => { setSenha(e.target.value); setErro(''); }}
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: inputBg, border: `2px solid ${inputBdr}`,
+                        borderRadius: 14, padding: '14px 52px 14px 46px',
+                        fontSize: 15, fontFamily: 'Inter, sans-serif',
+                        color: textPri, outline: 'none', minHeight: 52,
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
+                    />
+                    <button type="button" onClick={() => setMostrarSenha(v => !v)}
+                      aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                      style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0 }}>
+                      {mostrarSenha
+                        ? <EyeOff size={20} color={textSec} strokeWidth={2} />
+                        : <Eye    size={20} color={textSec} strokeWidth={2} />}
+                    </button>
+                  </div>
+                </div>
 
-                <PasswordField
-                  id="reset-pw-confirm" label="Confirmar nova senha"
-                  value={confirmar} onChange={setConfirmar}
-                  show={mostrarConfirm} onToggle={() => setMostrarConfirm(v => !v)}
-                  placeholder="Repita a nova senha"
-                />
+                {/* Confirmar nova senha */}
+                <div style={{ marginBottom: 18 }}>
+                  <label htmlFor="reset-pw-confirm" style={{ display: 'block', fontSize: 13, fontWeight: 700, color: labelClr, marginBottom: 8 }}>
+                    Confirmar nova senha
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Lock size={18} color={textSec} strokeWidth={2}
+                      style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <input
+                      id="reset-pw-confirm"
+                      type={mostrarConfirm ? 'text' : 'password'}
+                      placeholder="Repita a nova senha"
+                      value={confirmar}
+                      onChange={e => { setConfirmar(e.target.value); setErro(''); }}
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: inputBg, border: `2px solid ${inputBdr}`,
+                        borderRadius: 14, padding: '14px 52px 14px 46px',
+                        fontSize: 15, fontFamily: 'Inter, sans-serif',
+                        color: textPri, outline: 'none', minHeight: 52,
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = inputBdr; e.currentTarget.style.boxShadow = 'none'; }}
+                    />
+                    <button type="button" onClick={() => setMostrarConfirm(v => !v)}
+                      aria-label={mostrarConfirm ? 'Ocultar senha' : 'Mostrar senha'}
+                      style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0 }}>
+                      {mostrarConfirm
+                        ? <EyeOff size={20} color={textSec} strokeWidth={2} />
+                        : <Eye    size={20} color={textSec} strokeWidth={2} />}
+                    </button>
+                  </div>
+                </div>
 
                 <button type="submit" disabled={loading}
                   style={{

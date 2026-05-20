@@ -20,14 +20,18 @@ function isResetPath(): boolean {
 function AuthGate() {
   const { isAuthenticated } = useAuth();
   const [view, setView] = useState<AuthView>('login');
-  const [resetando, setResetando] = useState<boolean>(isResetPath);
+  // Se a URL é /redefinir-senha, mostramos ResetPasswordScreen ignorando o
+  // gate de auth (o link do email cria sessão de recovery que faria o gate
+  // achar que o usuário está logado). Após o reset, a ResetPasswordScreen
+  // faz hard reload em '/', então não precisamos de setState aqui.
+  const resetando = isResetPath();
 
   useEffect(() => {
     if (!isAuthenticated && !resetando) setView('login');
   }, [isAuthenticated, resetando]);
 
   if (resetando) {
-    return <ResetPasswordScreen onDone={() => setResetando(false)} />;
+    return <ResetPasswordScreen />;
   }
 
   if (isAuthenticated) {
