@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { APP_VERSION } from '../utils/appVersion';
 import { useBreakpoints } from '../hooks/useWindowSize';
 
 /* ─── Spinner ──────────────────────────────────────────────────────── */
@@ -338,7 +339,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
           {Form}
           {Footer}
           <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.15)' : '#CED4DA', marginTop: 24, marginBottom: 0 }}>
-            SmartRoutes v3.0 · Todos os direitos reservados
+            SmartRoutes v{APP_VERSION} · Todos os direitos reservados
           </p>
         </div>
       </div>
@@ -436,7 +437,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
           </div>
 
           <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.18)' : '#CED4DA', marginTop: 20, marginBottom: 0 }}>
-            SmartRoutes v3.0 · © 2026 Todos os direitos reservados
+            SmartRoutes v{APP_VERSION} · © {new Date().getFullYear()} Todos os direitos reservados
           </p>
         </div>
       </div>

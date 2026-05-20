@@ -4,6 +4,7 @@ import {
   BarChart3, Users, Bell, Settings2, Lock, HelpCircle, LogOut,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { APP_VERSION } from '../utils/appVersion';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
@@ -124,7 +125,7 @@ export function SettingsScreen() {
           icon={<HelpCircle size={22} color="#14B8A6" strokeWidth={2} />}
           iconBg="rgba(20,184,166,0.12)"
           title="Suporte & Ajuda"
-          subtitle="Central de ajuda, FAQs e tutoriais"
+          subtitle="Central de ajuda e canal de feedback"
           accent="#14B8A6"
         >
           <SupportSection />
@@ -142,7 +143,7 @@ export function SettingsScreen() {
         </div>
 
         <div className="flex flex-col items-center gap-1 pt-2 pb-5">
-          <p className="text-xs text-ink-muted m-0 font-semibold">SmartRoutes v3.0.0</p>
+          <p className="text-xs text-ink-muted m-0 font-semibold">SmartRoutes v{APP_VERSION}</p>
           <p className="text-[11px] text-ink-muted m-0 opacity-60">
             Feito com ❤️ para motoristas escolares
           </p>
