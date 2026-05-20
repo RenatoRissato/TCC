@@ -94,6 +94,10 @@ export interface DestinoRota {
 export interface RotaRow {
   id: string;
   motorista_id: string;
+  // Denormalizado a partir de motoristas.nome via trigger no Postgres.
+  // Read-only do ponto de vista do app — nunca passar em INSERT/UPDATE,
+  // o trigger sempre recalcula a partir de motorista_id.
+  nome_motorista: string;
   nome: string;
   descricao: string | null;
   horario_saida: string | null;
