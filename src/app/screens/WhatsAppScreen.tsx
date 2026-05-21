@@ -154,6 +154,7 @@ export function WhatsAppScreen() {
             <p className="text-xs text-ink-soft m-0 leading-[1.6]">
               O SmartRoutes envia mensagens automáticas via WhatsApp Web API. Os responsáveis respondem com
               <strong> 1 </strong> a <strong>4</strong> conforme as opções acima, e o app atualiza a lista de rota em tempo real.
+              Os telefones e mensagens trafegam pela Evolution API para viabilizar essa confirmação.
             </p>
           </div>
         </div>

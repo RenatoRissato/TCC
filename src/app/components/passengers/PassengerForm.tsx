@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   User, Phone, Home, BookOpen, MapPin, Hash, GraduationCap, School,
-  AlertCircle, Save, Users, Edit2, X,
+  AlertCircle, Save, Users, Edit2, X, ShieldCheck,
 } from 'lucide-react';
 import { FormInput } from '../shared/FormInput';
 import { listarRotas } from '../../services/rotaService';
@@ -403,6 +403,13 @@ export function PassengerForm({ editTarget, onSave, onClose }: PassengerFormProp
         )}
 
         <SectionDivider label="Contato" />
+        <div className="flex items-start gap-2.5 bg-success/[0.08] border-[1.5px] border-success/25 rounded-[13px] px-3.5 py-[11px] mb-4">
+          <ShieldCheck size={15} className="text-success shrink-0 mt-px" strokeWidth={2.5} />
+          <p className="text-[12px] text-ink-soft m-0 leading-relaxed">
+            Estes dados serão usados para organizar a rota escolar e, quando o WhatsApp estiver configurado,
+            enviar confirmações de presença ao responsável ou aluno informado.
+          </p>
+        </div>
         {mostrarResponsavelEscola && (
           <>
             <FormInput

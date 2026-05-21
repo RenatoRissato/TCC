@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   BarChart3, Users, Bell, Settings2, Lock, HelpCircle, LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/appVersion';
@@ -19,9 +20,10 @@ import { PasswordSection } from '../components/settings/PasswordSection';
 import { SupportSection } from '../components/settings/SupportSection';
 import { ProfileHeader } from '../components/settings/ProfileHeader';
 import { ProfileEditModal } from '../components/settings/ProfileEditModal';
+import { PrivacySection } from '../components/settings/PrivacySection';
 
 type OpenKey = 'stats' | 'passengers' | 'notifications' | 'preferences'
-             | 'password' | 'support' | null;
+             | 'privacy' | 'password' | 'support' | null;
 
 export function SettingsScreen() {
   const navigate = useNavigate();
@@ -107,6 +109,17 @@ export function SettingsScreen() {
           <PreferencesSection
             isDark={isDark} toggleTheme={toggleTheme}
           />
+        </AccordionItem>
+
+        <AccordionItem
+          id="privacy" open={open === 'privacy'} onToggle={toggle}
+          icon={<ShieldCheck size={22} color="#0F766E" strokeWidth={2} />}
+          iconBg="rgba(15,118,110,0.12)"
+          title="Privacidade e LGPD"
+          subtitle="Políticas, cookies e direitos do titular"
+          accent="#0F766E"
+        >
+          <PrivacySection />
         </AccordionItem>
 
         <AccordionItem

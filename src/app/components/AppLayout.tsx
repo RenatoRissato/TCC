@@ -11,6 +11,7 @@ import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNotificacoesRespostas } from '../hooks/useNotificacoesRespostas';
 import { NavDrawerContext } from '../context/NavDrawerContext';
 import { Toaster } from './ui/sonner';
+import { CookieConsentBanner } from './privacy/CookieConsentBanner';
 
 /**
  * Authenticated shell — fully responsive (Bootstrap 5 breakpoints):
@@ -156,6 +157,7 @@ export function AppLayout() {
           sem precisar redeclarar em cada uma. */}
       <PlayFlowSheet />
 
+      <CookieConsentBanner />
       <Toaster richColors position="top-right" />
       </ViagemAtivaProvider>
     </NavDrawerContext.Provider>

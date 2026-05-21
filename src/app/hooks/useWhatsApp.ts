@@ -26,6 +26,7 @@ import type {
   TemplateMensagemRow,
 } from '../types/database';
 import { logClientDebug, logClientError } from '../utils/clientLogger';
+import { canUseCookieCategory } from '../utils/cookieConsent';
 
 export interface OpcaoTemplateState {
   numero: number;
@@ -48,7 +49,11 @@ export interface RotaAutomacaoState {
 //   localStorage.setItem('debug:whatsapp', '1')
 function debug(rotulo: string, payload?: unknown) {
   try {
-    if (typeof window !== 'undefined' && localStorage.getItem('debug:whatsapp')) {
+    if (
+      typeof window !== 'undefined' &&
+      canUseCookieCategory('preferences') &&
+      localStorage.getItem('debug:whatsapp')
+    ) {
       logClientDebug(`[useWhatsApp] ${rotulo}`, payload);
     }
   } catch {
