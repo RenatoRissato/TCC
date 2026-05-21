@@ -37,7 +37,13 @@ Deno.serve(async (req: Request) => {
       : null
 
     try {
-      const resumo = await processarIniciarViagem(supabase, motorista.id, rotaId, { direcao })
+      const resumo = await processarIniciarViagem(supabase, motorista.id, rotaId, {
+        direcao,
+        // Esta funcao e disparada apenas pelo botao de play no app — o cron
+        // automacao-diaria nao chama aqui. Por isso podemos passar true sem
+        // risco de notificar em envio automatico de WhatsApp.
+        criarNotificacao: true,
+      })
       return ok(resumo, resumo.ja_existia ? 200 : 201)
     } catch (err: any) {
       if (err?.codigo === 'ROTA_NAO_ENCONTRADA') {
