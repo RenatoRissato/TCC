@@ -25,7 +25,6 @@ export function BottomNav() {
 
   const navBg     = isDark ? '#0A0D12' : '#212529';
   const navBorder = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)';
-  const isHomeScreen = pathname === '/home';
 
   const renderItem = ({
     path, label, Icon, badge,
@@ -117,10 +116,12 @@ export function BottomNav() {
     >
       {NAV_LEFT.map(renderItem)}
       {/* Slot reservado pro FAB — invisível, só ocupa largura.
-          O FabPlay é absolutamente posicionado e sobreposto a este slot. */}
+          O FabPlay é absolutamente posicionado e sobreposto a este slot.
+          No mobile o FAB aparece em todas as telas (no desktop, apenas em
+          /home — controlado no AppLayout). */}
       <div style={{ flex: 1, minHeight: 62 }} aria-hidden="true" />
       {NAV_RIGHT.map(renderItem)}
-      {isHomeScreen && <FabPlay variante="absolute" />}
+      <FabPlay variante="absolute" />
     </nav>
   );
 }
