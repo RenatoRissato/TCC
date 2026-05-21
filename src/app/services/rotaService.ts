@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import type { RotaRow, TurnoRota, DestinoRota } from '../types/database';
 import type { RouteConfig, RouteType } from '../types';
 import { formatarEnderecoCompleto } from '../utils/maps';
+import { logClientError } from '../utils/clientLogger';
 
 const ROUTE_META: Record<RouteType, { emoji: string; color: string; darkBg: boolean }> = {
   morning:   { emoji: '☀️',  color: '#FFC107', darkBg: false },
@@ -16,7 +17,7 @@ export async function listarRotas(): Promise<RotaRow[]> {
     .eq('status', 'ativa')
     .order('horario_saida', { ascending: true });
   if (error) {
-    console.error('listarRotas:', error);
+    logClientError('listarRotas:', error);
     return [];
   }
   return (data ?? []) as RotaRow[];
@@ -48,7 +49,7 @@ export async function criarRotasPadrao(motoristaId: string): Promise<CriarRotasP
     .eq('motorista_id', motoristaId)
     .in('nome', padroes.map((p) => p.nome));
   if (lookupErr) {
-    console.error('criarRotasPadrao (lookup):', lookupErr);
+    logClientError('criarRotasPadrao (lookup):', lookupErr);
     return { status: 'erro', erro: lookupErr.message };
   }
 
@@ -63,7 +64,7 @@ export async function criarRotasPadrao(motoristaId: string): Promise<CriarRotasP
     .insert(faltantes)
     .select('id');
   if (insertErr) {
-    console.error('criarRotasPadrao (insert):', insertErr);
+    logClientError('criarRotasPadrao (insert):', insertErr);
     return { status: 'erro', erro: insertErr.message };
   }
 
@@ -146,7 +147,7 @@ export async function criarRota(input: CriarRotaInput): Promise<RotaRow | null> 
     .select()
     .single();
   if (error) {
-    console.error('criarRota:', error);
+    logClientError('criarRota:', error);
     return null;
   }
   return data as RotaRow;
@@ -176,7 +177,7 @@ export async function atualizarRota(id: string, input: AtualizarRotaInput): Prom
 
   const { error } = await supabase.from('rotas').update(patch).eq('id', id);
   if (error) {
-    console.error('atualizarRota:', error);
+    logClientError('atualizarRota:', error);
     return false;
   }
   return true;
@@ -192,7 +193,7 @@ export async function apagarRota(id: string): Promise<boolean> {
     .update({ status: 'inativa' })
     .eq('id', id);
   if (error) {
-    console.error('apagarRota:', error);
+    logClientError('apagarRota:', error);
     return false;
   }
   return true;
@@ -205,7 +206,7 @@ export async function obterRota(id: string): Promise<RotaRow | null> {
     .eq('id', id)
     .maybeSingle();
   if (error) {
-    console.error('obterRota:', error);
+    logClientError('obterRota:', error);
     return null;
   }
   return data as RotaRow | null;
@@ -267,7 +268,7 @@ export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRo
     .eq('rota_id', rotaId)
     .eq('status', 'ativo');
   if (paxErr) {
-    console.error('validarRotaParaInicio[passageiros]:', paxErr);
+    logClientError('validarRotaParaInicio[passageiros]:', paxErr);
     return { valido: false, erro: 'Não foi possível validar a rota. Tente novamente.', codigo: 'erro_consulta' };
   }
   const ids = (paxAtivos ?? []).map(p => p.id);
@@ -299,7 +300,7 @@ export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRo
       .eq('viagem_id', viagem.id)
       .in('passageiro_id', ids);
     if (confsErr) {
-      console.error('validarRotaParaInicio[confirmacoes]:', confsErr);
+      logClientError('validarRotaParaInicio[confirmacoes]:', confsErr);
       return { valido: false, erro: 'Não foi possível validar a rota. Tente novamente.', codigo: 'erro_consulta' };
     }
 

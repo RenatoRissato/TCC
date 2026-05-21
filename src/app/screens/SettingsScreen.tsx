@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   BarChart3, Users, Bell, Settings2, Lock, HelpCircle, LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { APP_VERSION } from '../utils/appVersion';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
@@ -18,9 +20,10 @@ import { PasswordSection } from '../components/settings/PasswordSection';
 import { SupportSection } from '../components/settings/SupportSection';
 import { ProfileHeader } from '../components/settings/ProfileHeader';
 import { ProfileEditModal } from '../components/settings/ProfileEditModal';
+import { PrivacySection } from '../components/settings/PrivacySection';
 
 type OpenKey = 'stats' | 'passengers' | 'notifications' | 'preferences'
-             | 'password' | 'support' | null;
+             | 'privacy' | 'password' | 'support' | null;
 
 export function SettingsScreen() {
   const navigate = useNavigate();
@@ -109,6 +112,17 @@ export function SettingsScreen() {
         </AccordionItem>
 
         <AccordionItem
+          id="privacy" open={open === 'privacy'} onToggle={toggle}
+          icon={<ShieldCheck size={22} color="#0F766E" strokeWidth={2} />}
+          iconBg="rgba(15,118,110,0.12)"
+          title="Privacidade e LGPD"
+          subtitle="Políticas, cookies e direitos do titular"
+          accent="#0F766E"
+        >
+          <PrivacySection />
+        </AccordionItem>
+
+        <AccordionItem
           id="password" open={open === 'password'} onToggle={toggle}
           icon={<Lock size={22} color="#DC3545" strokeWidth={2} />}
           iconBg="rgba(220,53,69,0.12)"
@@ -124,7 +138,7 @@ export function SettingsScreen() {
           icon={<HelpCircle size={22} color="#14B8A6" strokeWidth={2} />}
           iconBg="rgba(20,184,166,0.12)"
           title="Suporte & Ajuda"
-          subtitle="Central de ajuda, FAQs e tutoriais"
+          subtitle="Central de ajuda e canal de feedback"
           accent="#14B8A6"
         >
           <SupportSection />
@@ -142,7 +156,7 @@ export function SettingsScreen() {
         </div>
 
         <div className="flex flex-col items-center gap-1 pt-2 pb-5">
-          <p className="text-xs text-ink-muted m-0 font-semibold">SmartRoutes v3.0.0</p>
+          <p className="text-xs text-ink-muted m-0 font-semibold">SmartRoutes v{APP_VERSION}</p>
           <p className="text-[11px] text-ink-muted m-0 opacity-60">
             Feito com ❤️ para motoristas escolares
           </p>

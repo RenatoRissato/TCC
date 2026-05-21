@@ -7,6 +7,7 @@ import {
   getMotorista,
 } from '../_shared/auth.ts'
 import { evolutionDesconectarInstancia } from '../_shared/evolution.ts'
+import { logDebug } from '../_shared/safeLog.ts'
 
 // Desconecta a sessão WhatsApp do motorista.
 //
@@ -34,10 +35,10 @@ Deno.serve(async (req: Request) => {
       evolutionResposta = await evolutionDesconectarInstancia()
     } catch (e) {
       evolutionAviso = e instanceof Error ? e.message : String(e)
-      console.warn(
-        '[desconectar-whatsapp] Evolution recusou logout, mantendo desconexão local',
-        JSON.stringify({ motorista_id: motorista.id, erro: evolutionAviso }),
-      )
+      logDebug('[desconectar-whatsapp] Evolution recusou logout, mantendo desconexao local', {
+        motorista_id: motorista.id,
+        erro: evolutionAviso,
+      })
     }
 
     const servico = criarClienteServico()

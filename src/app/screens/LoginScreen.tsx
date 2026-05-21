@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Eye, EyeOff, ArrowRight, AlertCircle,
   MapPin, MessageCircle, BarChart3, Shield,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { APP_VERSION } from '../utils/appVersion';
 import { useBreakpoints } from '../hooks/useWindowSize';
 
 /* ─── Spinner ──────────────────────────────────────────────────────── */
@@ -156,9 +157,12 @@ function BrandPanel({ onToggleView }: { onToggleView: () => void }) {
 }
 
 /* ─── Main Login Screen ────────────────────────────────────────────── */
-interface LoginScreenProps { onGoRegister: () => void; }
+interface LoginScreenProps {
+  onGoRegister: () => void;
+  onGoForgot: () => void;
+}
 
-export function LoginScreen({ onGoRegister }: LoginScreenProps) {
+export function LoginScreen({ onGoRegister, onGoForgot }: LoginScreenProps) {
   const { login }      = useAuth();
   const { isDark }     = useTheme();
   const { isMobile }   = useBreakpoints();
@@ -168,6 +172,18 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
   const [showPwd,  setShowPwd]  = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
+  // Banner verde após redefinir senha — flag setado pela ResetPasswordScreen
+  // antes de redirecionar pra cá. Lemos uma única vez no mount e limpamos.
+  const [resetSucesso, setResetSucesso] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('sr_reset_success') === '1') {
+        setResetSucesso(true);
+        sessionStorage.removeItem('sr_reset_success');
+      }
+    } catch { /* ok */ }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,6 +209,16 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
   /* ── shared form ──────────────────────────────────────────── */
   const Form = (
     <form onSubmit={handleLogin} noValidate style={{ width: '100%' }}>
+      {/* Banner verde: senha redefinida com sucesso */}
+      {resetSucesso && (
+        <div className="auth-slide-up" style={{ display: 'flex', alignItems: 'center', gap: 10, background: isDark ? 'rgba(25,135,84,0.15)' : '#F0FBF4', border: `1.5px solid ${isDark ? 'rgba(25,135,84,0.45)' : '#198754'}`, borderRadius: 14, padding: '13px 16px', marginBottom: 22 }}>
+          <CheckCircle2 size={18} color="#198754" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+          <p style={{ fontSize: 13, color: '#198754', fontWeight: 600, margin: 0 }}>
+            Senha redefinida com sucesso! Faça login com a nova senha.
+          </p>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="auth-slide-up" style={{ display: 'flex', alignItems: 'center', gap: 10, background: isDark ? 'rgba(220,53,69,0.15)' : '#FFF5F5', border: `1.5px solid ${isDark ? 'rgba(220,53,69,0.4)' : '#DC3545'}`, borderRadius: 14, padding: '13px 16px', marginBottom: 22 }}>
@@ -263,7 +289,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
 
       {/* Forgot */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 28 }}>
-        <button type="button"
+        <button type="button" onClick={onGoForgot}
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#FFC107', padding: '6px 0', minHeight: 36 }}>
           Esqueceu a senha?
         </button>
@@ -338,7 +364,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
           {Form}
           {Footer}
           <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.15)' : '#CED4DA', marginTop: 24, marginBottom: 0 }}>
-            SmartRoutes v3.0 · Todos os direitos reservados
+            SmartRoutes v{APP_VERSION} · Todos os direitos reservados
           </p>
         </div>
       </div>
@@ -436,7 +462,7 @@ export function LoginScreen({ onGoRegister }: LoginScreenProps) {
           </div>
 
           <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.18)' : '#CED4DA', marginTop: 20, marginBottom: 0 }}>
-            SmartRoutes v3.0 · © 2026 Todos os direitos reservados
+            SmartRoutes v{APP_VERSION} · © {new Date().getFullYear()} Todos os direitos reservados
           </p>
         </div>
       </div>

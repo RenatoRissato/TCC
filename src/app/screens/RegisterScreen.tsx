@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBreakpoints } from '../hooks/useWindowSize';
+import { APP_VERSION } from '../utils/appVersion';
 
 interface RegisterScreenProps { onGoLogin: () => void; }
 interface FormState {
@@ -792,7 +793,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
               <div style={{ padding: '28px 20px 48px' }}>
                 {TheForm}
                 <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.12)' : '#CED4DA', marginTop: 20 }}>
-                  SmartRoutes v3.0 · Todos os direitos reservados
+                  SmartRoutes v{APP_VERSION} · Todos os direitos reservados
                 </p>
               </div>
             </div>
@@ -901,7 +902,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
           )}
 
           <p style={{ textAlign: 'center', fontSize: 11, color: isDark ? 'rgba(255,255,255,0.18)' : '#CED4DA', marginTop: 20, marginBottom: 0 }}>
-            SmartRoutes v3.0 · © 2026 Todos os direitos reservados
+            SmartRoutes v{APP_VERSION} · © {new Date().getFullYear()} Todos os direitos reservados
           </p>
         </div>
       </div>

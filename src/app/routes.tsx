@@ -5,6 +5,9 @@ import { RouteScreen } from './screens/RouteScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { WhatsAppScreen } from './screens/WhatsAppScreen';
 import { LiveTripScreen } from './screens/LiveTripScreen';
+import { HelpScreen } from './screens/HelpScreen';
+import { PrivacyPolicyScreen } from './screens/PrivacyPolicyScreen';
+import { CookiePolicyScreen } from './screens/CookiePolicyScreen';
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +19,9 @@ export const router = createBrowserRouter([
       { path: 'routes',    Component: RouteScreen },
       { path: 'whatsapp',  Component: WhatsAppScreen },
       { path: 'settings',  Component: SettingsScreen },
+      { path: 'help',      Component: HelpScreen },
+      { path: 'privacy',   Component: PrivacyPolicyScreen },
+      { path: 'cookies',   Component: CookiePolicyScreen },
       { path: 'viagem/:viagemId', Component: LiveTripScreen },
     ],
   },

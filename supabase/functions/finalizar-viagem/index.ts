@@ -1,6 +1,7 @@
 import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { AuthError, criarClienteServico, getMotorista } from '../_shared/auth.ts'
+import { logErro } from '../_shared/safeLog.ts'
 
 interface Body {
   viagem_id?: string
@@ -12,7 +13,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (req.method !== 'POST') {
-      return erroCliente('Método não permitido', 'METODO_INVALIDO', 400)
+      return erroCliente('Metodo nao permitido', 'METODO_INVALIDO', 400)
     }
 
     const { motorista, supabase } = await getMotorista(req)
@@ -21,12 +22,12 @@ Deno.serve(async (req: Request) => {
     try {
       body = (await req.json()) as Body
     } catch {
-      return erroCliente('Body JSON inválido', 'BODY_INVALIDO', 400)
+      return erroCliente('Body JSON invalido', 'BODY_INVALIDO', 400)
     }
 
     const viagemId = body.viagem_id?.trim()
     if (!viagemId) {
-      return erroCliente('viagem_id é obrigatório', 'VIAGEM_OBRIGATORIA', 400)
+      return erroCliente('viagem_id e obrigatorio', 'VIAGEM_OBRIGATORIA', 400)
     }
 
     // Verifica que a viagem pertence a uma rota do motorista
@@ -43,7 +44,7 @@ Deno.serve(async (req: Request) => {
       (viagem as any).rotas?.motorista_id !== motorista.id
     ) {
       return erroCliente(
-        'Viagem não encontrada ou não pertence ao motorista',
+        'Viagem nao encontrada ou nao pertence ao motorista',
         'VIAGEM_NAO_ENCONTRADA',
         403,
       )
@@ -54,7 +55,7 @@ Deno.serve(async (req: Request) => {
 
     if (viagem.status === 'finalizada') {
       return erroCliente(
-        'Viagem já foi finalizada',
+        'Viagem ja foi finalizada',
         'VIAGEM_JA_FINALIZADA',
         409,
       )
@@ -68,8 +69,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', viagemId)
     if (updViagemErr) throw updViagemErr
 
-    // Notificação in-app — service role porque INSERT em notificacoes
-    // não é exposto ao role authenticated
+    // Notificacao in-app: service role porque INSERT em notificacoes
+    // nao e exposto ao role authenticated.
     try {
       const servico = criarClienteServico()
       await servico.from('notificacoes').insert({
@@ -81,7 +82,10 @@ Deno.serve(async (req: Request) => {
         tipo: 'viagem_finalizada',
       })
     } catch (e) {
-      console.error('Falha ao registrar notificação viagem_finalizada', e)
+      logErro('Falha ao registrar notificacao viagem_finalizada', e, {
+        motorista_id: motorista.id,
+        viagem_id: viagemId,
+      })
     }
 
     return ok({

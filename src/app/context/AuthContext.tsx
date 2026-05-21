@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, Re
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { criarRotasPadrao } from '../services/rotaService';
+import { resolverFotoPerfilUrl } from '../services/motoristaService';
 import type { MotoristaRow } from '../types/database';
 import type { RegisterData, User } from '../types';
 
@@ -43,7 +44,7 @@ function traduzirAuthErro(msg: string): string {
   return msg;
 }
 
-function motoristaToUser(m: MotoristaRow): User {
+function motoristaToUser(m: MotoristaRow, avatarUrl = m.foto_url): User {
   const vehiclePartes = [
     [m.marca_van, m.modelo_van].filter(Boolean).join(' '),
     m.ano_van ? String(m.ano_van) : '',
@@ -53,7 +54,7 @@ function motoristaToUser(m: MotoristaRow): User {
     name: m.nome,
     email: m.email,
     phone: m.telefone ?? '',
-    avatar: m.foto_url,
+    avatar: avatarUrl,
     cnh: m.cnh,
     plate: m.placa_van ?? undefined,
     vehicle: vehiclePartes.join(' · ') || undefined,
@@ -79,6 +80,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 // Detecta o sintoma de JWT inválido: PostgREST trata o request como `anon`
 // e o Postgres devolve permission denied com hint mencionando "TO anon".
+function logAuthDebug(message: string, details?: unknown): void {
+  if (!import.meta.env.DEV) return;
+  if (details === undefined) {
+    console.debug(message);
+    return;
+  }
+  console.debug(message, details);
+}
+
+function logAuthError(message: string, details?: unknown): void {
+  if (!import.meta.env.DEV) return;
+  if (details === undefined) {
+    console.error(message);
+    return;
+  }
+  console.error(message, details);
+}
+
+async function motoristaToUserComFoto(m: MotoristaRow): Promise<User> {
+  const avatarUrl = await resolverFotoPerfilUrl(m.foto_url);
+  return motoristaToUser(m, avatarUrl);
+}
+
 function ehErroDeJwtInvalido(error: { code?: string; hint?: string | null } | null | undefined): boolean {
   if (!error) return false;
   return error.code === '42501' && !!error.hint && error.hint.includes('TO anon');
@@ -91,9 +115,9 @@ async function carregarMotorista(userId: string): Promise<MotoristaRow | null> {
     .eq('user_id', userId)
     .maybeSingle();
   if (error) {
-    console.error('Erro ao carregar motorista:', error);
+    logAuthError('Erro ao carregar motorista:', error);
     if (ehErroDeJwtInvalido(error)) {
-      console.warn('JWT inválido detectado — fazendo signOut para forçar reauth.');
+      logAuthDebug('JWT invalido detectado - fazendo signOut para forcar reauth.');
       await supabase.auth.signOut();
     }
     return null;
@@ -188,14 +212,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       // console.debug em vez de warn: é caminho de fallback esperado, não anomalia.
       // O próximo evento auth (visibility, token refresh, login) tentará de novo.
-      console.debug('carregarMotorista demorou — usando fallback do JWT:', err);
+      logAuthDebug('carregarMotorista demorou - usando fallback do JWT:', err);
       return;
     }
 
     // 3) Sem perfil no DB? Tenta auto-criar via Edge Function (também com timeout)
     let motoristaAcabouDeNascer = false;
     if (!motorista) {
-      console.log('[hidratarSessao] motorista não existe — chamando Edge Function');
+      logAuthDebug('[hidratarSessao] motorista nao existe - chamando Edge Function');
       try {
         const telefone = metaPhone.replace(/\D/g, '') || null;
         const { data: fnData, error: fnError } = await withTimeout(
@@ -213,14 +237,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           10000,
         );
         if (fnError) {
-          console.error('[hidratarSessao] criar-perfil-motorista falhou:', fnError);
+          logAuthError('[hidratarSessao] criar-perfil-motorista falhou:', fnError);
           return;
         }
-        console.log('[hidratarSessao] Edge Function retornou:', fnData);
+        logAuthDebug('[hidratarSessao] Edge Function retornou');
         motorista = await withTimeout(carregarMotorista(userId), 15000);
         if (motorista) motoristaAcabouDeNascer = true;
       } catch (err) {
-        console.debug('[hidratarSessao] auto-criação do perfil demorou — usando fallback do JWT:', err);
+        logAuthDebug('[hidratarSessao] auto-criacao do perfil demorou - usando fallback do JWT:', err);
         return;
       }
     }
@@ -231,12 +255,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // aqui no primeiro login após registro. Se as rotas já existem,
       // criarRotasPadrao retorna sem inserir.
       if (motoristaAcabouDeNascer) {
-        console.log('[hidratarSessao] motorista recém-criado — fallback criarRotasPadrao para', motorista.id);
+        logAuthDebug('[hidratarSessao] motorista recem-criado - fallback criarRotasPadrao');
         const r = await criarRotasPadrao(motorista.id);
-        console.log('[hidratarSessao] criarRotasPadrao resultado:', r);
+        logAuthDebug('[hidratarSessao] criarRotasPadrao resultado', { ok: r.ok });
       }
 
-      setUser(motoristaToUser(motorista));
+      setUser(await motoristaToUserComFoto(motorista));
       setMotoristaId(motorista.id);
       lastLoadedUserId.current = userId;
 
@@ -257,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await hidratarSessao(session);
       } catch (err) {
-        console.error('Erro ao hidratar sessão:', err);
+        logAuthError('Erro ao hidratar sessao:', err);
       } finally {
         if (initial && ativo) {
           initial = false;
@@ -295,7 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (data: RegisterData): Promise<RegisterResult> => {
-    console.log('[register] iniciando registro', { email: data.email, nome: data.name });
+    logAuthDebug('[register] iniciando registro');
 
     let signUpData: Awaited<ReturnType<typeof supabase.auth.signUp>>['data'];
     let signUpError: Awaited<ReturnType<typeof supabase.auth.signUp>>['error'];
@@ -321,18 +345,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpData = res.data;
       signUpError = res.error;
     } catch (err) {
-      console.error('[register] signUp timeout/throw:', err);
+      logAuthError('[register] signUp timeout/throw:', err);
       return { ok: false, errorMessage: 'Servidor não respondeu. Verifique sua conexão e tente novamente.' };
     }
     if (signUpError) {
-      console.error('[register] signUp error:', signUpError);
+      logAuthError('[register] signUp error:', signUpError);
       return { ok: false, errorMessage: traduzirAuthErro(signUpError.message) };
     }
     if (!signUpData.user) {
-      console.error('[register] signUp sem user retornado');
+      logAuthError('[register] signUp sem user retornado');
       return { ok: false, errorMessage: 'O servidor não retornou um usuário válido. Tente novamente.' };
     }
-    console.log('[register] signUp OK', {
+    logAuthDebug('[register] signUp OK', {
       userId: signUpData.user.id,
       temSession: !!signUpData.session,
     });
@@ -341,11 +365,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Sem sessão, não dá pra chamar a Edge Function (precisa de JWT). O perfil
     // será criado no primeiro login após o usuário confirmar o email.
     if (!signUpData.session) {
-      console.log('[register] sem session — confirmação de email pendente');
+      logAuthDebug('[register] sem session - confirmacao de email pendente');
       return { ok: true, needsEmailConfirmation: true };
     }
 
-    console.log('[register] chamando Edge Function criar-perfil-motorista');
+    logAuthDebug('[register] chamando Edge Function criar-perfil-motorista');
     const { data: fnData, error: fnError } = await supabase.functions.invoke('criar-perfil-motorista', {
       body: {
         nome: data.name,
@@ -358,13 +382,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (fnError) {
-      console.error('[register] criar-perfil-motorista falhou:', fnError);
+      logAuthError('[register] criar-perfil-motorista falhou:', fnError);
       return {
         ok: false,
         errorMessage: 'Conta criada, mas houve um erro ao montar o perfil de motorista. Faça login para tentar novamente.',
       };
     }
-    console.log('[register] Edge Function retornou:', fnData);
+    logAuthDebug('[register] Edge Function retornou');
 
     // A Edge Function já cria as 3 rotas padrão (Manhã/Tarde/Noite) no mesmo
     // request, com JWT validado e bypassando race conditions de RLS no client.
@@ -373,12 +397,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // que as rotas existam. Se já existirem, a função retorna sem inserir.
     const motoristaIdCriado = (fnData as { motorista?: { id?: string } } | null)?.motorista?.id;
     if (!motoristaIdCriado) {
-      console.warn('[register] motorista.id ausente no retorno da Edge Function');
+      logAuthDebug('[register] motorista.id ausente no retorno da Edge Function');
     }
 
-    console.log('[register] hidratando sessão...');
+    logAuthDebug('[register] hidratando sessao');
     await hidratarSessao(signUpData.session);
-    console.log('[register] concluído com sucesso');
+    logAuthDebug('[register] concluido com sucesso');
     return { ok: true };
   }, [hidratarSessao]);
 
@@ -405,7 +429,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await supabase.auth.signOut({ scope: 'local' });
     } catch (err) {
-      console.debug('signOut server call falhou (estado local já foi limpo):', err);
+      logAuthDebug('signOut server call falhou (estado local ja foi limpo):', err);
     }
   }, []);
 
@@ -413,7 +437,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
     const m = await carregarMotorista(session.user.id);
-    if (m) setUser(motoristaToUser(m));
+    if (m) setUser(await motoristaToUserComFoto(m));
   }, []);
 
   return (

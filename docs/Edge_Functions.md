@@ -53,6 +53,9 @@ Devem ser configuradas via `supabase secrets set`:
 - `EVOLUTION_INSTANCE_NAME` — nome da instância configurada na Evolution API
 - `WEBHOOK_SECRET` — segredo para validar que o webhook veio da Evolution API
 - `CRON_SECRET` — segredo para o cron job `pg_cron` chamar `automacao-diaria`
+- `APP_ORIGIN` — origem do frontend autorizada no CORS em produção. Sem valor, as funções mantêm `*` para desenvolvimento local.
+- `DEBUG_LOGS` — quando `true`, habilita logs detalhados. Manter desligado em produção para não registrar dados pessoais.
+- `DEBUG_ERRORS` — quando `true`, respostas 500 retornam detalhes técnicos. Manter desligado em produção.
 
 ---
 
@@ -537,6 +540,8 @@ Códigos de erro padronizados:
 **Body opcional:** `{ "eventos": ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "QRCODE_UPDATED", "CONNECTION_UPDATE"] }`. Sem body, usa o padrão `EVENTOS_WEBHOOK_PADRAO` exportado por `_shared/evolution.ts`.
 
 **O que faz:** chama `POST /webhook/set/{instance}` na Evolution com `webhook_by_events: true`, `webhook_base64: false`, URL apontando para `webhook-evolution` e header `x-webhook-secret`. O frontend também chama essa função automaticamente quando a tela WhatsApp detecta a instância conectada, para manter a assinatura de eventos atualizada.
+
+**Retorno seguro:** a função retorna apenas `sucesso` e `eventos`. A resposta bruta da Evolution API não é devolvida ao frontend para evitar exposição desnecessária de detalhes internos.
 
 ---
 

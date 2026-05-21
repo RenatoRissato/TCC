@@ -7,6 +7,7 @@ import type {
   TemplateMensagemRow,
   TipoConfirmacao,
 } from '../types/database';
+import { logClientDebug, logClientError } from '../utils/clientLogger';
 
 export interface WhatsAppEstado {
   instancia: InstanciaWhatsAppRow | null;
@@ -104,7 +105,7 @@ export async function obterInstancia(motoristaId: string): Promise<InstanciaWhat
     .eq('motorista_id', motoristaId)
     .maybeSingle();
   if (error) {
-    console.error('obterInstancia:', error);
+    logClientError('obterInstancia:', error);
     return null;
   }
   return data as InstanciaWhatsAppRow | null;
@@ -119,7 +120,7 @@ export async function obterConfiguracaoAutomacao(
     .eq('instancia_whatsapp_id', instanciaId)
     .maybeSingle();
   if (error) {
-    console.error('obterConfiguracaoAutomacao:', error);
+    logClientError('obterConfiguracaoAutomacao:', error);
     return null;
   }
   return data as ConfiguracaoAutomacaoRow | null;
@@ -136,10 +137,10 @@ export async function obterConfiguracoesRotasAutomacao(
     // A tabela existe apos a migration nova. Se ela ainda nao foi aplicada,
     // mantemos compatibilidade com a configuracao antiga de horario unico.
     if (error.code === '42P01' || error.code === 'PGRST205') {
-      console.warn('obterConfiguracoesRotasAutomacao: tabela ainda nao existe.');
+      logClientDebug('obterConfiguracoesRotasAutomacao: tabela ainda nao existe.');
       return [];
     }
-    console.error('obterConfiguracoesRotasAutomacao:', error);
+    logClientError('obterConfiguracoesRotasAutomacao:', error);
     return [];
   }
   return (data ?? []) as ConfiguracaoAutomacaoRotaRow[];
@@ -169,7 +170,7 @@ export async function salvarConfiguracaoAutomacao(
     .select('*')
     .maybeSingle();
   if (error) {
-    console.error('salvarConfiguracaoAutomacao:', error);
+    logClientError('salvarConfiguracaoAutomacao:', error);
     return null;
   }
   return data as ConfiguracaoAutomacaoRow | null;
@@ -203,7 +204,7 @@ export async function salvarConfiguracoesRotasAutomacao(
     .select('*');
 
   if (error) {
-    console.error('salvarConfiguracoesRotasAutomacao:', error);
+    logClientError('salvarConfiguracoesRotasAutomacao:', error);
     return null;
   }
 
@@ -220,7 +221,7 @@ export async function obterTemplate(
     .eq('ativo', true)
     .maybeSingle();
   if (tplErr) {
-    console.error('obterTemplate (template):', tplErr);
+    logClientError('obterTemplate (template):', tplErr);
     return { template: null, opcoes: [] };
   }
   if (!template) return { template: null, opcoes: [] };
@@ -231,7 +232,7 @@ export async function obterTemplate(
     .eq('template_id', template.id)
     .order('numero', { ascending: true });
   if (opErr) {
-    console.error('obterTemplate (opcoes):', opErr);
+    logClientError('obterTemplate (opcoes):', opErr);
     return { template: template as TemplateMensagemRow, opcoes: [] };
   }
   return {
@@ -256,7 +257,7 @@ export async function salvarTemplate(input: SalvarTemplateInput): Promise<boolea
     })
     .eq('id', input.templateId);
   if (tplErr) {
-    console.error('salvarTemplate (template):', tplErr);
+    logClientError('salvarTemplate (template):', tplErr);
     return false;
   }
 
@@ -270,7 +271,7 @@ export async function salvarTemplate(input: SalvarTemplateInput): Promise<boolea
       .eq('template_id', input.templateId)
       .eq('numero', op.numero);
     if (error) {
-      console.error('salvarTemplate (opcao ' + op.numero + '):', error);
+      logClientError('salvarTemplate (opcao ' + op.numero + '):', error);
       return false;
     }
   }

@@ -16,6 +16,7 @@ import {
   type EstadoConversaConfirmacao,
   type TipoConfirmacao,
 } from './conversaValidacao.ts'
+import { logDebug, mascararTelefone } from './safeLog.ts'
 import { dataBrasilISO } from './viagem.ts'
 import {
   atualizarConfirmacao,
@@ -86,14 +87,14 @@ export async function processarMensagemConfirmacao(
   entrada: EntradaConversaConfirmacao,
 ): Promise<SaidaConversaConfirmacao> {
   const hoje = dataBrasilISO()
-  console.log(
+  logDebug(
     '[conversa] processarMensagemConfirmacao: inicio',
-    JSON.stringify({
-      telefone_remetente: entrada.telefoneRemetente,
-      texto: entrada.texto,
+    {
+      telefone_remetente: mascararTelefone(entrada.telefoneRemetente),
+      texto: entrada.texto ? '[redigido]' : null,
       confirmacao_id_payload: entrada.confirmacaoId ?? null,
       data_hoje_brasil: hoje,
-    }),
+    },
   )
 
   // Busca passageiro UMA vez — usamos `rota_id` na busca da confirmação
@@ -131,13 +132,13 @@ export async function processarMensagemConfirmacao(
   if (!confirmacao) {
     const paxFallback = passageiroInicial
     if (!paxFallback) {
-      console.log(
+      logDebug(
         '[conversa] sem passageiro ativo para o telefone — mensagem ignorada',
-        JSON.stringify({ telefone_remetente: entrada.telefoneRemetente }),
+        { telefone_remetente: mascararTelefone(entrada.telefoneRemetente) },
       )
       return { ignorado: true, motivo: 'remetente sem passageiro ativo' }
     }
-    console.log(
+    logDebug(
       '[conversa] sem confirmacao do dia — devolvendo fallback ao responsavel',
       JSON.stringify({
         passageiro_id: paxFallback.id,

@@ -8,7 +8,7 @@ import {
 } from '../services/passageiroService';
 import { useAuth } from '../context/AuthContext';
 import type { Passenger, RouteType, StudentStatus, TipoPassageiro } from '../types';
-import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
+import { logClientDebug } from '../utils/clientLogger';
 
 export type PassengerFilter = 'all' | StudentStatus;
 export type PassengerPeriod = 'all' | string; // 'all' | rotaId
@@ -51,9 +51,6 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
     try {
       const dados = await listarPassageiros();
       setList(dados);
-      if (motoristaId) {
-        writeJsonCache(cacheKeys.passageiros(motoristaId), dados);
-      }
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -71,12 +68,12 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
       return;
     }
 
-    const cached = readJsonCache<Passenger[]>(cacheKeys.passageiros(motoristaId));
-    if (Array.isArray(cached)) {
-      setList(cached);
-      setLoading(false);
-      recarregar({ silent: true });
-      return;
+    // Segurança/TCC: passageiros carregam sempre do Supabase autenticado.
+    // Remove cache legado com PII (nome, telefone, endereço e responsável).
+    try {
+      localStorage.removeItem(`sr_passageiros_${motoristaId}`);
+    } catch {
+      // localStorage indisponível; segue carregando do banco.
     }
 
     setLoading(true);
@@ -112,7 +109,7 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
 
   const add = useCallback(async (form: PassengerFormValues) => {
     if (!form.rotaId) {
-      console.warn('add passageiro sem rotaId — selecione uma rota antes de salvar');
+      logClientDebug('add passageiro sem rotaId - selecione uma rota antes de salvar');
       return;
     }
     await criarPassageiro({

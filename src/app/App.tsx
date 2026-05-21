@@ -4,17 +4,35 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
+import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
+import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 import { router } from './routes';
 
-type AuthView = 'login' | 'register';
+type AuthView = 'login' | 'register' | 'forgot';
+
+// Detecta se a URL atual é o destino do link de redefinição enviado por email.
+// É o único caminho em que precisamos pular o gate de autenticação: o usuário
+// chega aqui com sessão de recovery e não com sessão normal.
+function isResetPath(): boolean {
+  return typeof window !== 'undefined' && window.location.pathname === '/redefinir-senha';
+}
 
 function AuthGate() {
   const { isAuthenticated } = useAuth();
   const [view, setView] = useState<AuthView>('login');
+  // Se a URL é /redefinir-senha, mostramos ResetPasswordScreen ignorando o
+  // gate de auth (o link do email cria sessão de recovery que faria o gate
+  // achar que o usuário está logado). Após o reset, a ResetPasswordScreen
+  // faz hard reload em '/', então não precisamos de setState aqui.
+  const resetando = isResetPath();
 
   useEffect(() => {
-    if (!isAuthenticated) setView('login');
-  }, [isAuthenticated]);
+    if (!isAuthenticated && !resetando) setView('login');
+  }, [isAuthenticated, resetando]);
+
+  if (resetando) {
+    return <ResetPasswordScreen />;
+  }
 
   if (isAuthenticated) {
     return <RouterProvider router={router} />;
@@ -24,7 +42,16 @@ function AuthGate() {
     return <RegisterScreen onGoLogin={() => setView('login')} />;
   }
 
-  return <LoginScreen onGoRegister={() => setView('register')} />;
+  if (view === 'forgot') {
+    return <ForgotPasswordScreen onGoLogin={() => setView('login')} />;
+  }
+
+  return (
+    <LoginScreen
+      onGoRegister={() => setView('register')}
+      onGoForgot={() => setView('forgot')}
+    />
+  );
 }
 
 export default function App() {

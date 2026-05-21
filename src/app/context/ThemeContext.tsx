@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { canUseCookieCategory, COOKIE_CONSENT_CHANGE_EVENT } from '../utils/cookieConsent';
 
 interface ThemeContextType {
   isDark: boolean;
@@ -9,14 +10,47 @@ const ThemeContext = createContext<ThemeContextType>({ isDark: false, toggleThem
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : false;
+    if (!canUseCookieCategory('preferences')) return false;
+    try {
+      const saved = localStorage.getItem('theme');
+      return saved ? saved === 'dark' : false;
+    } catch {
+      return false;
+    }
   });
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    try {
+      if (canUseCookieCategory('preferences')) {
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      } else {
+        localStorage.removeItem('theme');
+      }
+    } catch {
+      // Storage indisponivel: aplica o tema na tela, mas nao persiste.
+    }
   }, [isDark]);
+
+  useEffect(() => {
+    const syncConsent = () => {
+      if (!canUseCookieCategory('preferences')) {
+        try { localStorage.removeItem('theme'); } catch { /* ok */ }
+        setIsDark(false);
+        return;
+      }
+
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved) setIsDark(saved === 'dark');
+      } catch {
+        // Sem acesso ao storage, mantem o estado atual.
+      }
+    };
+
+    window.addEventListener(COOKIE_CONSENT_CHANGE_EVENT, syncConsent);
+    return () => window.removeEventListener(COOKIE_CONSENT_CHANGE_EVENT, syncConsent);
+  }, []);
 
   const toggleTheme = () => setIsDark(v => !v);
 

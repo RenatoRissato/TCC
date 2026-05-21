@@ -1,6 +1,7 @@
 import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { AuthError, getMotorista } from '../_shared/auth.ts'
+import { logDebug } from '../_shared/safeLog.ts'
 
 interface Body {
   rota_id?: string
@@ -326,7 +327,9 @@ async function solicitarOrdemOtimizada(params: {
       const indices = await solicitarOrdemOtimizadaGoogle(params)
       return { indices, provedor: 'google' }
     } catch (error) {
-      console.warn('Fallback para OpenStreetMap/OSRM após falha na Google Routes API:', error)
+      logDebug('Fallback para OpenStreetMap/OSRM apos falha na Google Routes API', {
+        erro: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 

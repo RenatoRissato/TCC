@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { StatusUIDetalhado } from '../utils/confirmacaoStatus';
+import { logClientError } from '../utils/clientLogger';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers de data (fuso de Brasília)
@@ -118,7 +119,7 @@ async function obterRotaIdsDoMotorista(motoristaId: string): Promise<string[]> {
     .select('id')
     .eq('motorista_id', motoristaId);
   if (error) {
-    console.error('estatisticas/obterRotaIdsDoMotorista:', error);
+    logClientError('estatisticas/obterRotaIdsDoMotorista:', error);
     return [];
   }
   return (data ?? []).map((r: { id: string }) => r.id);
@@ -140,7 +141,7 @@ async function obterViagensIntervalo(
     .gte('data', dataInicio)
     .lte('data', dataFim);
   if (error) {
-    console.error('estatisticas/obterViagensIntervalo:', error);
+    logClientError('estatisticas/obterViagensIntervalo:', error);
     return [];
   }
   return (data ?? []) as ViagemLite[];
@@ -185,7 +186,7 @@ export async function getEstatisticasHoje(motoristaId: string): Promise<Estatist
     .select('status, tipo_confirmacao')
     .in('viagem_id', viagemIds);
   if (error) {
-    console.error('estatisticas/getEstatisticasHoje:', error);
+    logClientError('estatisticas/getEstatisticasHoje:', error);
     return { going: 0, absent: 0, pending: 0, total: 0, detalhado: detalhadoVazio() };
   }
   const detalhado = detalhadoVazio();
@@ -226,7 +227,7 @@ export async function getConfirmacoesSemana(motoristaId: string): Promise<DiaSem
     .select('viagem_id, status, tipo_confirmacao')
     .in('viagem_id', viagemIds);
   if (error) {
-    console.error('estatisticas/getConfirmacoesSemana:', error);
+    logClientError('estatisticas/getConfirmacoesSemana:', error);
     return Object.values(buckets);
   }
 
@@ -268,7 +269,7 @@ async function calcularTaxaDoMes(
     .select('status, tipo_confirmacao')
     .in('viagem_id', viagemIds);
   if (error) {
-    console.error('estatisticas/calcularTaxaDoMes:', error);
+    logClientError('estatisticas/calcularTaxaDoMes:', error);
     return { presencaPct: 0, totalRespostas: 0, totalCompareceram: 0 };
   }
   let totalRespostas = 0;
@@ -325,7 +326,7 @@ export async function getEstatisticasPorRota(motoristaId: string): Promise<Estat
     .eq('motorista_id', motoristaId)
     .eq('status', 'ativa');
   if (rotasErr || !rotas) {
-    console.error('estatisticas/getEstatisticasPorRota[rotas]:', rotasErr);
+    logClientError('estatisticas/getEstatisticasPorRota[rotas]:', rotasErr);
     return [];
   }
   if (rotas.length === 0) return [];

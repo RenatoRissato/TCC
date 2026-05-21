@@ -19,6 +19,7 @@ export function erroCliente(
 }
 
 export function erroServidor(err: unknown): Response {
+  const debugErrors = Deno.env.get('DEBUG_ERRORS') === 'true'
   let detalhes: string
   if (err instanceof Error) {
     detalhes = err.message
@@ -33,7 +34,10 @@ export function erroServidor(err: unknown): Response {
   }
 
   return new Response(
-    JSON.stringify({ erro: 'Erro interno do servidor', detalhes }),
+    JSON.stringify({
+      erro: 'Erro interno do servidor',
+      ...(debugErrors ? { detalhes } : {}),
+    }),
     { status: 500, headers: jsonHeaders },
   )
 }

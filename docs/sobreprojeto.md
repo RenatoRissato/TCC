@@ -149,7 +149,7 @@ O banco da Evolution API é uma dependência técnica da biblioteca, não uma de
 ### Perfil do motorista
 - Edição de dados pessoais, WhatsApp e dados da van
 - Validação para impedir campos obrigatórios vazios
-- Upload de foto de perfil no Supabase Storage (`profile-photos`)
+- Upload de foto de perfil no Supabase Storage (`profile-photos`) com bucket privado e URL assinada
 - Sidebar e cabeçalho exibem a foto quando existir
 
 ### Histórico e relatórios
@@ -177,7 +177,20 @@ WEBHOOK_SECRET=
 
 # Segurança do cron (pg_cron passa esse header em cada disparo)
 CRON_SECRET=
+
+# Segurança CORS das Edge Functions em produção
+APP_ORIGIN=https://seu-dominio-do-frontend.com
+
+# Logs de diagnóstico, manter desligado em produção
+DEBUG_LOGS=false
+DEBUG_ERRORS=false
 ```
+
+Privacidade: a otimização de sequência usa os endereços de origem, destino e
+embarque dos passageiros para consultar Google Routes API quando
+`GOOGLE_MAPS_API_KEY` existe. Sem essa chave, usa fallback OpenStreetMap +
+OSRM. Esses serviços externos recebem os endereços necessários para calcular a
+rota; isso deve ser informado aos usuários/responsáveis em produção.
 
 ---
 

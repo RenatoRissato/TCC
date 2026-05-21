@@ -1,7 +1,7 @@
 {
   "name": "smartroutes-webapp",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
     "build": "vite build",
@@ -44,6 +44,8 @@
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
     "next-themes": "0.4.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-day-picker": "8.10.1",
     "react-hook-form": "7.55.0",
     "react-resizable-panels": "2.1.7",
@@ -65,18 +67,6 @@
     "tailwindcss": "4.1.12",
     "vite": "^6.4.2",
     "vitest": "^4.1.4"
-  },
-  "peerDependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    },
-    "react-dom": {
-      "optional": true
-    }
   },
   "pnpm": {
     "overrides": {

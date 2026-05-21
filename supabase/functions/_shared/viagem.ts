@@ -5,6 +5,7 @@ import {
   evolutionEnviarTexto,
   EvolutionResposta,
 } from './evolution.ts'
+import { logDebug, logErro, mascararTelefone } from './safeLog.ts'
 
 export interface ResultadoEnvio {
   passageiro_id: string
@@ -153,13 +154,23 @@ export async function processarIniciarViagem(
   supabase: SupabaseClient,
   motoristaId: string,
   rotaId: string,
-  options: { dataViagem?: string; enviarMensagens?: boolean; direcao?: DirecaoViagem | null } = {},
+  options: {
+    dataViagem?: string;
+    enviarMensagens?: boolean;
+    direcao?: DirecaoViagem | null;
+    // Notificacao in-app "Viagem iniciada" so deve sair quando o motorista
+    // aperta o botao de play. O cron de automacao nunca dispara isso, mesmo
+    // que ele crie a viagem antes do play. Default false; iniciar-viagem
+    // passa true.
+    criarNotificacao?: boolean;
+  } = {},
 ): Promise<ResumoViagem> {
   // Regra de negócio: o botão "play" (iniciar viagem) NÃO dispara WhatsApp.
   // Mensagens automáticas saem apenas do cron `automacao-diaria` no horário
   // configurado, ou via `reenviar-confirmacao` quando o motorista pede
   // explicitamente. Default false; o cron passa true.
   const enviarMensagens = options.enviarMensagens === true
+  const criarNotificacao = options.criarNotificacao === true
   const direcao: DirecaoViagem | null =
     options.direcao === 'buscar' || options.direcao === 'retorno'
       ? options.direcao
@@ -339,26 +350,27 @@ export async function processarIniciarViagem(
     let envioErro: string | null = null
     try {
       resp = await evolutionEnviarTexto(pax.telefone_responsavel, corpoLegivel)
-      console.log(
+      logDebug(
         '[processarIniciarViagem] sendText OK',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rota.nome,
           whatsapp_message_id: resp?.key?.id ?? null,
-        }),
+        },
       )
     } catch (e) {
       envioErro = e instanceof Error ? e.message : String(e)
-      console.error(
+      logErro(
         '[processarIniciarViagem] sendText FALHOU',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        e,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rota.nome,
           rota_id: rotaId,
           erro: envioErro,
-        }),
+        },
       )
     }
 
@@ -401,19 +413,40 @@ export async function processarIniciarViagem(
     }
   }
 
-  // Notificação in-app — só na primeira vez que a viagem é iniciada.
-  // Usa service role porque INSERT em notificacoes não é exposto ao role authenticated.
-  if (!viagemJaExistia) {
+  // Notificacao in-app — so dispara quando o caller pediu (caso do botao
+  // de play). O cron de automacao-diaria, mesmo criando a viagem antes do
+  // motorista clicar play, nunca dispara essa notificacao — para o motorista
+  // ela e o feedback explicito de ter apertado o botao.
+  // Usa service role porque INSERT em notificacoes nao e exposto ao role authenticated.
+  if (criarNotificacao) {
     try {
       const servico = criarClienteServico()
-      await servico.from('notificacoes').insert({
-        motorista_id: motoristaId,
-        titulo: 'Viagem iniciada',
-        mensagem: `Rota ${rota.nome} iniciada com ${lista.length} passageiros`,
-        tipo: 'viagem_iniciada',
-      })
+      // Dedup: se ja ha uma notificacao "viagem_iniciada" hoje para essa rota,
+      // nao cria de novo. Cobre tanto play duplo quanto play depois do cron
+      // ja ter criado essa notificacao via play anterior.
+      const inicioDia = `${hoje}T00:00:00-03:00`
+      const { data: jaTem } = await servico
+        .from('notificacoes')
+        .select('id')
+        .eq('motorista_id', motoristaId)
+        .eq('tipo', 'viagem_iniciada')
+        .ilike('mensagem', `Rota ${rota.nome}%`)
+        .gte('criada_em', inicioDia)
+        .maybeSingle()
+
+      if (!jaTem) {
+        await servico.from('notificacoes').insert({
+          motorista_id: motoristaId,
+          titulo: 'Viagem iniciada',
+          mensagem: `Rota ${rota.nome} iniciada com ${lista.length} passageiros`,
+          tipo: 'viagem_iniciada',
+        })
+      }
     } catch (e) {
-      console.error('Falha ao registrar notificação viagem_iniciada', e)
+      logErro('Falha ao registrar notificacao viagem_iniciada', e, {
+        motorista_id: motoristaId,
+        viagem_id: viagemId,
+      })
     }
   }
 

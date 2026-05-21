@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import type { PassageiroRow, ConfirmacaoRow, RotaRow, ObservacoesPassageiro, TipoPassageiro } from '../types/database';
 import type { Passenger, RouteType, StudentStatus, Summary } from '../types';
 import { formatarEnderecoCompleto } from '../utils/maps';
+import { logClientDebug, logClientError } from '../utils/clientLogger';
 import { obterRota } from './rotaService';
 
 /**
@@ -90,7 +91,7 @@ function rowToPassenger(
 export async function listarPassageiros(): Promise<Passenger[]> {
   const { data: rotas, error: erroRotas } = await supabase.from('rotas').select('*');
   if (erroRotas) {
-    console.error('listarPassageiros[rotas]:', erroRotas);
+    logClientError('listarPassageiros[rotas]:', erroRotas);
     return [];
   }
   const rotasPorId = new Map<string, RotaRow>(
@@ -103,7 +104,7 @@ export async function listarPassageiros(): Promise<Passenger[]> {
     .eq('status', 'ativo')
     .order('ordem_na_rota', { ascending: true });
   if (error) {
-    console.error('listarPassageiros[passageiros]:', error);
+    logClientError('listarPassageiros[passageiros]:', error);
     return [];
   }
 
@@ -185,7 +186,7 @@ export async function criarPassageiro(input: CriarPassageiroInput): Promise<Pass
     .select()
     .single();
   if (error) {
-    console.error('criarPassageiro:', error);
+    logClientError('criarPassageiro:', error);
     return null;
   }
   return data as PassageiroRow;
@@ -231,7 +232,7 @@ export async function atualizarPassageiro(id: string, input: Partial<CriarPassag
 
   const { error } = await supabase.from('passageiros').update(patch).eq('id', id);
   if (error) {
-    console.error('atualizarPassageiro:', error);
+    logClientError('atualizarPassageiro:', error);
     return false;
   }
   return true;
@@ -243,7 +244,7 @@ export async function inativarPassageiro(id: string): Promise<boolean> {
     .delete()
     .eq('id', id);
   if (error) {
-    console.error('excluirPassageiro:', error);
+    logClientError('excluirPassageiro:', error);
     return false;
   }
   return true;
@@ -347,7 +348,7 @@ export async function listarPassageirosDaRota(
     .eq('status', 'ativo')
     .order('ordem_na_rota', { ascending: true });
   if (error) {
-    console.error('listarPassageirosDaRota:', error);
+    logClientError('listarPassageirosDaRota:', error);
     return [];
   }
 
@@ -831,11 +832,11 @@ export async function otimizarSequenciaPassageirosDaRota(params: {
   }
   if (error) {
     const erroServidor = extrairErro(error, 'Falha ao otimizar sequência dos passageiros');
-    console.warn('Fallback local da otimização após falha da Edge Function:', erroServidor);
+    logClientDebug('Fallback local da otimizacao apos falha da Edge Function:', erroServidor);
     return otimizarSequenciaPassageirosLocalmente(params);
   }
   if (!data) {
-    console.warn('Fallback local da otimização após resposta vazia da Edge Function.');
+    logClientDebug('Fallback local da otimizacao apos resposta vazia da Edge Function.');
     return otimizarSequenciaPassageirosLocalmente(params);
   }
   return data;
