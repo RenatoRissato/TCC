@@ -10,6 +10,7 @@ import {
   AlertCircle,
   ChevronDown,
   Camera,
+  Trash2,
 } from 'lucide-react';
 import { BottomSheetModal } from '../shared/BottomSheetModal';
 import { FormInput } from '../shared/FormInput';
@@ -129,6 +130,9 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [fotoArquivo, setFotoArquivo] = useState<File | null>(null);
+  // Marca que o usuario clicou em "Remover foto" — no save enviamos fotoUrl=null
+  // pra zerar o campo no DB. Resetado ao reabrir o modal.
+  const [removerFoto, setRemoverFoto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -143,6 +147,7 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
     setFotoUrl(user?.avatar ?? null);
     setFotoPreview(user?.avatar ?? null);
     setFotoArquivo(null);
+    setRemoverFoto(false);
     setErro(null);
   }, [open, user]);
 
@@ -160,6 +165,17 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
     setErro(null);
     setFotoArquivo(file);
     setFotoPreview(URL.createObjectURL(file));
+    // Escolher uma nova foto cancela qualquer remocao pendente
+    setRemoverFoto(false);
+  };
+
+  const handleRemoverFoto = () => {
+    setFotoPreview(null);
+    setFotoArquivo(null);
+    setRemoverFoto(true);
+    setErro(null);
+    // Limpa o valor do input pra permitir re-selecionar o mesmo arquivo depois
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const uploadFoto = async (): Promise<string | null> => {
@@ -230,9 +246,19 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
 
     setErro(null);
     setSalvando(true);
+    // Tres caminhos pra foto:
+    // 1) Usuario subiu nova foto -> upload e usa o path retornado
+    // 2) Usuario clicou em remover (sem nova foto) -> null, zera no DB
+    // 3) Nao mexeu -> undefined, service preserva o valor atual
     let proximaFotoUrl: string | null | undefined;
     try {
-      proximaFotoUrl = fotoArquivo ? await uploadFoto() : undefined;
+      if (fotoArquivo) {
+        proximaFotoUrl = await uploadFoto();
+      } else if (removerFoto) {
+        proximaFotoUrl = null;
+      } else {
+        proximaFotoUrl = undefined;
+      }
     } catch (error) {
       setSalvando(false);
       const mensagem = error instanceof Error ? error.message : 'Falha ao enviar a foto.';
@@ -315,13 +341,26 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
               <p className="text-[11px] text-ink-soft m-0 leading-[1.45]">
                 JPG, PNG ou WebP ate 3 MB.
               </p>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-2 px-3 py-2 rounded-[11px] border border-app-border bg-field text-xs font-bold text-ink-soft cursor-pointer"
-              >
-                Escolher foto
-              </button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-2 rounded-[11px] border border-app-border bg-field text-xs font-bold text-ink-soft cursor-pointer"
+                >
+                  {fotoPreview ? 'Trocar foto' : 'Escolher foto'}
+                </button>
+                {fotoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemoverFoto}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-[11px] border border-danger/30 bg-danger/10 text-xs font-bold text-danger cursor-pointer hover:bg-danger/15 transition-colors"
+                    aria-label="Remover foto de perfil"
+                  >
+                    <Trash2 size={13} strokeWidth={2.5} />
+                    Remover
+                  </button>
+                )}
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"

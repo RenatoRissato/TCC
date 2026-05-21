@@ -22,7 +22,7 @@ export function ProfileHeader({
   isDark, isLg, isDesktop, paddingX, user, stats,
   onToggleTheme, onOpenDrawer, onEditProfile,
 }: ProfileHeaderProps) {
-  const initials = (user?.name ?? 'CA')
+  const initials = (user?.name ?? 'SmartRoutes')
     .split(' ').map((n) => n[0]).slice(0, 2).join('');
 
   return (
@@ -74,13 +74,13 @@ export function ProfileHeader({
 
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-extrabold text-white m-0 mb-0.5 leading-tight truncate">
-            {user?.name ?? 'Carlos Andrade'}
+            {user?.name ?? 'Motorista'}
           </h1>
           <p className="text-xs text-[rgba(255,255,255,0.5)] m-0 mb-0.5 truncate">
-            {user?.email ?? 'carlos@smartroutes.app'}
+            {user?.email ?? 'Perfil em carregamento'}
           </p>
           <p className="text-[11px] text-[rgba(255,255,255,0.32)] m-0 truncate">
-            {user?.vehicle ?? 'Mercedes Sprinter 415 CDI · 2022'}
+            {user?.vehicle ?? 'Dados da van nao informados'}
           </p>
         </div>
 

@@ -192,7 +192,7 @@ export function SideNav({ onClose }: { onClose?: () => void } = {}) {
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              (user?.name ?? 'CA').split(' ').map(n => n[0]).slice(0, 2).join('')
+              (user?.name ?? 'SmartRoutes').split(' ').map(n => n[0]).slice(0, 2).join('')
             )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
