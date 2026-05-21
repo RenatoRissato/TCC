@@ -62,9 +62,8 @@ Deno.serve(async (req: Request) => {
 
     const webhookUrl = `${supabaseUrl}/functions/v1/webhook-evolution`
 
-    let resposta: any
     try {
-      resposta = await evolutionConfigurarWebhook(
+      await evolutionConfigurarWebhook(
         webhookUrl,
         webhookSecret,
         eventos,
@@ -80,9 +79,7 @@ Deno.serve(async (req: Request) => {
 
     return ok({
       sucesso: true,
-      url: webhookUrl,
       eventos,
-      evolution_resposta: resposta,
     })
   } catch (err) {
     if (err instanceof AuthError) {

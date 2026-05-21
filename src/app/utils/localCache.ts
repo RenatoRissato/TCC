@@ -1,7 +1,6 @@
 export const cacheKeys = {
   motorista: (userId: string) => `sr_motorista_${userId}`,
   rotas: (motoristaId: string) => `sr_rotas_${motoristaId}`,
-  passageiros: (motoristaId: string) => `sr_passageiros_${motoristaId}`,
 } as const;
 
 export function readJsonCache<T>(key: string): T | null {

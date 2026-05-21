@@ -541,6 +541,8 @@ Códigos de erro padronizados:
 
 **O que faz:** chama `POST /webhook/set/{instance}` na Evolution com `webhook_by_events: true`, `webhook_base64: false`, URL apontando para `webhook-evolution` e header `x-webhook-secret`. O frontend também chama essa função automaticamente quando a tela WhatsApp detecta a instância conectada, para manter a assinatura de eventos atualizada.
 
+**Retorno seguro:** a função retorna apenas `sucesso` e `eventos`. A resposta bruta da Evolution API não é devolvida ao frontend para evitar exposição desnecessária de detalhes internos.
+
 ---
 
 ## Como o frontend chama as funções
