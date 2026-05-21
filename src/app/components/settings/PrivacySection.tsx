@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Cookie, Database, ExternalLink, FileText, ShieldCheck, Trash2 } from 'lucide-react';
 import { openCookiePreferences } from '../../utils/cookieConsent';
 
-const CONTACT_EMAIL = 'contato@smartroute.com.br';
+const CONTACT_EMAIL = 'renatorissatodasilva55@gmail.com';
 
 function PrivacyAction({
   icon,
@@ -110,14 +110,6 @@ export function PrivacySection() {
         href={`mailto:${CONTACT_EMAIL}?subject=${exclusaoSubject}&body=${exclusaoBody}`}
         accent="#DC3545"
       />
-
-      <div className="rounded-2xl border border-app-border bg-field px-4 py-3">
-        <p className="m-0 text-[12px] font-bold text-ink">Contato LGPD</p>
-        <p className="m-0 mt-1 text-[11px] leading-relaxed text-ink-soft">
-          {CONTACT_EMAIL}<br />
-          Encarregado pelo tratamento de dados: a definir
-        </p>
-      </div>
     </div>
   );
 }

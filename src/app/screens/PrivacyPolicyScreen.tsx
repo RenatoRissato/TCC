@@ -86,7 +86,7 @@ export function PrivacyPolicyScreen() {
 
         <PolicyCard title="Direitos do titular de dados">
           <p>Conforme a LGPD, titulares podem solicitar confirmação de tratamento, acesso, correção, anonimização, bloqueio, exclusão, portabilidade, informações sobre compartilhamento e revisão de decisões automatizadas quando aplicável.</p>
-          <p>Para solicitações, use o contato: <strong>contato@smartroute.com.br</strong>. Encarregado pelo tratamento de dados: <strong>a definir</strong>.</p>
+          <p>Para solicitações, use o contato: <strong>renatorissatodasilva55@gmail.com</strong>. Encarregado pelo tratamento de dados: <strong>a definir</strong>.</p>
         </PolicyCard>
 
         <PolicyCard title="Segurança e observação acadêmica">
