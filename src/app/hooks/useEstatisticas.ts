@@ -3,6 +3,7 @@ import {
   getEstatisticasCompletas,
   type EstatisticasCompletas,
 } from '../services/estatisticasService';
+import { logClientError } from '../utils/clientLogger';
 
 interface UseEstatisticasOptions {
   /** Quando false, não roda a query (útil pra evitar carregar quando o
@@ -41,7 +42,7 @@ export function useEstatisticas(
       const r = await getEstatisticasCompletas(motoristaId);
       setEstatisticas(r);
     } catch (e) {
-      console.error('useEstatisticas:', e);
+      logClientError('useEstatisticas:', e);
       setErro(e instanceof Error ? e.message : 'Falha ao carregar estatísticas.');
     } finally {
       setLoading(false);

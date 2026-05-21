@@ -5,6 +5,7 @@ import {
   evolutionEnviarTexto,
   EvolutionResposta,
 } from './evolution.ts'
+import { logDebug, logErro, mascararTelefone } from './safeLog.ts'
 
 export interface ResultadoEnvio {
   passageiro_id: string
@@ -339,26 +340,27 @@ export async function processarIniciarViagem(
     let envioErro: string | null = null
     try {
       resp = await evolutionEnviarTexto(pax.telefone_responsavel, corpoLegivel)
-      console.log(
+      logDebug(
         '[processarIniciarViagem] sendText OK',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rota.nome,
           whatsapp_message_id: resp?.key?.id ?? null,
-        }),
+        },
       )
     } catch (e) {
       envioErro = e instanceof Error ? e.message : String(e)
-      console.error(
+      logErro(
         '[processarIniciarViagem] sendText FALHOU',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        e,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rota.nome,
           rota_id: rotaId,
           erro: envioErro,
-        }),
+        },
       )
     }
 
@@ -413,7 +415,10 @@ export async function processarIniciarViagem(
         tipo: 'viagem_iniciada',
       })
     } catch (e) {
-      console.error('Falha ao registrar notificação viagem_iniciada', e)
+      logErro('Falha ao registrar notificacao viagem_iniciada', e, {
+        motorista_id: motoristaId,
+        viagem_id: viagemId,
+      })
     }
   }
 

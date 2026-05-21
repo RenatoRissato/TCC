@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ConfirmacaoRow, PassageiroRow } from '../types/database';
+import { logClientError } from '../utils/clientLogger';
 
 export interface ConfirmacaoComPassageiro extends ConfirmacaoRow {
   passageiros?: Pick<PassageiroRow, 'id' | 'nome_completo' | 'telefone_responsavel' | 'ordem_na_rota'> | null;
@@ -34,7 +35,7 @@ export function useConfirmacoesRealtime(viagemId: string | null) {
       .then(({ data, error }) => {
         if (!ativo) return;
         if (error) {
-          console.error('useConfirmacoesRealtime[select inicial]:', error);
+          logClientError('useConfirmacoesRealtime[select inicial]:', error);
           setConfirmacoes([]);
         } else {
           setConfirmacoes((data ?? []) as ConfirmacaoComPassageiro[]);

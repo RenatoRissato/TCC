@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { ViagemRow, RotaRow, StatusConfirmacao, TipoConfirmacao, DirecaoViagem } from '../types/database';
+import { logClientError } from '../utils/clientLogger';
 
 export interface IniciarViagemResultado {
   viagem_id: string;
@@ -57,7 +58,7 @@ async function extrairErro(error: unknown, fallback = 'Erro inesperado'): Promis
           if (texto.trim()) return { erro: texto.trim() };
         }
       } catch (parseErr) {
-        console.error('extrairErro: falhou ao parsear response body', parseErr);
+        logClientError('extrairErro: falhou ao parsear response body', parseErr);
       }
     }
 
@@ -115,7 +116,7 @@ export async function buscarViagemDoDia(rotaId: string): Promise<ViagemRow | nul
     .eq('data', hoje)
     .maybeSingle();
   if (error) {
-    console.error('buscarViagemDoDia:', error);
+    logClientError('buscarViagemDoDia:', error);
     return null;
   }
   return data as ViagemRow | null;
@@ -128,7 +129,7 @@ export async function buscarViagem(viagemId: string): Promise<{ viagem: ViagemRo
     .eq('id', viagemId)
     .maybeSingle();
   if (error || !data) {
-    console.error('buscarViagem:', error);
+    logClientError('buscarViagem:', error);
     return null;
   }
   const { rotas, ...viagem } = data as ViagemRow & { rotas: RotaRow };
@@ -150,7 +151,7 @@ export async function marcarConfirmacaoManual(
     })
     .eq('id', confirmacaoId);
   if (error) {
-    console.error('marcarConfirmacaoManual:', error);
+    logClientError('marcarConfirmacaoManual:', error);
     return false;
   }
   return true;

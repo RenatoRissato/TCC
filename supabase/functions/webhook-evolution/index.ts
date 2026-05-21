@@ -3,6 +3,7 @@ import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { criarClienteServico } from '../_shared/auth.ts'
 import { evolutionEnviarTexto } from '../_shared/evolution.ts'
+import { logDebug, logErro, mascararTelefone } from '../_shared/safeLog.ts'
 import { processarMensagemConfirmacao } from '../_shared/conversaConfirmacao.ts'
 import {
   mensagemJaProcessada,
@@ -250,7 +251,7 @@ Deno.serve(async (req: Request) => {
         )
         return ok({ tratado: 'qrcode.updated', instancias_atualizadas: atualizadas })
       } catch (e) {
-        console.error('webhook qrcode.updated falhou:', e)
+        logErro('webhook qrcode.updated falhou', e)
       }
       return ok({ tratado: 'qrcode.updated', instancias_atualizadas: 0 })
     }
@@ -286,7 +287,7 @@ Deno.serve(async (req: Request) => {
             instancias_atualizadas: atualizadas,
           })
         } catch (e) {
-          console.error('webhook connection.update falhou:', e)
+          logErro('webhook connection.update falhou', e)
         }
       }
       return ok({ tratado: 'connection.update', state, instancias_atualizadas: 0 })
@@ -311,9 +312,9 @@ Deno.serve(async (req: Request) => {
         if (mudou) atualizadas++
       }
 
-      console.log(
+      logDebug(
         '[webhook] messages.update processado',
-        JSON.stringify({
+        {
           recebidas: atualizacoes.length,
           atualizadas,
           updates: atualizacoes.map((u) => ({
@@ -321,7 +322,7 @@ Deno.serve(async (req: Request) => {
             status_original: u.statusOriginal,
             status_local: u.statusLocal,
           })),
-        }),
+        },
       )
 
       return ok({
@@ -349,16 +350,16 @@ Deno.serve(async (req: Request) => {
       ? remoteJidBruto.split('@')[0].replace(/\D/g, '')
       : ''
 
-    console.log(
+    logDebug(
       '[webhook] messages.upsert recebido',
-      JSON.stringify({
+      {
         message_keys: data?.message ? Object.keys(data.message) : [],
         remoteJid_bruto: remoteJidBruto ?? null,
-        telefone_normalizado: telefoneRemetente,
-        texto_bruto: texto,
+        telefone_normalizado: mascararTelefone(telefoneRemetente),
+        texto_bruto: texto ? '[redigido]' : null,
         confirmacao_id_payload: confirmacaoId,
         whatsapp_message_id: data?.key?.id ?? null,
-      }),
+      },
     )
 
     if (!texto) {
@@ -379,7 +380,7 @@ Deno.serve(async (req: Request) => {
     // checamos pelo `whatsapp_message_id` antes de avançar.
     const whatsappMessageId: string | null = data?.key?.id ?? null
     if (await mensagemJaProcessada(supabase, whatsappMessageId)) {
-      console.log(
+      logDebug(
         '[webhook] mensagem ja processada — ignorando reentrega',
         JSON.stringify({ whatsapp_message_id: whatsappMessageId }),
       )
@@ -395,9 +396,9 @@ Deno.serve(async (req: Request) => {
     // tem status_conexao='conectado' por vez. Sem esse filtro, um passageiro
     // de outro motorista com mesmo telefone seria escolhido.
     const motoristaIdAtivo = await obterMotoristaDaInstanciaAtiva(supabase)
-    console.log(
+    logDebug(
       '[webhook] motorista ativo da instancia',
-      JSON.stringify({ motorista_id_ativo: motoristaIdAtivo }),
+      { motorista_id_ativo: motoristaIdAtivo },
     )
 
     const resultado = await processarMensagemConfirmacao(supabase, {
@@ -408,16 +409,16 @@ Deno.serve(async (req: Request) => {
       motoristaIdAtivo,
     })
 
-    console.log(
+    logDebug(
       '[webhook] resultado processarMensagemConfirmacao',
-      JSON.stringify({
+      {
         ignorado: resultado.ignorado ?? false,
         motivo: resultado.motivo ?? null,
         estado: resultado.estado ?? null,
         tipo_confirmacao: resultado.tipoConfirmacao ?? null,
-        mensagem_destino: resultado.telefoneDestino ?? null,
-        mensagem_resposta: resultado.mensagemResposta ?? null,
-      }),
+        mensagem_destino: mascararTelefone(resultado.telefoneDestino ?? null),
+        mensagem_resposta: resultado.mensagemResposta ? '[redigida]' : null,
+      },
     )
 
     if (resultado.ignorado) {
@@ -450,7 +451,7 @@ Deno.serve(async (req: Request) => {
             statusEnvio: 'falha',
           })
         }
-        console.error('Falha ao enviar resposta automatica da conversa', e)
+        logErro('Falha ao enviar resposta automatica da conversa', e)
       }
     }
 
@@ -463,12 +464,12 @@ Deno.serve(async (req: Request) => {
     // Log explícito antes do 500. Sem isso, erros fatais ficam invisíveis
     // no painel da Edge Function — apenas o status code 500 aparece, sem
     // contexto. Aqui imprimimos mensagem + stack para diagnóstico rápido.
-    console.error(
+    logErro(
       '[webhook] erro nao tratado',
-      JSON.stringify({
+      err,
+      {
         message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : null,
-      }),
+      },
     )
     return erroServidor(err)
   }

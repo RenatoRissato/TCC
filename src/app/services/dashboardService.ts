@@ -3,6 +3,7 @@ import { listarRotasComContagem } from './rotaService';
 import { alunoVaiHoje } from '../utils/confirmacaoStatus';
 import type { WhatsAppUpdate, RouteConfig } from '../types';
 import type { StatusConfirmacao, TipoConfirmacao } from '../types/database';
+import { logClientError } from '../utils/clientLogger';
 
 interface ConfirmacaoJoin {
   id: string;
@@ -48,7 +49,7 @@ export async function getRecentUpdates(): Promise<WhatsAppUpdate[]> {
     .limit(5);
 
   if (error) {
-    console.error('getRecentUpdates:', error);
+    logClientError('getRecentUpdates:', error);
     return [];
   }
 

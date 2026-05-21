@@ -1,6 +1,7 @@
 import { handlePreflight } from '../_shared/cors.ts'
 import { ok, erroCliente, erroServidor } from '../_shared/responses.ts'
 import { criarClienteUsuario } from '../_shared/auth.ts'
+import { logErro } from '../_shared/safeLog.ts'
 
 interface BodyInput {
   nome?: string
@@ -26,7 +27,9 @@ async function garantirRotasPadrao(supabase: ReturnType<typeof criarClienteUsuar
     .in('nome', padroes.map((p) => p.nome))
 
   if (lookupErr) {
-    console.error('[criar-perfil-motorista] falha ao verificar rotas padrÃ£o:', lookupErr)
+    logErro('[criar-perfil-motorista] falha ao verificar rotas padrao', lookupErr, {
+      motorista_id: motoristaId,
+    })
     return { rotasCriadas: 0, rotasErro: lookupErr.message }
   }
 
@@ -42,7 +45,9 @@ async function garantirRotasPadrao(supabase: ReturnType<typeof criarClienteUsuar
     .select('id')
 
   if (rotasErr) {
-    console.error('[criar-perfil-motorista] falha ao criar rotas padrão:', rotasErr)
+    logErro('[criar-perfil-motorista] falha ao criar rotas padrao', rotasErr, {
+      motorista_id: motoristaId,
+    })
     return { rotasCriadas: 0, rotasErro: rotasErr.message }
   }
 

@@ -1,5 +1,43 @@
 import { supabase } from '../../lib/supabase';
 import type { IdiomaApp, MotoristaRow, SomAlerta } from '../types/database';
+import { logClientError } from '../utils/clientLogger';
+
+const PROFILE_PHOTOS_BUCKET = 'profile-photos';
+
+export function extrairCaminhoFotoPerfil(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const limpo = valor.trim();
+  if (!limpo) return null;
+  if (!/^https?:\/\//i.test(limpo)) return limpo;
+
+  try {
+    const url = new URL(limpo);
+    const marker = `/${PROFILE_PHOTOS_BUCKET}/`;
+    const idx = url.pathname.indexOf(marker);
+    if (idx < 0) return null;
+    return decodeURIComponent(url.pathname.slice(idx + marker.length));
+  } catch {
+    return null;
+  }
+}
+
+export async function resolverFotoPerfilUrl(
+  valor: string | null | undefined,
+): Promise<string | null> {
+  if (!valor) return null;
+  const caminho = extrairCaminhoFotoPerfil(valor);
+  if (!caminho) return valor;
+
+  const { data, error } = await supabase.storage
+    .from(PROFILE_PHOTOS_BUCKET)
+    .createSignedUrl(caminho, 60 * 60 * 24);
+
+  if (error) {
+    logClientError('resolverFotoPerfilUrl:', error);
+    return /^https?:\/\//i.test(valor) ? valor : null;
+  }
+  return data.signedUrl;
+}
 
 export interface AtualizarPerfilInput {
   motoristaId: string;
@@ -32,7 +70,7 @@ export async function atualizarPerfilMotorista(
     .eq('id', input.motoristaId);
 
   if (error) {
-    console.error('atualizarPerfilMotorista:', error);
+    logClientError('atualizarPerfilMotorista:', error);
     return { ok: false, erro: error.message };
   }
   return { ok: true };
@@ -67,7 +105,7 @@ export async function atualizarPreferenciasMotorista(
     .maybeSingle();
 
   if (error) {
-    console.error('atualizarPreferenciasMotorista:', error);
+    logClientError('atualizarPreferenciasMotorista:', error);
     return { ok: false, erro: error.message };
   }
   return { ok: true, row: data as MotoristaRow };
@@ -78,7 +116,7 @@ export async function alterarSenha(
 ): Promise<{ ok: boolean; erro?: string }> {
   const { error } = await supabase.auth.updateUser({ password: novaSenha });
   if (error) {
-    console.error('alterarSenha:', error);
+    logClientError('alterarSenha:', error);
     return { ok: false, erro: error.message };
   }
   return { ok: true };

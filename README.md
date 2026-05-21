@@ -27,6 +27,7 @@ VITE_SUPABASE_ANON_KEY=sua_chave_publica_supabase
 Notas:
 - o frontend precisa apenas das variáveis públicas do Supabase
 - a chave da Google Routes API não fica no navegador; ela deve ser configurada como secret no Supabase Edge Functions
+- endereços usados na otimização podem ser enviados para Google Routes API ou para o fallback OpenStreetMap/OSRM
 
 4. Rode o projeto:
 

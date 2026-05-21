@@ -7,6 +7,7 @@ import {
   aplicarVariaveis,
   obterSaudacaoBrasil,
 } from '../_shared/viagem.ts'
+import { logErro, mascararTelefone } from '../_shared/safeLog.ts'
 
 interface Body {
   confirmacao_id?: string
@@ -184,16 +185,13 @@ Deno.serve(async (req: Request) => {
       )
     } catch (e) {
       const erroEvolution = e instanceof Error ? e.message : String(e)
-      console.error(
-        '[reenviar-confirmacao] sendText FALHOU',
-        JSON.stringify({
-          passageiro: passageiro.nome_completo,
-          telefone: passageiro.telefone_responsavel,
-          confirmacao_id: confirmacao.id,
-          tentativa: tentativaAtual,
-          erro: erroEvolution,
-        }),
-      )
+      logErro('[reenviar-confirmacao] sendText FALHOU', e, {
+        passageiro_id: passageiro.id,
+        telefone: mascararTelefone(passageiro.telefone_responsavel),
+        confirmacao_id: confirmacao.id,
+        tentativa: tentativaAtual,
+        erro: erroEvolution,
+      })
       const { data: msgFalha } = await supabase
         .from('mensagens')
         .insert({

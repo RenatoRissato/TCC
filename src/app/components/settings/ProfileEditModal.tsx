@@ -176,10 +176,7 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
 
     if (error) throw error;
 
-    const { data } = supabase.storage
-      .from('profile-photos')
-      .getPublicUrl(path);
-    return data.publicUrl;
+    return path;
   };
 
   const handleSave = async () => {
@@ -233,9 +230,9 @@ export function ProfileEditModal({ open, onOpenChange, isDesktop, user }: Profil
 
     setErro(null);
     setSalvando(true);
-    let proximaFotoUrl: string | null = fotoUrl;
+    let proximaFotoUrl: string | null | undefined;
     try {
-      proximaFotoUrl = await uploadFoto();
+      proximaFotoUrl = fotoArquivo ? await uploadFoto() : undefined;
     } catch (error) {
       setSalvando(false);
       const mensagem = error instanceof Error ? error.message : 'Falha ao enviar a foto.';

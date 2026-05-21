@@ -4,6 +4,7 @@ import type {
   EstadoConversaConfirmacao,
   TipoConfirmacao,
 } from './conversaValidacao.ts'
+import { logDebug, logErro, mascararTelefone } from './safeLog.ts'
 import { dataBrasilISO } from './viagem.ts'
 
 export interface PassageiroConversa {
@@ -71,14 +72,14 @@ export async function obterMotoristaDaInstanciaAtiva(
     .maybeSingle()
 
   if (error) {
-    console.error(
+    logErro(
       '[conversa] obterMotoristaDaInstanciaAtiva: erro consultando instancia',
-      JSON.stringify({ erro: error.message }),
+      error,
     )
     return null
   }
   if (!data) {
-    console.log(
+    logDebug(
       '[conversa] obterMotoristaDaInstanciaAtiva: nenhuma instancia conectada',
     )
     return null
@@ -99,14 +100,14 @@ export async function buscarPassageirosPorTelefone(
     .eq('status', 'ativo')
 
   if (error) {
-    console.error(
+    logErro(
       '[conversa] buscarPassageirosPorTelefone: erro consultando passageiros',
-      JSON.stringify({
-        telefone_recebido: telefone,
+      error,
+      {
+        telefone_recebido: mascararTelefone(telefone),
         candidatos,
-        erro: error.message,
         code: (error as { code?: string }).code ?? null,
-      }),
+      },
     )
     return []
   }
@@ -120,21 +121,20 @@ export async function buscarPassageirosPorTelefone(
     ? todos.filter((p) => p.rotas?.motorista_id === motoristaId)
     : todos
 
-  console.log(
+  logDebug(
     '[conversa] buscarPassageirosPorTelefone',
-    JSON.stringify({
-      telefone_recebido: telefone,
+    {
+      telefone_recebido: mascararTelefone(telefone),
       candidatos,
       filtro_motorista_id: motoristaId,
       total_no_banco: todos.length,
       total_no_motorista: lista.length,
       passageiros: lista.map((p) => ({
         id: p.id,
-        nome: p.nome_completo,
         rota_id: p.rota_id,
         motorista_id: p.rotas?.motorista_id ?? null,
       })),
-    }),
+    },
   )
   return lista
 }
@@ -183,7 +183,7 @@ export async function escolherPassageiroDoDia(
     .eq('data', data)
 
   if (viagensErr || !viagens || viagens.length === 0) {
-    console.log(
+    logDebug(
       '[conversa] escolherPassageiroDoDia: sem viagem do dia para nenhuma rota — usando o primeiro',
       JSON.stringify({ candidatos_ids: candidatos.map((p) => p.id), rotaIds, data }),
     )
@@ -206,7 +206,7 @@ export async function escolherPassageiroDoDia(
 
   const pendente = candidatos.find((p) => confPorPassageiro.get(p.id)?.status === 'pendente')
   if (pendente) {
-    console.log(
+    logDebug(
       '[conversa] escolherPassageiroDoDia: escolhido por confirmacao pendente',
       JSON.stringify({ passageiro_id: pendente.id, nome: pendente.nome_completo }),
     )
@@ -215,7 +215,7 @@ export async function escolherPassageiroDoDia(
 
   const comConfirmacao = candidatos.find((p) => confPorPassageiro.has(p.id))
   if (comConfirmacao) {
-    console.log(
+    logDebug(
       '[conversa] escolherPassageiroDoDia: escolhido por confirmacao do dia (ja respondida)',
       JSON.stringify({
         passageiro_id: comConfirmacao.id,
@@ -225,7 +225,7 @@ export async function escolherPassageiroDoDia(
     return comConfirmacao
   }
 
-  console.log(
+  logDebug(
     '[conversa] escolherPassageiroDoDia: nenhuma confirmacao do dia para esses passageiros — usando o primeiro',
     JSON.stringify({ candidatos_ids: passageiroIds }),
   )
@@ -253,7 +253,7 @@ export async function mensagemJaProcessada(
     .maybeSingle()
 
   if (error) {
-    console.error(
+    logErro(
       '[conversa] mensagemJaProcessada: erro na checagem — segue o fluxo',
       JSON.stringify({
         whatsapp_message_id: whatsappMessageId,
@@ -289,7 +289,7 @@ export async function buscarConfirmacaoDoDia(
   data = dataBrasilISO(),
 ): Promise<ConfirmacaoConversa | null> {
   if (!rotaId) {
-    console.log(
+    logDebug(
       '[conversa] buscarConfirmacaoDoDia: rotaId ausente — fallback null',
       JSON.stringify({ passageiro_id: passageiroId, data }),
     )
@@ -307,7 +307,7 @@ export async function buscarConfirmacaoDoDia(
     // Não propaga: o webhook precisa SEMPRE responder algo ao responsável.
     // Em caso de erro de query, log explícito + retorna null para o caller
     // cair no fallback "Não encontrei confirmação", em vez de 500 silencioso.
-    console.error(
+    logErro(
       '[conversa] buscarConfirmacaoDoDia: erro consultando viagens',
       JSON.stringify({
         passageiro_id: passageiroId,
@@ -320,7 +320,7 @@ export async function buscarConfirmacaoDoDia(
     return null
   }
   if (!viagem) {
-    console.log(
+    logDebug(
       '[conversa] buscarConfirmacaoDoDia: viagem do dia inexistente',
       JSON.stringify({ passageiro_id: passageiroId, rota_id: rotaId, data }),
     )
@@ -337,7 +337,7 @@ export async function buscarConfirmacaoDoDia(
     .maybeSingle()
 
   if (confErr) {
-    console.error(
+    logErro(
       '[conversa] buscarConfirmacaoDoDia: erro consultando confirmacoes',
       JSON.stringify({
         passageiro_id: passageiroId,
@@ -351,7 +351,7 @@ export async function buscarConfirmacaoDoDia(
     return null
   }
   if (!conf) {
-    console.log(
+    logDebug(
       '[conversa] buscarConfirmacaoDoDia: viagem encontrada, confirmacao ausente',
       JSON.stringify({
         passageiro_id: passageiroId,
@@ -363,7 +363,7 @@ export async function buscarConfirmacaoDoDia(
     return null
   }
 
-  console.log(
+  logDebug(
     '[conversa] buscarConfirmacaoDoDia: confirmacao localizada',
     JSON.stringify({
       passageiro_id: passageiroId,
@@ -526,6 +526,6 @@ export async function registrarNotificacaoResposta(
       tipo: 'whatsapp_resposta',
     })
   } catch (e) {
-    console.error('Falha ao registrar notificacao whatsapp_resposta', e)
+    logErro('Falha ao registrar notificacao whatsapp_resposta', e)
   }
 }

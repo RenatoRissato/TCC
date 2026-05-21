@@ -18,10 +18,25 @@ describe('passageiroService.calcularSummary', () => {
     const s = calcularSummary(list);
     expect(s.going + s.absent + s.pending).toBe(s.total);
     expect(s.total).toBe(list.length);
-    expect(s).toEqual({ going: 2, absent: 1, pending: 1, total: 4 });
+    expect(s).toMatchObject({ going: 2, absent: 1, pending: 1, total: 4 });
+    expect(s.detalhado).toMatchObject({
+      ida_e_volta: 2,
+      somente_ida: 0,
+      somente_volta: 0,
+      nao_vai: 1,
+      pendente: 1,
+    });
   });
 
   it('lista vazia retorna zeros', () => {
-    expect(calcularSummary([])).toEqual({ going: 0, absent: 0, pending: 0, total: 0 });
+    const s = calcularSummary([]);
+    expect(s).toMatchObject({ going: 0, absent: 0, pending: 0, total: 0 });
+    expect(s.detalhado).toMatchObject({
+      ida_e_volta: 0,
+      somente_ida: 0,
+      somente_volta: 0,
+      nao_vai: 0,
+      pendente: 0,
+    });
   });
 });

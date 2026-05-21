@@ -8,6 +8,7 @@ import {
   processarIniciarViagem,
 } from '../_shared/viagem.ts'
 import { evolutionEnviarTexto } from '../_shared/evolution.ts'
+import { logDebug, logErro, mascararTelefone } from '../_shared/safeLog.ts'
 
 interface Detalhe {
   motorista_id: string
@@ -159,14 +160,14 @@ async function processarReenvioPendentes(
     rotaId,
   )
   if (confirmacoesCriadasAgora > 0) {
-    console.log(
+    logDebug(
       '[automacao-diaria/reenvio] confirmacoes_reconciliadas',
-      JSON.stringify({
+      {
         viagem_id: viagemId,
         rota_id: rotaId,
         rota_nome: rotaNome,
         confirmacoes_criadas: confirmacoesCriadasAgora,
-      }),
+      },
     )
   }
 
@@ -276,28 +277,29 @@ async function processarReenvioPendentes(
       )
       whatsappMsgId = resp.key?.id ?? null
       envioOk = true
-      console.log(
+      logDebug(
         '[automacao-diaria/reenvio] sendText OK',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rotaNome,
           confirmacao_id: conf.id,
           tentativa: tentativaAtual,
-        }),
+        },
       )
     } catch (e) {
       envioErro = e instanceof Error ? e.message : String(e)
-      console.error(
+      logErro(
         '[automacao-diaria/reenvio] sendText FALHOU',
-        JSON.stringify({
-          passageiro: pax.nome_completo,
-          telefone: pax.telefone_responsavel,
+        e,
+        {
+          passageiro_id: pax.id,
+          telefone: mascararTelefone(pax.telefone_responsavel),
           rota: rotaNome,
           confirmacao_id: conf.id,
           tentativa: tentativaAtual,
           erro: envioErro,
-        }),
+        },
       )
     }
 
@@ -448,16 +450,16 @@ Deno.serve(async (req: Request) => {
 
       if (usaAgendamentoPorRota) {
         if (agendamentosNoHorario.length === 0) {
-          console.log(
+          logDebug(
             '[automacao-diaria] cenario=fora_da_janela_por_rota',
-            JSON.stringify({
+            {
               motorista_id: motoristaId,
               horario_atual_minutos: agoraBrasil.minutos,
               agendamentos: agendamentosAtivos.map((a) => ({
                 rota_id: a.rota_id,
                 horario_envio: a.horario_envio,
               })),
-            }),
+            },
           )
           continue
         }
@@ -511,13 +513,13 @@ Deno.serve(async (req: Request) => {
       let rotasSemPendentes = 0
       const erros: { rota_id: string; erro: string }[] = []
       if (!usaAgendamentoPorRota && (!horario || (!ignorarHorario && !horarioExato(horario, agoraBrasil.minutos)))) {
-        console.log(
+        logDebug(
           '[automacao-diaria] cenario=fora_da_janela',
-          JSON.stringify({
+          {
             motorista_id: motoristaId,
             horario_configurado: horario,
             horario_atual_minutos: agoraBrasil.minutos,
-          }),
+          },
         )
         if (erros.length > 0) {
           detalhes.push({
@@ -545,13 +547,13 @@ Deno.serve(async (req: Request) => {
           if (!viagemExistente) {
             // ---- CENÁRIO 1: rota nova hoje ----
             // Cria viagem + confirmações pendentes + envia para todos
-            console.log(
+            logDebug(
               '[automacao-diaria] cenario=rota_iniciada',
-              JSON.stringify({
+              {
                 motorista_id: motoristaId,
                 rota_id: rota.id,
                 rota_nome: rota.nome,
-              }),
+              },
             )
             await processarIniciarViagem(supabase, motoristaId, rota.id, {
               dataViagem: hoje,
@@ -569,27 +571,27 @@ Deno.serve(async (req: Request) => {
               rota.nome,
             )
             if (r.sem_pendentes) {
-              console.log(
+              logDebug(
                 '[automacao-diaria] cenario=sem_pendentes',
-                JSON.stringify({
+                {
                   motorista_id: motoristaId,
                   rota_id: rota.id,
                   rota_nome: rota.nome,
                   viagem_id: viagemExistente.id,
-                }),
+                },
               )
               rotasSemPendentes++
             } else {
-              console.log(
+              logDebug(
                 '[automacao-diaria] cenario=reenvio_pendentes',
-                JSON.stringify({
+                {
                   motorista_id: motoristaId,
                   rota_id: rota.id,
                   rota_nome: rota.nome,
                   viagem_id: viagemExistente.id,
                   enviadas: r.enviadas,
                   falhas: r.falhas,
-                }),
+                },
               )
               pendentesReenviados += r.enviadas
               // Falhas de reenvio entram em erros (visibilidade no contador

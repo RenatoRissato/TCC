@@ -20,6 +20,7 @@ import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal
 import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
 import { useNotificacoes } from '../hooks/useNotificacoes';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
+import { logClientDebug, logClientError } from '../utils/clientLogger';
 import { supabase } from '../../lib/supabase';
 
 const ETAPAS_OTIMIZACAO = [
@@ -87,7 +88,7 @@ export function DashboardScreen() {
           writeJsonCache(cacheKeys.rotas(cacheKey), arr);
         }
       })
-      .catch(err => { console.error('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
+      .catch(err => { logClientError('getRouteConfigs:', err); if (!cancelado) setRouteConfigs([]); });
     return () => { cancelado = true; };
   }, [motoristaId, user?.id]);
 
@@ -225,21 +226,21 @@ export function DashboardScreen() {
             const motoristaIdRetornado =
               (fnData as { motorista?: { id?: string } } | null)?.motorista?.id ?? null;
             if (!motoristaIdRetornado) {
-              console.warn('Dashboard autorepair: motorista.id ausente no retorno da Edge Function');
+              logClientDebug('Dashboard autorepair: motorista.id ausente no retorno da Edge Function');
             }
             const recarregadas = await getRouteConfigs();
             arr = Array.isArray(recarregadas) ? recarregadas : [];
           } else {
-            console.error('Dashboard autorepair criar-perfil-motorista:', fnError);
+            logClientError('Dashboard autorepair criar-perfil-motorista:', fnError);
           }
         }
         setRouteConfigs(arr);
         writeJsonCache(cacheKeys.rotas(cacheKey), arr);
       })
-      .catch(err => { console.error('getRouteConfigs:', err); /* mantém cache na tela */ });
+      .catch(err => { logClientError('getRouteConfigs:', err); /* mantém cache na tela */ });
     getRecentUpdates()
       .then(u => { if (ativo) setRecentUpdates(Array.isArray(u) ? u : []); })
-      .catch(err => { console.error('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
+      .catch(err => { logClientError('getRecentUpdates:', err); if (ativo) setRecentUpdates([]); });
     return () => { ativo = false; };
   }, [motoristaId, user?.id, user?.name, user?.phone]);
 

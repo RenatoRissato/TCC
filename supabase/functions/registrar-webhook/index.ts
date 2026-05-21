@@ -7,6 +7,8 @@ import {
   evolutionConfigurarWebhook,
 } from '../_shared/evolution.ts'
 
+const EVENTOS_PERMITIDOS = new Set<string>(EVENTOS_WEBHOOK_PADRAO)
+
 // One-shot: registra (ou re-registra) o webhook na Evolution API com os
 // eventos atuais que o sistema processa: MESSAGES_UPSERT, MESSAGES_UPDATE,
 // QRCODE_UPDATED, CONNECTION_UPDATE. Pode ser chamada novamente sempre que a lista de
@@ -41,10 +43,22 @@ Deno.serve(async (req: Request) => {
       // body é opcional
     }
 
-    const eventos =
+    const eventosSolicitados =
       Array.isArray(body.eventos) && body.eventos.length > 0
         ? body.eventos
-        : EVENTOS_WEBHOOK_PADRAO
+        : [...EVENTOS_WEBHOOK_PADRAO]
+
+    const eventos = eventosSolicitados
+      .map((evento) => String(evento).trim().toUpperCase())
+      .filter((evento) => EVENTOS_PERMITIDOS.has(evento))
+
+    if (eventos.length === 0) {
+      return erroCliente(
+        'Nenhum evento permitido foi informado para o webhook',
+        'EVENTOS_INVALIDOS',
+        400,
+      )
+    }
 
     const webhookUrl = `${supabaseUrl}/functions/v1/webhook-evolution`
 

@@ -11,6 +11,7 @@ import {
   evolutionFetchInstanceInfo,
   evolutionVerificarConexao,
 } from '../_shared/evolution.ts'
+import { logDebug, logErro } from '../_shared/safeLog.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Solicita um QR Code novo na Evolution API e marca a instância como
@@ -123,7 +124,9 @@ Deno.serve(async (req: Request) => {
         return await retornarJaConectado(servico, motorista.id, patch)
       }
     } catch (e) {
-      console.warn('Falha ao verificar conexao antes de gerar QR:', e)
+      logDebug('Falha ao verificar conexao antes de gerar QR', {
+        erro: textoErro(e),
+      })
     }
 
     let qr: string | null = null
@@ -155,7 +158,9 @@ Deno.serve(async (req: Request) => {
           return await retornarJaConectado(servico, motorista.id, patch)
         }
       } catch (e) {
-        console.warn('Falha ao verificar status durante tentativa de QR:', e)
+        logDebug('Falha ao verificar status durante tentativa de QR', {
+          erro: textoErro(e),
+        })
       }
 
       if (tentativa < TENTATIVAS_GERAR_QR) {
@@ -184,7 +189,9 @@ Deno.serve(async (req: Request) => {
       })
     } catch (e) {
       avisoBanco = textoErro(e)
-      console.error('QR gerado, mas falhou ao salvar instancias_whatsapp:', e)
+      logErro('QR gerado, mas falhou ao salvar instancias_whatsapp', e, {
+        motorista_id: motorista.id,
+      })
     }
     if (!instancia && !qr) {
       return erroCliente(

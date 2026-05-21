@@ -188,6 +188,17 @@ URL local das funções: `http://localhost:54321/functions/v1/<nome>`.
 | `GOOGLE_MAPS_API_KEY` | `.env` | Chave secreta da Google Routes API para otimização de sequência |
 | `WEBHOOK_SECRET` | `.env` | Segredo do webhook da Evolution |
 | `CRON_SECRET` | `.env` | Segredo do cron job |
+| `APP_ORIGIN` | `.env` | URL do frontend autorizada no CORS em produção |
+| `DEBUG_LOGS` | `.env` | Habilita logs detalhados apenas para diagnóstico local |
+| `DEBUG_ERRORS` | `.env` | Retorna detalhes técnicos em erro 500 apenas para diagnóstico local |
+
+---
+
+Privacidade da otimização: a Edge Function de otimização envia endereços de
+origem, destino e embarque para a Google Routes API quando
+`GOOGLE_MAPS_API_KEY` está configurada. Sem essa chave, o fallback consulta
+OpenStreetMap/Nominatim e OSRM. Em produção, informe isso nos termos de uso ou
+política de privacidade.
 
 ---
 

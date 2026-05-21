@@ -25,6 +25,7 @@ import type {
   RotaRow,
   TemplateMensagemRow,
 } from '../types/database';
+import { logClientDebug, logClientError } from '../utils/clientLogger';
 
 export interface OpcaoTemplateState {
   numero: number;
@@ -48,8 +49,7 @@ export interface RotaAutomacaoState {
 function debug(rotulo: string, payload?: unknown) {
   try {
     if (typeof window !== 'undefined' && localStorage.getItem('debug:whatsapp')) {
-      // eslint-disable-next-line no-console
-      console.debug(`[useWhatsApp] ${rotulo}`, payload);
+      logClientDebug(`[useWhatsApp] ${rotulo}`, payload);
     }
   } catch {
     // localStorage indisponível — segue silencioso
@@ -224,7 +224,7 @@ export function useWhatsApp() {
       aplicarTemplateNoEditor(tpl, opcoes);
       setEstatisticas(stats);
     } catch (err) {
-      console.error('useWhatsApp.carregar:', err);
+      logClientError('useWhatsApp.carregar:', err);
       setErro(err instanceof Error ? err.message : 'Erro ao carregar dados');
     } finally {
       setLoading(false);
@@ -281,7 +281,7 @@ export function useWhatsApp() {
         webhookRegistradoRef.current = instancia.id;
         debug('registrarWebhookEvolution:auto', r);
       } else {
-        console.error('Falha ao registrar webhook automaticamente:', r.erro);
+        logClientError('Falha ao registrar webhook automaticamente:', r.erro);
         toast.error('WhatsApp conectado, mas nao foi possivel sincronizar o webhook.');
       }
     })();

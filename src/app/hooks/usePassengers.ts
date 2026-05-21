@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import type { Passenger, RouteType, StudentStatus, TipoPassageiro } from '../types';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
+import { logClientDebug } from '../utils/clientLogger';
 
 export type PassengerFilter = 'all' | StudentStatus;
 export type PassengerPeriod = 'all' | string; // 'all' | rotaId
@@ -112,7 +113,7 @@ export function usePassengers({ search = '', filter = 'all', period = 'all' }: U
 
   const add = useCallback(async (form: PassengerFormValues) => {
     if (!form.rotaId) {
-      console.warn('add passageiro sem rotaId — selecione uma rota antes de salvar');
+      logClientDebug('add passageiro sem rotaId - selecione uma rota antes de salvar');
       return;
     }
     await criarPassageiro({

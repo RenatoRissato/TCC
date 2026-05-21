@@ -53,6 +53,9 @@ Devem ser configuradas via `supabase secrets set`:
 - `EVOLUTION_INSTANCE_NAME` — nome da instância configurada na Evolution API
 - `WEBHOOK_SECRET` — segredo para validar que o webhook veio da Evolution API
 - `CRON_SECRET` — segredo para o cron job `pg_cron` chamar `automacao-diaria`
+- `APP_ORIGIN` — origem do frontend autorizada no CORS em produção. Sem valor, as funções mantêm `*` para desenvolvimento local.
+- `DEBUG_LOGS` — quando `true`, habilita logs detalhados. Manter desligado em produção para não registrar dados pessoais.
+- `DEBUG_ERRORS` — quando `true`, respostas 500 retornam detalhes técnicos. Manter desligado em produção.
 
 ---
 
