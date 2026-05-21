@@ -1,3 +1,6 @@
-<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <path fill="#000000" d="M112 152h288c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48h-29a35 35 0 1 1-70 0h-90a35 35 0 1 1-70 0h-29c-26.5 0-48-21.5-48-48v-96c0-26.5 21.5-48 48-48Zm32 32v54h75v-54h-75Zm91 0v54h75v-54h-75Zm91 0v54h42v-54h-42ZM218 120l38-38 38 38h-76Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Safari pinned-tab usa SVG monocromatico preto e pinta com a cor
+       definida em <link rel="mask-icon" color="#FFC107">. Silhueta simples
+       de onibus (corpo retangular, 4 janelinhas, 2 rodas). -->
+  <path fill="#000000" d="M112 152h288c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48h-29a35 35 0 1 1-70 0h-90a35 35 0 1 1-70 0h-29c-26.5 0-48-21.5-48-48v-96c0-26.5 21.5-48 48-48Zm32 32v54h64v-54h-64Zm80 0v54h64v-54h-64Zm80 0v54h64v-54h-64Z"/>
 </svg>

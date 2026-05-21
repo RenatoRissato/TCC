@@ -1,13 +1,10 @@
-<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   <rect width="192" height="192" rx="42" fill="#FFC107"/>
-  <rect x="42" y="57" width="108" height="72" rx="18" fill="#0D1117"/>
-  <rect x="54" y="69" width="28" height="20" rx="5" fill="#4ADE80"/>
-  <rect x="88" y="69" width="28" height="20" rx="5" fill="#5BA3FF"/>
-  <rect x="122" y="69" width="16" height="20" rx="5" fill="#FD7E14"/>
-  <path d="M55 117H137" stroke="#F8F9FA" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="66" cy="137" r="13" fill="#0D1117"/>
-  <circle cx="126" cy="137" r="13" fill="#0D1117"/>
-  <circle cx="66" cy="137" r="5" fill="#F8F9FA"/>
-  <circle cx="126" cy="137" r="5" fill="#F8F9FA"/>
-  <path d="M96 31L110 45H82L96 31Z" fill="#0D1117"/>
+  <text
+    x="96"
+    y="138"
+    font-size="124"
+    text-anchor="middle"
+    font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, EmojiOne Color, Twemoji Mozilla, sans-serif"
+  >🚌</text>
 </svg>

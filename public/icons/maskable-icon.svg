@@ -1,14 +1,13 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable: ocupa toda a area sem cantos arredondados, com safe-zone
+       central de ~80% (icone fica centralizado e nao e cortado quando
+       launchers do Android aplicam mascaras circulares/squircle). -->
   <rect width="512" height="512" fill="#FFC107"/>
-  <circle cx="256" cy="256" r="218" fill="#FFD95A"/>
-  <rect x="112" y="152" width="288" height="192" rx="48" fill="#0D1117"/>
-  <rect x="144" y="184" width="75" height="54" rx="14" fill="#4ADE80"/>
-  <rect x="235" y="184" width="75" height="54" rx="14" fill="#5BA3FF"/>
-  <rect x="326" y="184" width="42" height="54" rx="14" fill="#FD7E14"/>
-  <path d="M147 312H365" stroke="#F8F9FA" stroke-width="28" stroke-linecap="round"/>
-  <circle cx="176" cy="365" r="35" fill="#0D1117"/>
-  <circle cx="336" cy="365" r="35" fill="#0D1117"/>
-  <circle cx="176" cy="365" r="13" fill="#F8F9FA"/>
-  <circle cx="336" cy="365" r="13" fill="#F8F9FA"/>
-  <path d="M256 82L294 120H218L256 82Z" fill="#0D1117"/>
+  <text
+    x="256"
+    y="340"
+    font-size="280"
+    text-anchor="middle"
+    font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, EmojiOne Color, Twemoji Mozilla, sans-serif"
+  >🚌</text>
 </svg>
