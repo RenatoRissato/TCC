@@ -9,16 +9,30 @@ import { ScheduleCard } from '../components/whatsapp/ScheduleCard';
 import { TemplateEditor } from '../components/whatsapp/TemplateEditor';
 import { QrCodeModal } from '../components/whatsapp/QrCodeModal';
 import { BottomSheetModal } from '../components/shared/BottomSheetModal';
+import { AnimatedNumber } from '../components/shared/AnimatedNumber';
 
+/**
+ * Stat pill da secao "Mensagens ultimos 7 dias". Aplica tint da cor da
+ * metrica + border alpha — comunica o tipo da estatistica mesmo sem ler
+ * a label, igual fizemos nos KPIs do Dashboard. Valor anima com
+ * AnimatedNumber pra dar vida quando o dado atualiza.
+ */
 function StatPill({ valor, rotulo, cor }: { valor: number; rotulo: string; cor: string }) {
   return (
     <div
-      className="flex flex-col items-center justify-center bg-panel rounded-2xl border-[1.5px] border-panel-border px-3 py-2.5 min-w-[88px]"
+      className="sr-card-lift flex flex-col items-center justify-center rounded-2xl px-3 py-3 min-w-[88px] transition-colors"
+      style={{
+        background: `${cor}14`,
+        border: `1px solid ${cor}33`,
+      }}
     >
-      <span className="text-lg font-extrabold leading-none" style={{ color: cor }}>
-        {valor}
+      <span className="text-[22px] font-black leading-none" style={{ color: cor }}>
+        <AnimatedNumber value={valor} />
       </span>
-      <span className="text-[10px] font-bold text-ink-soft mt-1 uppercase tracking-[0.04em]">
+      <span
+        className="text-[10px] font-extrabold mt-1.5 uppercase tracking-[0.08em]"
+        style={{ color: `${cor}B3` }}
+      >
         {rotulo}
       </span>
     </div>
@@ -145,13 +159,18 @@ export function WhatsAppScreen() {
           </div>
         )}
 
-        <div className="flex items-start gap-3 bg-pending/[0.08] border-[1.5px] border-pending/25 rounded-2xl px-4 py-3.5 mt-5">
-          <AlertTriangle size={18} color="#FFC107" strokeWidth={2.5} className="shrink-0 mt-px" />
+        {/* Banner explicativo do bot — informacao secundaria sem competir
+            com o conteudo principal. sr-card-lift no hover pra coerencia
+            com os outros cards do app. */}
+        <div className="sr-card-lift flex items-start gap-3 bg-pending/[0.06] border-[1.5px] border-pending/25 rounded-2xl px-4 py-3.5 mt-5">
+          <div className="shrink-0 w-9 h-9 rounded-[11px] bg-pending/15 flex items-center justify-center mt-px">
+            <AlertTriangle size={17} color="#FFC107" strokeWidth={2.5} />
+          </div>
           <div>
-            <p className="text-[13px] font-bold m-0 mb-1 text-[#856404] dark:text-pending">
+            <p className="text-[13px] font-extrabold m-0 mb-1 text-[#856404] dark:text-pending tracking-tight">
               Como funciona o Bot?
             </p>
-            <p className="text-xs text-ink-soft m-0 leading-[1.6]">
+            <p className="text-xs text-ink-soft m-0 leading-[1.65]">
               O SmartRoutes envia mensagens automáticas via WhatsApp Web API. Os responsáveis respondem com
               <strong> 1 </strong> a <strong>4</strong> conforme as opções acima, e o app atualiza a lista de rota em tempo real.
               Os telefones e mensagens trafegam pela Evolution API para viabilizar essa confirmação.
