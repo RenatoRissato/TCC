@@ -62,3 +62,115 @@ html.dark select option {
   background-color: #1c2128;
   color: #f0f2f5;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Motion · Keyframes globais reaproveitaveis
+   Sintaxe minimalista: classes utilitarias `.sr-*` (sr = SmartRoutes)
+───────────────────────────────────────────────────────────────── */
+@keyframes sr-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@keyframes sr-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sr-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sr-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sr-pulse-ring {
+  0%   { transform: scale(0.75); opacity: 0.7; }
+  100% { transform: scale(2.2);  opacity: 0; }
+}
+
+@keyframes sr-success-burst {
+  0%   { transform: scale(0.4); opacity: 0; }
+  50%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Skeleton shimmer mais elegante que o pulse padrao do shadcn. Usa
+   gradiente diagonal que desliza horizontalmente. */
+.sr-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: sr-shimmer 1.6s linear infinite;
+}
+html:not(.dark) .sr-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0,0,0,0.04) 0%,
+    rgba(0,0,0,0.08) 50%,
+    rgba(0,0,0,0.04) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Entrada em sequencia: usar inline `style={{ animationDelay: 'Nms' }}`
+   para criar stagger reveal numa lista. */
+.sr-fade-up   { animation: sr-fade-up 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+.sr-fade-in   { animation: sr-fade-in 0.35s ease-out both; }
+.sr-scale-in  { animation: sr-scale-in 0.35s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Ring de pulso para badge/notificacao/status dot ativo. Sobrepor um
+   <span> absoluto com essa classe sobre o dot principal. */
+.sr-pulse-ring {
+  animation: sr-pulse-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Card com lift no hover (e shadow elevada). Desktop only — em touch
+   o lift fica preso ate o proximo tap, o que poluiria a UI. */
+@media (hover: hover) {
+  .sr-card-lift {
+    transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  }
+  .sr-card-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px -16px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.08);
+  }
+}
+
+/* Press feedback (mobile + desktop): scale leve no :active. Sobrepoe
+   `touch-scale` legado que ja existe em algumas telas. */
+.sr-press {
+  transition: transform 0.12s ease;
+}
+.sr-press:active {
+  transform: scale(0.96);
+}
+
+/* Focus ring consistente em qualquer elemento interativo. Aparece so com
+   teclado (focus-visible), respeitando usuarios de mouse que nao querem o
+   ring atrapalhando a UI. */
+.sr-focus-ring:focus-visible {
+  outline: 2px solid #FFC107;
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Respeita preferencia do sistema por menos movimento. Anula durations
+   sem mexer em outras propriedades; layout continua o mesmo. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
