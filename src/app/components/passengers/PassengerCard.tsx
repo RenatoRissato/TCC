@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import {
-  Navigation, MessageCircle, MapPin,
+  Navigation, MessageCircle, MapPin, Clock,
   CheckCircle2, XCircle, Edit2, Trash2, Send,
 } from 'lucide-react';
 import { Avatar } from '../shared/Avatar';
@@ -10,12 +10,21 @@ import { useReenviarConfirmacao } from '../../hooks/useViagem';
 import {
   STATUS_UI_DETALHADO_META,
 } from '../../utils/confirmacaoStatusMeta';
-import type { Passenger, RouteType } from '../../types';
+import type { Passenger, RouteType, StudentStatus } from '../../types';
 
 const SHIFT_OPTIONS: Record<RouteType, { label: string; emoji: string; color: string }> = {
   morning:   { label: 'Manhã',  emoji: '☀️',  color: '#FFC107' },
   afternoon: { label: 'Tarde',  emoji: '🌤️', color: '#FD7E14' },
   night:     { label: 'Noite',  emoji: '🌙',  color: '#6C5CE7' },
+};
+
+// Cor da stripe lateral por status — ancora visual rapida quando o motorista
+// scrolla a lista. Mesmo padrao do NextDepartureCard (faixa de 4px na borda
+// esquerda). Absent ganha cinza desaturado pra ficar discreto.
+const STATUS_STRIPE_COLOR: Record<StudentStatus, string> = {
+  going:   '#198754',
+  absent:  '#ADB5BD',
+  pending: '#FD7E14',
 };
 
 function MapsButton({ p }: { p: Passenger }) {
@@ -73,12 +82,21 @@ export const PassengerCard = memo(function PassengerCard({
   };
   return (
     <div
-      className={`slide-up stagger-${Math.min(idx + 1, 5)} sr-card-lift bg-panel rounded-[20px] overflow-hidden ${
+      className={`relative slide-up stagger-${Math.min(idx + 1, 5)} sr-card-lift bg-panel rounded-[20px] overflow-hidden ${
         absent
           ? 'opacity-55 [filter:grayscale(0.3)] border-[1.5px] border-app-border'
           : 'border-[1.5px] border-app-border shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.5)]'
       }`}
     >
+      {/* Stripe lateral colorida pelo status — verde (vai), vermelho (nao vai),
+          laranja (pendente), cinza (absent). Comunica o status numa olhada
+          mesmo antes de ler a badge. */}
+      <span
+        aria-hidden="true"
+        className="absolute left-0 top-0 bottom-0 w-1"
+        style={{ background: STATUS_STRIPE_COLOR[p.status] }}
+      />
+
       <div className="flex items-center gap-3 pt-3.5 px-4 pb-3">
         <Avatar initials={p.initials} status={p.status} size={48} badge={p.stopOrder} />
         <div className="flex-1 min-w-0">
@@ -116,15 +134,17 @@ export const PassengerCard = memo(function PassengerCard({
           <div className="flex gap-1">
             <button
               onClick={() => onEdit(p)}
-              className="w-7 h-7 rounded-lg bg-[rgba(41,121,255,0.1)] border border-[rgba(41,121,255,0.2)] cursor-pointer flex items-center justify-center"
+              className="sr-press w-7 h-7 rounded-lg bg-[rgba(41,121,255,0.1)] border border-[rgba(41,121,255,0.2)] cursor-pointer flex items-center justify-center transition-colors hover:bg-[rgba(41,121,255,0.2)] hover:border-[rgba(41,121,255,0.35)]"
               aria-label="Editar passageiro"
+              title="Editar passageiro"
             >
               <Edit2 size={13} color="#2979FF" strokeWidth={2.5} />
             </button>
             <button
               onClick={() => onDelete(p)}
-              className="w-7 h-7 rounded-lg bg-danger/10 border border-danger/20 cursor-pointer flex items-center justify-center"
+              className="sr-press w-7 h-7 rounded-lg bg-danger/10 border border-danger/20 cursor-pointer flex items-center justify-center transition-colors hover:bg-danger/20 hover:border-danger/35"
               aria-label="Remover passageiro"
+              title="Remover passageiro"
             >
               <Trash2 size={13} className="text-danger" strokeWidth={2.5} />
             </button>
@@ -149,20 +169,35 @@ export const PassengerCard = memo(function PassengerCard({
 
       {p.responseTime && (
         <div
-          className="flex items-center gap-1.5 py-1.5 px-4"
+          className="flex items-center gap-2 py-2 px-4"
           style={{ background: p.status === 'going' ? 'rgba(25,135,84,0.07)' : 'rgba(220,53,69,0.05)' }}
         >
-          {p.status === 'going'
-            ? <CheckCircle2 size={13} className="text-success" strokeWidth={2.5} />
-            : <XCircle size={13} className="text-danger" strokeWidth={2.5} />}
+          {/* Icone num tile colorido — visualmente mais "ancora" do que solto.
+              Mesmo padrao usado no banner "Como funciona o Bot" e em outros
+              cards do app. */}
+          <span
+            className="inline-flex w-5 h-5 rounded-md items-center justify-center shrink-0"
+            style={{
+              background: p.status === 'going' ? 'rgba(25,135,84,0.18)' : 'rgba(220,53,69,0.15)',
+            }}
+          >
+            {p.status === 'going'
+              ? <CheckCircle2 size={11} className="text-success" strokeWidth={2.8} />
+              : <XCircle size={11} className="text-danger" strokeWidth={2.8} />}
+          </span>
           <p className={`text-[11px] font-semibold m-0 ${p.status === 'going' ? 'text-success' : 'text-danger'}`}>
-            Respondido às {p.responseTime} via WhatsApp
+            Respondido às <span className="font-extrabold">{p.responseTime}</span> via WhatsApp
           </p>
         </div>
       )}
       {p.status === 'pending' && (
-        <div className="flex items-center gap-1.5 py-1.5 px-4 bg-warning/[0.08]">
-          <span className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-warning" />
+        <div className="flex items-center gap-2 py-2 px-4 bg-warning/[0.08]">
+          {/* Tile com Clock + pulse ring por tras — mais "vivo" que dot solto.
+              Comunica que o sistema esta aguardando algo agora. */}
+          <span className="relative inline-flex w-5 h-5 rounded-md items-center justify-center shrink-0 bg-warning/20">
+            <span aria-hidden="true" className="sr-pulse-ring absolute inset-0 rounded-md bg-warning/40" />
+            <Clock size={11} className="relative text-warning" strokeWidth={2.8} />
+          </span>
           <p className="text-[11px] font-semibold m-0 text-[#C56A00] dark:text-warning">
             Aguardando resposta...
           </p>
@@ -170,7 +205,7 @@ export const PassengerCard = memo(function PassengerCard({
             <button
               onClick={handleReenviar}
               disabled={reenviando}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-bold text-[#C56A00] dark:text-warning cursor-pointer transition-colors hover:bg-warning/20 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="sr-press ml-auto inline-flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-bold text-[#C56A00] dark:text-warning cursor-pointer transition-colors hover:bg-warning/20 disabled:opacity-60 disabled:cursor-not-allowed"
               aria-label={`Reenviar mensagem para ${p.name}`}
               title="Reenviar mensagem de confirmação"
             >
