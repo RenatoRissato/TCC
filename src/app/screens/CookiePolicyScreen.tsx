@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Cookie, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Cookie, Menu, SlidersHorizontal } from 'lucide-react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 import { openCookiePreferences } from '../utils/cookieConsent';
@@ -49,11 +49,21 @@ export function CookiePolicyScreen() {
         />
 
         <div className="relative flex items-center gap-3">
+          {!isLg && (
+            <button
+              type="button"
+              onClick={openDrawer}
+              className="sr-press flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] transition-colors hover:bg-white/[0.1]"
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => (isLg ? navigate(-1) : openDrawer())}
-            className="sr-press flex h-11 w-11 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] hover:bg-white/[0.1] transition-colors"
-            aria-label={isLg ? 'Voltar' : 'Abrir menu'}
+            onClick={() => navigate(-1)}
+            className="sr-press flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] transition-colors hover:bg-white/[0.1]"
+            aria-label="Voltar"
           >
             <ArrowLeft size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
           </button>

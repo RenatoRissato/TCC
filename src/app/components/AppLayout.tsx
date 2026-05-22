@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { BottomNav } from './BottomNav';
@@ -36,6 +36,7 @@ export function AppLayout() {
   const { pathname }         = useLocation();
   const { motoristaId, user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const mainRef = useRef<HTMLElement | null>(null);
   const isHomeScreen = pathname === '/home';
 
   // Notificações in-app de respostas de WhatsApp — toast e som configuráveis
@@ -51,6 +52,12 @@ export function AppLayout() {
 
   // Close drawer automatically on route change
   useEffect(() => { closeDrawer(); }, [pathname, closeDrawer]);
+
+  // O scroll real do app fica no <main>. Ao trocar de rota, voltamos para o
+  // topo para telas longas (Ajuda, Politicas, Cookies) nao abrirem no meio.
+  useLayoutEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname]);
 
   // Prevent body scroll when drawer is open
   useEffect(() => {
@@ -141,7 +148,7 @@ export function AppLayout() {
             <main> is a plain block with overflow-y:auto.
             NO display:flex here — that would break natural block flow.
           */}
-          <main style={{
+          <main ref={mainRef} style={{
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -155,6 +162,7 @@ export function AppLayout() {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={pathname}
+                className="min-h-full"
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
