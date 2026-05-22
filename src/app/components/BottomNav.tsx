@@ -23,8 +23,12 @@ export function BottomNav() {
     { path: '/settings', label: 'Settings', Icon: Settings },
   ];
 
-  const navBg     = isDark ? '#0A0D12' : '#212529';
-  const navBorder = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)';
+  // Glassmorphism leve: backgrounds com transparencia (~88%) + backdrop blur,
+  // criam sensacao de profundidade quando o conteudo da tela passa por baixo
+  // sem comprometer contraste da label. Fallback solido pra navegadores que
+  // nao suportam backdrop-filter.
+  const navBg     = isDark ? 'rgba(10,13,18,0.88)'    : 'rgba(33,37,41,0.92)';
+  const navBorder = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)';
 
   const renderItem = ({
     path, label, Icon, badge,
@@ -110,6 +114,11 @@ export function BottomNav() {
         alignItems: 'stretch',
         background: navBg,
         borderTop: `1px solid ${navBorder}`,
+        // backdropFilter ativa o efeito de "vidro fosco" sobre o conteudo
+        // que rola atras. Em navegadores sem suporte (Firefox < 103), o
+        // background ja tem opacidade alta o suficiente pra ficar legivel.
+        backdropFilter: 'blur(14px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         transition: 'background 0.3s ease',
       }}

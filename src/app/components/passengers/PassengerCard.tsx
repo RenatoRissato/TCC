@@ -73,7 +73,7 @@ export const PassengerCard = memo(function PassengerCard({
   };
   return (
     <div
-      className={`slide-up stagger-${Math.min(idx + 1, 5)} bg-panel rounded-[20px] overflow-hidden transition-all ${
+      className={`slide-up stagger-${Math.min(idx + 1, 5)} sr-card-lift bg-panel rounded-[20px] overflow-hidden ${
         absent
           ? 'opacity-55 [filter:grayscale(0.3)] border-[1.5px] border-app-border'
           : 'border-[1.5px] border-app-border shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.5)]'

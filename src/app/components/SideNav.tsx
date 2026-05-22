@@ -74,8 +74,11 @@ export function SideNav({ onClose }: { onClose?: () => void } = {}) {
       <div style={{ padding: '12px 12px 6px' }}>
         <div style={{
           background: 'rgba(255,193,7,0.07)',
-          border: '1px solid rgba(255,193,7,0.15)',
+          border: '1px solid rgba(255,193,7,0.18)',
           borderRadius: 16, padding: '10px 12px',
+          // Sombra interna suave + glow externo amarelo sutil — destaca o
+          // card como elemento "vivo" (ao vivo) sem competir com o conteudo.
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 24px -16px rgba(255,193,7,0.5)',
         }}>
           <p style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,193,7,0.6)', margin: '0 0 8px', letterSpacing: 1.1, textTransform: 'uppercase' }}>
             Status Hoje · Ao Vivo
