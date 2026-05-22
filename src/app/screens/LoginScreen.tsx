@@ -354,7 +354,10 @@ export function LoginScreen({ onGoRegister, onGoForgot }: LoginScreenProps) {
         </div>
 
         {/* Card — flexShrink:0 para não comprimir em telas pequenas */}
-        <div style={{ flex: 1, flexShrink: 0, background: isDark ? '#1C2128' : '#fff', borderRadius: '28px 28px 0 0', padding: '32px 24px 48px', boxShadow: '0 -12px 48px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
+        <div
+          className="sr-fade-up"
+          style={{ flex: 1, flexShrink: 0, background: isDark ? '#1C2128' : '#fff', borderRadius: '28px 28px 0 0', padding: '32px 24px 48px', boxShadow: '0 -12px 48px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2, animationDelay: '120ms' }}
+        >
           <h2 style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: '0 0 4px' }}>
             Bem-vindo de volta! 👋
           </h2>
@@ -438,7 +441,10 @@ export function LoginScreen({ onGoRegister, onGoForgot }: LoginScreenProps) {
           }}
         >
           {/* Card */}
-          <div style={{ background: cardBg, borderRadius: 28, padding: '44px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+          <div
+            className="sr-fade-up"
+            style={{ background: cardBg, borderRadius: 28, padding: '44px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none', animationDelay: '80ms' }}
+          >
             {/* Logo row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
               <div style={{ width: 40, height: 40, borderRadius: 13, background: 'linear-gradient(135deg, #FFC107, #E6A800)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(255,193,7,0.4)' }}>

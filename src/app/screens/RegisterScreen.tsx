@@ -873,7 +873,10 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
               <SuccessState name={form.name} isDark={isDark} isMobile={false} onGoLogin={onGoLogin} />
             </div>
           ) : (
-            <div style={{ background: cardBg, borderRadius: 28, padding: '44px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+            <div
+              className="sr-fade-up"
+              style={{ background: cardBg, borderRadius: 28, padding: '44px 40px', boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)', border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none', animationDelay: '80ms' }}
+            >
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 13, background: 'linear-gradient(135deg, #FFC107, #E6A800)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(255,193,7,0.4)' }}>
