@@ -19,6 +19,7 @@ import { OccupancySummary } from '../components/dashboard/OccupancySummary';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
 import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
 import { useNotificacoes } from '../hooks/useNotificacoes';
+import { AnimatedNumber } from '../components/shared/AnimatedNumber';
 import { cacheKeys, readJsonCache, writeJsonCache } from '../utils/localCache';
 import { logClientDebug, logClientError } from '../utils/clientLogger';
 import { supabase } from '../../lib/supabase';
@@ -348,9 +349,17 @@ export function DashboardScreen() {
             >
               <Bell size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
               {notificacoesNaoLidas > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-[#212529] bg-pending rounded-full border-[1.5px] border-[#212529]">
-                  {notificacoesNaoLidas > 9 ? '9+' : notificacoesNaoLidas}
-                </span>
+                <>
+                  {/* Pulse ring por tras do badge — chama atencao quando ha
+                      notificacoes novas, some quando o motorista abrir. */}
+                  <span
+                    aria-hidden="true"
+                    className="sr-pulse-ring absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-pending/40 pointer-events-none"
+                  />
+                  <span className="sr-scale-in absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-[#212529] bg-pending rounded-full border-[1.5px] border-[#212529]">
+                    {notificacoesNaoLidas > 9 ? '9+' : notificacoesNaoLidas}
+                  </span>
+                </>
               )}
             </button>
           </div>
@@ -372,8 +381,10 @@ export function DashboardScreen() {
         {isDesktop && (
           <div className="flex flex-wrap gap-3 mt-6 relative z-10">
             {desktopStats.map(({ n, l, c, bg }) => (
-              <div key={l} className="flex flex-col items-center rounded-2xl px-4 py-3 min-w-[88px] flex-1" style={{ background: bg }}>
-                <span className="text-[28px] font-black leading-none" style={{ color: c }}>{n}</span>
+              <div key={l} className="sr-card-lift flex flex-col items-center rounded-2xl px-4 py-3 min-w-[88px] flex-1" style={{ background: bg }}>
+                <span className="text-[28px] font-black leading-none" style={{ color: c }}>
+                  <AnimatedNumber value={n} />
+                </span>
                 <span className="text-[10px] font-bold text-white/55 tracking-[0.06em] mt-1 whitespace-nowrap">{l}</span>
               </div>
             ))}

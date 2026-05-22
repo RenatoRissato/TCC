@@ -12,6 +12,7 @@ import { PassengerCard } from '../components/passengers/PassengerCard';
 import { PassengerFilters } from '../components/passengers/PassengerFilters';
 import { PassengerForm } from '../components/passengers/PassengerForm';
 import { BottomSheetModal } from '../components/shared/BottomSheetModal';
+import { EmptyState } from '../components/shared/EmptyState';
 import type { Passenger } from '../types';
 
 function FAB({ onClick, isDesktop }: { onClick: () => void; isDesktop: boolean }) {
@@ -147,16 +148,19 @@ export function RouteScreen() {
 
       <div style={{ padding: `${isDesktop ? 20 : 16}px ${px}px ${isDesktop ? 40 : 96}px` }}>
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-6 gap-4">
-            <span className="text-[52px]">🔍</span>
-            <div className="text-center">
-              <p className="text-base font-bold text-ink m-0 mb-1.5">Nenhum passageiro encontrado</p>
-              <p className="text-[13px] text-ink-soft m-0">Ajuste os filtros ou adicione um novo passageiro</p>
-            </div>
-            <button onClick={openAdd} className="flex items-center gap-2 bg-pending border-0 rounded-[14px] px-6 py-3.5 text-sm font-bold text-[#212529] cursor-pointer min-h-[50px] font-sans shadow-[0_4px_16px_rgba(255,193,7,0.35)]">
-              <Plus size={18} strokeWidth={3} /> Adicionar Passageiro
-            </button>
-          </div>
+          <EmptyState
+            icon={Search}
+            title="Nenhum passageiro encontrado"
+            description="Ajuste os filtros ou adicione um novo passageiro para começar a montar a rota."
+            action={
+              <button
+                onClick={openAdd}
+                className="sr-press flex items-center gap-2 bg-pending border-0 rounded-[14px] px-6 py-3.5 text-sm font-bold text-[#212529] cursor-pointer min-h-[50px] font-sans shadow-[0_4px_16px_rgba(255,193,7,0.35)]"
+              >
+                <Plus size={18} strokeWidth={3} /> Adicionar Passageiro
+              </button>
+            }
+          />
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: cardCols }}>
             {filtered.map((p, i) => (
