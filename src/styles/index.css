@@ -192,3 +192,33 @@ html:not(.dark) .sr-skeleton {
 /* Em touch (sem hover), o ring atrapalha mais que ajuda — VoiceOver e
    TalkBack ja anunciam o elemento focado por outros meios. Mantemos
    so a versao desktop/teclado. */
+
+/* Esconde a scrollbar mantendo overflow funcional. Usado em carrosseis
+   horizontais (filtros de rota, status, tags) onde a barra polui mais
+   que ajuda — o swipe touch e o hover do desktop ja indicam o overflow. */
+.sr-no-scrollbar {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* Legacy IE/Edge */
+}
+.sr-no-scrollbar::-webkit-scrollbar {
+  display: none;                  /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
+}
+
+/* Fade lateral em containers que rolam horizontalmente. Aplicar como
+   wrapper externo (com position:relative) e essas pseudo-classes nos
+   antes/depois — sugere "tem mais conteudo" sem barra de scroll. */
+.sr-edge-fade-x {
+  position: relative;
+}
+.sr-edge-fade-x::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--header-fade, #212529));
+}
