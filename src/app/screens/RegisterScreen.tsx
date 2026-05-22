@@ -256,8 +256,13 @@ function PhoneInput({ value, onChange, error, inputBg, inputBdr, textPri, textSe
   const borderColor = error ? '#DC3545' : inputBdr;
 
   return (
-    <div style={{ display: 'flex', gap: 8 }}>
-      {/* Country picker */}
+    // minWidth: 0 no wrapper flex pra permitir o flex item (input) encolher
+    // abaixo do tamanho natural do conteudo. Sem isso, o input "(11) 99999-0000"
+    // forca o conjunto a ficar mais largo que o container e empurra o select
+    // BR +55 pra fora da tela.
+    <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
+      {/* Country picker — width reduzida 90 -> 96 pra "BR +55" caber confortavel.
+          flexShrink:0 mantido pra select nao colapsar. */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <select
           value={countryCode}
@@ -265,10 +270,10 @@ function PhoneInput({ value, onChange, error, inputBg, inputBdr, textPri, textSe
           style={{
             appearance: 'none', WebkitAppearance: 'none',
             background: inputBg, border: `2px solid ${borderColor}`,
-            borderRadius: 14, padding: '0 32px 0 12px',
+            borderRadius: 14, padding: '0 28px 0 12px',
             fontSize: 14, fontFamily: 'Inter, sans-serif',
             color: textPri, outline: 'none', cursor: 'pointer',
-            minHeight: 52, height: '100%', width: 90,
+            minHeight: 52, height: '100%', width: 96,
             transition: 'border-color 0.2s',
           }}
           onFocus={e => { e.currentTarget.style.borderColor = '#FFC107'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(255,193,7,0.18)'; }}
@@ -283,7 +288,8 @@ function PhoneInput({ value, onChange, error, inputBg, inputBdr, textPri, textSe
           </svg>
         </div>
       </div>
-      {/* Number field */}
+      {/* Number field — minWidth:0 + width:0 (truque clássico) permitem o
+          input encolher livremente no flex. flex:1 distribui o espaco restante. */}
       <input
         type="tel"
         placeholder="(11) 99999-0000"
@@ -292,7 +298,7 @@ function PhoneInput({ value, onChange, error, inputBg, inputBdr, textPri, textSe
         autoComplete="tel"
         inputMode="tel"
         style={{
-          flex: 1, boxSizing: 'border-box',
+          flex: '1 1 0', minWidth: 0, boxSizing: 'border-box',
           background: inputBg, border: `2px solid ${borderColor}`,
           borderRadius: 14, padding: '14px 16px',
           fontSize: 15, fontFamily: 'Inter, sans-serif',
@@ -893,8 +899,8 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
                 </button>
               </div>
 
-              <h2 style={{ fontSize: 26, fontWeight: 800, color: textPri, margin: '0 0 6px', letterSpacing: -0.3 }}>
-                Criar conta ✨
+              <h2 style={{ fontSize: 28, fontWeight: 900, color: textPri, margin: '0 0 6px', letterSpacing: '-0.025em' }}>
+                Criar conta
               </h2>
               <p style={{ fontSize: 14, color: textSec, margin: '0 0 30px', fontWeight: 400 }}>
                 Preencha seus dados para configurar o bot WhatsApp
