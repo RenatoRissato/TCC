@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import type { StatusUIDetalhado } from '../utils/confirmacaoStatus';
 import { logClientError } from '../utils/clientLogger';
 import { dataBrasilISO } from '../utils/datas';
+import { normalizarEstatisticasMensagens } from '../utils/whatsappStats';
 
 // Re-export para nao quebrar imports existentes que pegavam daqui.
 export { dataBrasilISO };
@@ -405,13 +406,13 @@ export async function getEstatisticasMensagensSemana(
     base().eq('direcao', 'entrada'),
   ]);
 
-  return {
-    total: total ?? 0,
-    enviadas: enviadas ?? 0,
-    entregues: entregues ?? 0,
-    falhas: falhas ?? 0,
-    recebidas: recebidas ?? 0,
-  };
+  return normalizarEstatisticasMensagens({
+    total,
+    enviadas,
+    entregues,
+    falhas,
+    recebidas,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────
