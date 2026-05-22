@@ -21,8 +21,15 @@ interface Props {
 export function StatusBadge({ status, size = 'md' }: Props) {
   const c = CONFIG[status];
   const s = SIZE[size];
+  // Key no status para forcar remount quando o backend mudar a resposta —
+  // o usuario vai ver o badge novo "pousando" via sr-scale-in em vez de
+  // trocar a label estaticamente. Deixa as confirmacoes do WhatsApp mais
+  // vivas na lista de passageiros.
   return (
-    <div className={`inline-flex items-center text-white font-extrabold tracking-wider whitespace-nowrap shrink-0 ${c.bg} ${s.radius} ${s.pad} ${s.text} ${s.gap}`}>
+    <div
+      key={status}
+      className={`sr-scale-in inline-flex items-center text-white font-extrabold tracking-wider whitespace-nowrap shrink-0 ${c.bg} ${s.radius} ${s.pad} ${s.text} ${s.gap}`}
+    >
       <c.Icon size={s.icon} strokeWidth={2.5} />
       {c.label}
     </div>

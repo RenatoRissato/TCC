@@ -38,8 +38,13 @@ export function FormInput({
           onChange={(e) => onChange(e.target.value)}
           className={[
             'w-full box-border bg-field border-2 border-field-border rounded-[13px]',
-            'px-3.5 py-3 text-sm font-medium text-ink outline-none min-h-[50px] transition-colors',
-            'focus:border-pending focus:shadow-[0_0_0_3px_rgba(255,193,7,0.12)]',
+            'px-3.5 py-3 text-sm font-medium text-ink outline-none min-h-[50px]',
+            // transicao suave em todos os estados (cor + shadow) — antes so
+            // border-color animava, criando um "flash" do shadow no focus.
+            'transition-[border-color,box-shadow,background-color] duration-200',
+            // Hover so quando interativo (nao disabled): borda fica um tom mais
+            // forte indicando que o input "responde". focus toma precedencia.
+            !disabled ? 'hover:border-ink-muted/40 focus:border-pending focus:shadow-[0_0_0_3px_rgba(255,193,7,0.18)]' : '',
             rightEl ? 'pr-[46px]' : '',
             disabled ? 'opacity-60 cursor-not-allowed' : '',
           ].join(' ')}

@@ -23,7 +23,15 @@ export function Avatar({ initials, status = 'going', size = 48, badge }: AvatarP
         {initials}
       </div>
       {badge !== undefined && (
-        <span className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] bg-[#212529] text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+        // Badge de ordem na rota — fundo dark + shadow sutil. Antes tinha
+        // border branca grossa (2px) que criava "halo pixelado" em dark mode.
+        // Agora usa shadow leve pra criar separacao do avatar sem moldura.
+        <span
+          className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] bg-[#212529] text-white text-[10px] font-extrabold rounded-full flex items-center justify-center leading-none"
+          style={{
+            boxShadow: '0 0 0 2px var(--panel), 0 2px 4px rgba(0,0,0,0.25)',
+          }}
+        >
           {badge}
         </span>
       )}

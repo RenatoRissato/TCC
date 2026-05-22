@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Database, MessageCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { ArrowLeft, Database, Menu, MessageCircle, ShieldCheck, UserCheck } from 'lucide-react';
 import { useBreakpoints } from '../hooks/useWindowSize';
 import { useNavDrawer } from '../context/NavDrawerContext';
 
@@ -12,8 +12,8 @@ function PolicyCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[22px] border-[1.5px] border-app-border bg-panel p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-      <h2 className="m-0 mb-3 text-base font-black text-ink">{title}</h2>
+    <section className="sr-card-lift rounded-[22px] border-[1.5px] border-app-border bg-panel p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.45)]">
+      <h2 className="m-0 mb-3 text-base font-black text-ink tracking-tight">{title}</h2>
       <div className="space-y-2 text-sm leading-relaxed text-ink-soft">{children}</div>
     </section>
   );
@@ -28,26 +28,67 @@ export function PrivacyPolicyScreen() {
   return (
     <div className="min-h-full bg-surface transition-colors">
       <header
-        className="bg-[linear-gradient(160deg,#0F766E,#115E59)]"
-        style={{ padding: `${isDesktop ? 28 : 20}px ${px}px ${isDesktop ? 34 : 28}px` }}
+        className="relative overflow-hidden"
+        style={{
+          // Padrao consistente com o resto do app — gradient dark + halos da
+          // cor tematica (teal escuro, mesmo accent que o AccordionItem de
+          // Privacidade no Settings usa).
+          background: 'linear-gradient(155deg, #0A0D12 0%, #161B22 55%, #1A1F26 100%)',
+          padding: `${isDesktop ? 32 : 22}px ${px}px ${isDesktop ? 36 : 30}px`,
+        }}
       >
-        <div className="flex items-center gap-3">
+        <div
+          aria-hidden="true"
+          className="absolute -top-24 -right-24 w-[380px] h-[380px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(15,118,110,0.20) 0%, transparent 65%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-20 -left-20 w-[300px] h-[300px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(15,118,110,0.08) 0%, transparent 65%)' }}
+        />
+
+        <div className="relative flex items-center gap-3">
+          {!isLg && (
+            <button
+              type="button"
+              onClick={openDrawer}
+              className="sr-press flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] transition-colors hover:bg-white/[0.1]"
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => (isLg ? navigate(-1) : openDrawer())}
-            className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-white/15 bg-white/10"
-            aria-label={isLg ? 'Voltar' : 'Abrir menu'}
+            onClick={() => navigate(-1)}
+            className="sr-press flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] transition-colors hover:bg-white/[0.1]"
+            aria-label="Voltar"
           >
-            <ArrowLeft size={20} color="#fff" strokeWidth={2.4} />
+            <ArrowLeft size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
           </button>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
-            <ShieldCheck size={24} color="#fff" strokeWidth={2.3} />
+
+          {/* Icone tematico em teal escuro com gradient 3-stops + glow */}
+          <div
+            className="shrink-0 flex h-12 w-12 items-center justify-center rounded-[15px]"
+            style={{
+              background: 'linear-gradient(135deg, #2DD4BF 0%, #0F766E 50%, #115E59 100%)',
+              boxShadow: '0 6px 22px -6px rgba(15,118,110,0.65), inset 0 1px 0 rgba(255,255,255,0.3)',
+            }}
+          >
+            <ShieldCheck size={22} color="#fff" strokeWidth={2.3} />
           </div>
-          <div>
-            <p className="m-0 text-[11px] font-bold uppercase tracking-[0.08em] text-white/55">
+
+          <div className="min-w-0">
+            <p className="m-0 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#2DD4BF] leading-none">
               LGPD e transparência
             </p>
-            <h1 className="m-0 text-2xl font-black leading-tight text-white">Política de Privacidade</h1>
+            <h1
+              className="m-0 mt-1.5 text-[22px] font-black leading-none text-white tracking-tight"
+              style={{ letterSpacing: '-0.02em' }}
+            >
+              Política de Privacidade
+            </h1>
           </div>
         </div>
       </header>

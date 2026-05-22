@@ -11,6 +11,7 @@ import { useConfirmacoesRealtime } from '../hooks/useConfirmacoesRealtime';
 import { useFinalizarViagem, useReenviarConfirmacao } from '../hooks/useViagem';
 import { buscarViagem, marcarConfirmacaoManual } from '../services/viagemService';
 import { BottomSheetModal } from '../components/shared/BottomSheetModal';
+import { AnimatedNumber } from '../components/shared/AnimatedNumber';
 import {
   statusUIDetalhadoDaConfirmacao,
   type StatusUIDetalhado,
@@ -246,8 +247,16 @@ export function LiveTripScreen() {
             <ArrowLeft size={18} color="rgba(255,255,255,0.8)" strokeWidth={2} />
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold text-pending tracking-[0.12em] uppercase m-0">
-              {finalizada ? 'Viagem finalizada' : 'Viagem em andamento'}
+            {/* Quando vira "finalizada", o badge troca de cor (amarelo -> verde)
+                e ganha sr-scale-in via key — feedback visual claro de que a
+                acao de finalizar deu certo, sem precisar de overlay ou modal. */}
+            <p
+              key={finalizada ? 'fim' : 'andamento'}
+              className={`sr-scale-in text-[10px] font-bold tracking-[0.12em] uppercase m-0 ${
+                finalizada ? 'text-success' : 'text-pending'
+              }`}
+            >
+              {finalizada ? '✓ Viagem finalizada' : 'Viagem em andamento'}
             </p>
             <h1 className="text-lg font-extrabold text-white m-0 leading-tight truncate">
               {carregandoMeta ? 'Carregando...' : (rota?.nome ?? 'Viagem')}
@@ -285,7 +294,7 @@ export function LiveTripScreen() {
                   className="text-2xl font-black leading-none"
                   style={{ color: meta.color }}
                 >
-                  {valor}
+                  <AnimatedNumber value={valor} />
                 </span>
                 <div className="flex items-center gap-1 mt-1">
                   <meta.Icon size={9} strokeWidth={2.8} style={{ color: meta.color }} />
@@ -300,7 +309,9 @@ export function LiveTripScreen() {
             className="flex flex-col items-center bg-white/[0.05] rounded-[14px] py-2.5 px-1"
             title="Total de passageiros"
           >
-            <span className="text-2xl font-black leading-none text-pending">{totalConfirmacoes}</span>
+            <span className="text-2xl font-black leading-none text-pending">
+              <AnimatedNumber value={totalConfirmacoes} />
+            </span>
             <span className="text-[9px] font-bold text-white/55 tracking-[0.04em] uppercase mt-1">
               Total
             </span>

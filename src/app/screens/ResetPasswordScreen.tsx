@@ -104,11 +104,15 @@ export function ResetPasswordScreen() {
         padding: '48px 24px 56px', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
       }}>
-        <div style={{
-          background: cardBg, borderRadius: 28, padding: '40px 32px',
-          boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)',
-          border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none',
-        }}>
+        <div
+          className="sr-fade-up"
+          style={{
+            background: cardBg, borderRadius: 28, padding: '40px 32px',
+            boxShadow: isDark ? '0 8px 48px rgba(0,0,0,0.6)' : '0 8px 48px rgba(0,0,0,0.1)',
+            border: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none',
+            animationDelay: '80ms',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
             <div style={{
               width: 40, height: 40, borderRadius: 13,

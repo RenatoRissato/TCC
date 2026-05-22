@@ -8,6 +8,7 @@ import type {
   TipoConfirmacao,
 } from '../types/database';
 import { logClientDebug, logClientError } from '../utils/clientLogger';
+import { normalizarEstatisticasMensagens } from '../utils/whatsappStats';
 
 export interface WhatsAppEstado {
   instancia: InstanciaWhatsAppRow | null;
@@ -317,22 +318,16 @@ export async function obterEstatisticasMensagens(
     base().eq('direcao', 'entrada'),
   ]);
 
-  // Em parte do historico legado, a Evolution nao devolveu receipts de entrega
-  // para mensagens ja registradas como `enviada`. Nesses casos, mantemos um
-  // fallback visual: se ainda nao existe nenhuma linha `entregue`, exibimos
-  // `enviadas - falhas` para o KPI de entregues, que bate com a expectativa
-  // operacional da tela.
-  const enviadasCount = enviadas ?? 0;
-  const entreguesCount = entregues ?? 0;
-  const falhasCount = falhas ?? 0;
-  const entreguesFallback = Math.max(0, enviadasCount - falhasCount);
+  const normalizadas = normalizarEstatisticasMensagens({
+    total,
+    enviadas,
+    entregues,
+    falhas,
+    recebidas,
+  });
 
   return {
-    total: total ?? 0,
-    enviadas: enviadasCount,
-    entregues: entreguesCount > 0 ? entreguesCount : entreguesFallback,
-    falhas: falhasCount,
-    recebidas: recebidas ?? 0,
+    ...normalizadas,
     desde,
   };
 }

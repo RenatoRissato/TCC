@@ -1,5 +1,6 @@
 import { TrendingUp } from 'lucide-react';
 import { DonutRing } from '../charts/DonutRing';
+import { AnimatedNumber } from '../shared/AnimatedNumber';
 import {
   STATUS_UI_DETALHADO_META,
   STATUS_UI_DETALHADO_ORDEM,
@@ -57,7 +58,7 @@ export function OccupancySummary({ summary }: OccupancySummaryProps) {
                 <meta.Icon size={15} color={meta.color} strokeWidth={2.5} />
                 <div className="min-w-0">
                   <p className="text-[18px] font-black m-0 leading-none" style={{ color: meta.color }}>
-                    {valor}
+                    <AnimatedNumber value={valor} />
                   </p>
                   <p className="text-[9px] font-bold text-white/55 m-0 tracking-[0.04em] truncate uppercase">
                     {meta.labelCompacto}
@@ -75,7 +76,9 @@ export function OccupancySummary({ summary }: OccupancySummaryProps) {
             <TrendingUp size={10} />
             Respostas recebidas
           </span>
-          <span className="text-[11px] font-bold text-pending">{pct}%</span>
+          <span className="text-[11px] font-bold text-pending">
+            <AnimatedNumber value={pct} suffix="%" />
+          </span>
         </div>
         <div className="h-1.5 bg-white/[0.08] rounded-md overflow-hidden">
           <div

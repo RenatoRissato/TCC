@@ -53,7 +53,6 @@ export function SettingsScreen() {
         isDark={isDark} isLg={isLg} isDesktop={isDesktop} paddingX={px}
         user={user}
         stats={headerStats}
-        onToggleTheme={toggleTheme}
         onOpenDrawer={openDrawer}
         onEditProfile={() => setEditProfile(true)}
       />

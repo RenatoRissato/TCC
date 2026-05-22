@@ -73,11 +73,19 @@ export function ConnectionStatus({
           }}
         >
           <div
-            className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center shrink-0"
+            className="relative w-[52px] h-[52px] rounded-2xl flex items-center justify-center shrink-0"
             style={{ background: conectado ? 'rgba(37,211,102,.15)' : 'rgba(220,53,69,.15)' }}
           >
+            {/* Pulse ring verde por tras do icone quando conectado — sinal
+                "vivo" de que o bot esta ativo. Some quando desconecta. */}
+            {conectado && (
+              <span
+                aria-hidden="true"
+                className="sr-pulse-ring absolute inset-0 rounded-2xl bg-whatsapp/35 pointer-events-none"
+              />
+            )}
             {conectado
-              ? <Wifi    size={26} color="#25D366" strokeWidth={2} />
+              ? <Wifi    size={26} color="#25D366" strokeWidth={2} className="relative" />
               : <WifiOff size={26} color="#DC3545" strokeWidth={2} />}
           </div>
           <div className="flex-1">
