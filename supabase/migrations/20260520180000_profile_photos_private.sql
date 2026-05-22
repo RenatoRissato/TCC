@@ -6,6 +6,7 @@ update storage.buckets
  where id = 'profile-photos';
 
 drop policy if exists "motorista_ler_fotos_perfil" on storage.objects;
+drop policy if exists "motorista_ler_propria_foto" on storage.objects;
 
 create policy "motorista_ler_propria_foto"
   on storage.objects
