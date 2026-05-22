@@ -16,6 +16,7 @@ import type { RouteConfig, WhatsAppUpdate } from '../types';
 import { RouteButton } from '../components/dashboard/RouteButton';
 import { UpdateRow } from '../components/dashboard/UpdateRow';
 import { OccupancySummary } from '../components/dashboard/OccupancySummary';
+import { NextDepartureCard } from '../components/dashboard/NextDepartureCard';
 import { GerenciarRotasModal } from '../components/dashboard/GerenciarRotasModal';
 import { NotificacoesPanel } from '../components/notificacoes/NotificacoesPanel';
 import { useNotificacoes } from '../hooks/useNotificacoes';
@@ -307,51 +308,86 @@ export function DashboardScreen() {
       )}
 
       <header
-        className={`relative overflow-hidden ${isDark ? 'bg-[linear-gradient(160deg,#0A0D12_0%,#161B22_100%)]' : 'bg-[linear-gradient(160deg,#161B22_0%,#212529_100%)]'}`}
-        style={{ padding: `${isDesktop ? 28 : 20}px ${pad}px ${isDesktop ? 36 : 32}px` }}
+        className="relative overflow-hidden"
+        style={{
+          // Gradient diagonal 3-tone — mesma identidade dos headers das
+          // outras telas (RouteScreen, Settings) pra consistencia visual.
+          background: 'linear-gradient(155deg, #0A0D12 0%, #161B22 55%, #1A1F26 100%)',
+          padding: `${isDesktop ? 32 : 20}px ${pad}px ${isDesktop ? 32 : 32}px`,
+        }}
       >
-        <div className="absolute -top-[50px] -right-[50px] w-[200px] h-[200px] rounded-full bg-pending/5 pointer-events-none" />
+        {/* Atmosfera: 2 halos radiais amarelos em diagonais opostas — sutis
+            mas dao volume ao header sem competir com a tipografia. */}
+        <div
+          aria-hidden="true"
+          className="absolute -top-32 -right-32 w-[420px] h-[420px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,193,7,0.10) 0%, transparent 65%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-24 -left-24 w-[340px] h-[340px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,193,7,0.05) 0%, transparent 65%)' }}
+        />
 
         <div className="flex items-center justify-between mb-5 relative z-10">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             {!isLg && (
-              <button onClick={openDrawer} className="touch-scale w-11 h-11 rounded-[14px] bg-white/[0.08] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer shrink-0" aria-label="Abrir menu de navegação">
-                <Menu size={20} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+              <button onClick={openDrawer} className="touch-scale sr-press w-11 h-11 rounded-[14px] bg-white/[0.06] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer shrink-0 hover:bg-white/[0.1] transition-colors" aria-label="Abrir menu de navegação">
+                <Menu size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
               </button>
             )}
-            {!isDesktop ? (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 bg-pending rounded-[11px] flex items-center justify-center">
-                  <span className="text-lg">🚌</span>
-                </div>
-                <div>
-                  <p className="text-[13px] font-extrabold text-pending m-0">SmartRoutes</p>
-                  <p className="text-[11px] text-white/35 m-0">{time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <p className="text-[11px] font-bold text-white/35 m-0 tracking-[0.08em] uppercase">Dashboard</p>
-                <p className="text-sm font-semibold text-white/65 m-0">{dateCap}</p>
+
+            {/* Logo visual: bus icon amarelo presente em todas as breakpoints.
+                Mesmo padrao (gradient 3-stops + glow + inset highlight) usado
+                nos headers de Rotas e Settings — identidade unica do app. */}
+            <div
+              className="shrink-0 rounded-[14px] flex items-center justify-center"
+              style={{
+                width: isDesktop ? 52 : 38,
+                height: isDesktop ? 52 : 38,
+                background: 'linear-gradient(135deg, #FFD54F 0%, #FFC107 50%, #E6A800 100%)',
+                boxShadow: '0 6px 22px -6px rgba(255,193,7,0.6), inset 0 1px 0 rgba(255,255,255,0.35)',
+              }}
+            >
+              <span style={{ fontSize: isDesktop ? 26 : 18, lineHeight: 1 }}>🚌</span>
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[11px] font-extrabold text-pending/80 m-0 tracking-[0.14em] uppercase leading-none">
+                Dashboard
+              </p>
+              <p className="text-[13px] font-semibold text-white/65 m-0 mt-1.5 truncate">
+                {isDesktop ? dateCap : time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 items-center">
+            {/* Hora visivel no desktop — antes so o mobile mostrava. Cria
+                ancora temporal alinhada com "Sexta-feira, 22 de maio" da
+                linha esquerda. */}
+            {isDesktop && (
+              <div className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-white/[0.04] border border-white/[0.08]">
+                <span className="text-[11px] font-bold text-white/40 tracking-[0.08em] uppercase">Agora</span>
+                <span className="text-[13px] font-extrabold text-white/85 tabular-nums">
+                  {time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
             )}
-          </div>
-          <div className="flex gap-2">
+
             {!isLg && (
-              <button onClick={toggleTheme} className={`touch-scale w-11 h-11 rounded-[14px] flex items-center justify-center cursor-pointer ${isDark ? 'bg-pending/15 border-[1.5px] border-pending/30' : 'bg-white/10 border-[1.5px] border-white/[0.08]'}`} aria-label="Alternar tema">
-                {isDark ? <SunMedium size={20} color="#FFC107" strokeWidth={2} /> : <Moon size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />}
+              <button onClick={toggleTheme} className={`touch-scale sr-press w-11 h-11 rounded-[14px] flex items-center justify-center cursor-pointer transition-colors ${isDark ? 'bg-white/[0.06] border-[1.5px] border-white/10 hover:bg-white/[0.1]' : 'bg-white/10 border-[1.5px] border-white/[0.08] hover:bg-white/15'}`} aria-label="Alternar tema">
+                {isDark ? <SunMedium size={20} color="rgba(255,255,255,0.85)" strokeWidth={2} /> : <Moon size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />}
               </button>
             )}
             <button
               onClick={() => setNotificacoesAberto(true)}
-              className="touch-scale relative w-11 h-11 rounded-[14px] bg-white/[0.08] border-0 flex items-center justify-center cursor-pointer"
+              className="touch-scale sr-press relative w-11 h-11 rounded-[14px] bg-white/[0.06] border-[1.5px] border-white/10 hover:bg-white/[0.1] transition-colors flex items-center justify-center cursor-pointer"
               aria-label={notificacoesNaoLidas > 0 ? `Notificações (${notificacoesNaoLidas} não lidas)` : 'Notificações'}
             >
-              <Bell size={20} color="rgba(255,255,255,0.75)" strokeWidth={2} />
+              <Bell size={20} color="rgba(255,255,255,0.85)" strokeWidth={2} />
               {notificacoesNaoLidas > 0 && (
                 <>
-                  {/* Pulse ring por tras do badge — chama atencao quando ha
-                      notificacoes novas, some quando o motorista abrir. */}
                   <span
                     aria-hidden="true"
                     className="sr-pulse-ring absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-pending/40 pointer-events-none"
@@ -366,26 +402,52 @@ export function DashboardScreen() {
         </div>
 
         <div className="relative z-10">
-          <h1 className={`font-black text-white m-0 mb-1 leading-[1.1] ${isDesktop ? 'text-[34px]' : 'text-[26px]'}`}>
-            Olá, <span className="text-pending">{firstName}!</span> 👋
+          <h1 className={`font-black text-white m-0 leading-[1.1] tracking-tight ${isDesktop ? 'text-[36px]' : 'text-[26px]'}`} style={{ letterSpacing: '-0.025em' }}>
+            Olá, <span className="text-pending">{firstName}!</span>{' '}
+            <span aria-hidden="true" className="inline-block">👋</span>
           </h1>
-          {!isDesktop && <p className="text-[13px] text-white/50 m-0">{dateCap}</p>}
+          {!isDesktop && <p className="text-[13px] text-white/50 m-0 mt-1">{dateCap}</p>}
         </div>
 
-        <div className="flex items-center gap-1.5 mt-2.5 relative z-10">
-          <span className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-[#4ADE80]" />
-          <Wifi size={12} color="rgba(255,255,255,0.3)" />
-          <span className="text-[11px] text-white/40 font-medium">Sincronizando respostas em tempo real</span>
+        {/* Pill de status realtime — substitui o texto solto "Sincronizando
+            respostas em tempo real". Verde + sr-pulse-ring deixa claro
+            visualmente que o canal esta ativo. */}
+        <div className="mt-3.5 relative z-10 inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
+          style={{
+            background: 'rgba(74,222,128,0.10)',
+            border: '1px solid rgba(74,222,128,0.28)',
+          }}
+        >
+          <span className="relative inline-flex">
+            <span aria-hidden="true" className="sr-pulse-ring absolute inset-0 rounded-full bg-[#4ADE80]/50" />
+            <span className="relative inline-block w-2 h-2 rounded-full bg-[#4ADE80]" />
+          </span>
+          <span className="text-[11px] font-extrabold text-[#4ADE80] tracking-[0.08em] uppercase">Ao vivo</span>
+          <span className="text-[11px] text-white/45 font-medium">
+            Sincronizando respostas em tempo real
+          </span>
         </div>
 
         {isDesktop && (
-          <div className="flex flex-wrap gap-3 mt-6 relative z-10">
+          <div className="flex flex-wrap gap-2.5 mt-6 relative z-10">
             {desktopStats.map(({ n, l, c, bg }) => (
-              <div key={l} className="sr-card-lift flex flex-col items-center rounded-2xl px-4 py-3 min-w-[88px] flex-1" style={{ background: bg }}>
-                <span className="text-[28px] font-black leading-none" style={{ color: c }}>
+              <div
+                key={l}
+                className="sr-card-lift group flex flex-col items-center justify-center rounded-2xl px-4 py-3.5 min-w-[88px] flex-1 transition-colors"
+                style={{
+                  background: bg,
+                  // Border sutil na cor da metrica — comunica o "tipo" mesmo
+                  // sem ler a label. No hover (via sr-card-lift) o card sobe
+                  // 2px com shadow elevada.
+                  border: `1px solid ${c}33`,
+                }}
+              >
+                <span className="text-[28px] font-black leading-none mb-1.5" style={{ color: c }}>
                   <AnimatedNumber value={n} />
                 </span>
-                <span className="text-[10px] font-bold text-white/55 tracking-[0.06em] mt-1 whitespace-nowrap">{l}</span>
+                <span className="text-[10px] font-extrabold tracking-[0.08em] whitespace-nowrap uppercase" style={{ color: `${c}A6` }}>
+                  {l}
+                </span>
               </div>
             ))}
           </div>
@@ -396,6 +458,17 @@ export function DashboardScreen() {
         <div className={isDesktop ? 'grid grid-cols-[1fr_380px] gap-7 items-start' : ''}>
           <div>
             {!isDesktop && <OccupancySummary summary={s} />}
+
+            {/* Desktop: card de proxima saida acima da lista de rotas.
+                Renderiza so se houver rotas com horario_saida valido
+                (componente devolve null caso contrario). Click navega
+                pra tela de rotas com filtro pre-aplicado. */}
+            {isDesktop && (
+              <NextDepartureCard
+                routes={routeConfigsVisiveis}
+                onClick={(r) => navigate(r.rotaId ? `/routes?rota=${r.rotaId}` : '/routes')}
+              />
+            )}
 
             <SectionHead
               label="ROTAS DE HOJE"
@@ -455,7 +528,7 @@ export function DashboardScreen() {
                   { emoji: '📨', label: 'Enviar Mensagens', desc: `${s.pending} aguardando resposta`, to: '/whatsapp' },
                   { emoji: '📋', label: 'Lista Completa',  desc: `${passengers.length} passageiros`,  to: '/routes'   },
                 ].map(btn => (
-                  <button key={btn.label} onClick={() => navigate(btn.to)} className="touch-scale flex items-center gap-3.5 bg-panel border-[1.5px] border-app-border rounded-[18px] px-[18px] py-4 cursor-pointer font-sans shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.5)] text-left">
+                  <button key={btn.label} onClick={() => navigate(btn.to)} className="touch-scale sr-card-lift flex items-center gap-3.5 bg-panel border-[1.5px] border-app-border rounded-[18px] px-[18px] py-4 cursor-pointer font-sans shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.5)] text-left">
                     <div className="w-11 h-11 bg-pending/10 rounded-[13px] flex items-center justify-center text-[22px] shrink-0">{btn.emoji}</div>
                     <div className="flex-1">
                       <p className="text-sm font-bold text-ink m-0">{btn.label}</p>
@@ -466,6 +539,7 @@ export function DashboardScreen() {
                 ))}
               </div>
             )}
+
 
             {!isDesktop && s.pending > 0 && (
               <div className="flex items-center gap-3 bg-pending/10 border-[1.5px] border-pending/30 rounded-2xl px-4 py-3.5 mb-6">
