@@ -174,3 +174,21 @@ html:not(.dark) .sr-skeleton {
     scroll-behavior: auto !important;
   }
 }
+
+/* Focus-visible global — garante que TODO elemento focavel via teclado
+   ganha um ring amarelo perceptivel, mesmo onde o autor esqueceu de
+   definir um focus state custom. Mouse users nao veem o ring (apenas
+   :focus-visible, nao :focus simples). */
+@media (any-hover: hover) {
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid #FFC107;
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}
+/* Em touch (sem hover), o ring atrapalha mais que ajuda — VoiceOver e
+   TalkBack ja anunciam o elemento focado por outros meios. Mantemos
+   so a versao desktop/teclado. */

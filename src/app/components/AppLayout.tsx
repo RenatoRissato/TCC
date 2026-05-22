@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
+import { AnimatePresence, motion } from 'motion/react';
 import { BottomNav } from './BottomNav';
 import { SideNav } from './SideNav';
 import { FabPlay } from './FabPlay';
@@ -146,7 +147,22 @@ export function AppLayout() {
             overflowX: 'hidden',
             WebkitOverflowScrolling: 'touch',
           }}>
-            <Outlet />
+            {/* Page transition leve entre rotas — usa pathname como key, entao
+                cada mudanca de tela dispara fade-in. mode="wait" garante que
+                a tela atual termina de sair antes da proxima entrar (evita
+                stacking visual). prefers-reduced-motion ja e respeitado via
+                regra global em styles/index.css. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={pathname}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
           </main>
 
           {/* Bottom nav — only below lg breakpoint */}
