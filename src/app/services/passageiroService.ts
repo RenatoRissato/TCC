@@ -3,6 +3,7 @@ import type { PassageiroRow, ConfirmacaoRow, RotaRow, ObservacoesPassageiro, Tip
 import type { Passenger, RouteType, StudentStatus, Summary } from '../types';
 import { formatarEnderecoCompleto } from '../utils/maps';
 import { logClientDebug, logClientError } from '../utils/clientLogger';
+import { dataBrasilISO } from '../utils/datas';
 import { obterRota } from './rotaService';
 
 /**
@@ -108,7 +109,7 @@ export async function listarPassageiros(): Promise<Passenger[]> {
     return [];
   }
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataBrasilISO();
   const { data: viagens } = await supabase
     .from('viagens')
     .select('id')
@@ -308,7 +309,7 @@ export async function listarPassageirosDaRota(
   rotaId: string,
   direcao?: 'buscar' | 'retorno',
 ): Promise<string[]> {
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataBrasilISO();
 
   // 1) Busca viagem do dia (se houver) para aplicar filtros baseados nas
   //    confirmações respondidas.

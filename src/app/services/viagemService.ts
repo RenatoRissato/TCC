@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type { ViagemRow, RotaRow, StatusConfirmacao, TipoConfirmacao, DirecaoViagem } from '../types/database';
 import { logClientError } from '../utils/clientLogger';
+import { dataBrasilISO } from '../utils/datas';
 
 export interface IniciarViagemResultado {
   viagem_id: string;
@@ -108,7 +109,7 @@ export async function reenviarConfirmacao(confirmacaoId: string): Promise<Reenvi
 }
 
 export async function buscarViagemDoDia(rotaId: string): Promise<ViagemRow | null> {
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataBrasilISO();
   const { data, error } = await supabase
     .from('viagens')
     .select('*')

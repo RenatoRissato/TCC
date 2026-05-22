@@ -1,20 +1,10 @@
 import { supabase } from '../../lib/supabase';
 import type { StatusUIDetalhado } from '../utils/confirmacaoStatus';
 import { logClientError } from '../utils/clientLogger';
+import { dataBrasilISO } from '../utils/datas';
 
-// ─────────────────────────────────────────────────────────────────────────
-// Helpers de data (fuso de Brasília)
-// ─────────────────────────────────────────────────────────────────────────
-const TZ = 'America/Sao_Paulo';
-
-/** Data atual em ISO (YYYY-MM-DD) no fuso de Brasília. */
-export function dataBrasilISO(date = new Date()): string {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(date);
-  const get = (t: string) => partes.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
+// Re-export para nao quebrar imports existentes que pegavam daqui.
+export { dataBrasilISO };
 
 function addDias(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number);

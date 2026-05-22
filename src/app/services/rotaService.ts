@@ -3,6 +3,7 @@ import type { RotaRow, TurnoRota, DestinoRota } from '../types/database';
 import type { RouteConfig, RouteType } from '../types';
 import { formatarEnderecoCompleto } from '../utils/maps';
 import { logClientError } from '../utils/clientLogger';
+import { dataBrasilISO } from '../utils/datas';
 
 const ROUTE_META: Record<RouteType, { emoji: string; color: string; darkBg: boolean }> = {
   morning:   { emoji: '☀️',  color: '#FFC107', darkBg: false },
@@ -285,7 +286,7 @@ export async function validarRotaParaInicio(rotaId: string): Promise<ValidacaoRo
   //    estejam ausentes, não faz sentido sair: o motorista perderia o tempo
   //    rodando pra ninguém. Mostramos um aviso amigável e abortamos antes
   //    de abrir o Google Maps.
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataBrasilISO();
   const { data: viagem } = await supabase
     .from('viagens')
     .select('id')
