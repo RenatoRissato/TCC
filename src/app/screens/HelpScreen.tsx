@@ -42,7 +42,7 @@ interface FaqRowProps {
 }
 function FaqRow({ item, aberto, onToggle }: FaqRowProps) {
   return (
-    <div className="bg-panel border-[1.5px] border-app-border rounded-[14px] overflow-hidden transition-colors">
+    <div className={`sr-card-lift bg-panel border-[1.5px] rounded-[14px] overflow-hidden transition-all ${aberto ? 'border-[#14B8A6]/40' : 'border-app-border'}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -50,15 +50,23 @@ function FaqRow({ item, aberto, onToggle }: FaqRowProps) {
         className="w-full flex items-center gap-3 px-4 py-3 bg-transparent border-0 cursor-pointer text-left"
       >
         <span className="flex-1 text-[13.5px] font-bold text-ink m-0">{item.pergunta}</span>
-        <ChevronDown
-          size={18}
-          className="shrink-0 text-ink-soft transition-transform"
-          strokeWidth={2.5}
-          style={{ transform: aberto ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        />
+        <span
+          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+          style={{
+            background: aberto ? 'rgba(20,184,166,0.15)' : 'var(--field)',
+            color: aberto ? '#14B8A6' : 'var(--ink-soft)',
+          }}
+        >
+          <ChevronDown
+            size={16}
+            className="transition-transform"
+            strokeWidth={2.5}
+            style={{ transform: aberto ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </span>
       </button>
       {aberto && (
-        <div className="px-4 pb-4 border-t border-divider pt-3">
+        <div className="px-4 pb-4 border-t border-divider pt-3 sr-fade-up">
           <RespostaTexto texto={item.resposta} />
         </div>
       )}
@@ -125,42 +133,75 @@ export function HelpScreen() {
 
   return (
     <div className="bg-surface min-h-full transition-colors">
-      <header className="bg-[#212529] pt-4 pb-5" style={{ paddingLeft: px, paddingRight: px }}>
-        <div className="flex items-center gap-2.5 mb-3">
+      <header
+        className="relative overflow-hidden pt-4 pb-5"
+        style={{
+          // Mesmo gradient base dos outros headers do app — consistencia.
+          // Cor temática vem via halos coloridos no canto, nao no fundo.
+          background: 'linear-gradient(155deg, #0A0D12 0%, #161B22 55%, #1A1F26 100%)',
+          paddingLeft: px,
+          paddingRight: px,
+        }}
+      >
+        {/* Halos radiais TEAL (cor da Central de Ajuda no Settings) — sutis,
+            dao identidade tematica ao header sem chocar com a paleta. */}
+        <div
+          aria-hidden="true"
+          className="absolute -top-24 -right-24 w-[360px] h-[360px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 65%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-20 -left-20 w-[280px] h-[280px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.07) 0%, transparent 65%)' }}
+        />
+
+        <div className="relative flex items-center gap-2.5 mb-3.5">
           {!isLg && (
             <button
               onClick={openDrawer}
-              className="touch-scale shrink-0 w-10 h-10 rounded-xl bg-white/[0.08] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer"
+              className="touch-scale sr-press shrink-0 w-11 h-11 rounded-[14px] bg-white/[0.06] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/[0.1] transition-colors"
               aria-label="Abrir menu"
             >
-              <Menu size={18} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+              <Menu size={18} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
             </button>
           )}
           <button
             onClick={() => navigate(-1)}
-            className="touch-scale shrink-0 w-10 h-10 rounded-xl bg-white/[0.08] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer"
+            className="touch-scale sr-press shrink-0 w-11 h-11 rounded-[14px] bg-white/[0.06] border-[1.5px] border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/[0.1] transition-colors"
             aria-label="Voltar"
           >
-            <ArrowLeft size={18} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+            <ArrowLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
           </button>
+
+          {/* Icone tematico — gradient teal 3-stops + glow + inset highlight,
+              mesma assinatura visual dos icones de header de outras telas
+              (bus amarelo, pin amarelo, avatar amarelo) — so muda a cor. */}
+          <div
+            className="shrink-0 w-12 h-12 rounded-[15px] flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg, #2DD4BF 0%, #14B8A6 50%, #0F766E 100%)',
+              boxShadow: '0 6px 22px -6px rgba(20,184,166,0.6), inset 0 1px 0 rgba(255,255,255,0.35)',
+            }}
+          >
+            <BookOpen size={22} color="#fff" strokeWidth={2.2} />
+          </div>
+
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold text-[#14B8A6] tracking-[0.12em] uppercase m-0">
-              SUPORTE & AJUDA
+            <p className="text-[10px] font-extrabold text-[#2DD4BF] tracking-[0.14em] uppercase m-0 leading-none">
+              Suporte & Ajuda
             </p>
-            <h1 className="text-lg font-extrabold text-white m-0 leading-tight">
+            <h1 className="text-[22px] font-black text-white m-0 mt-1.5 leading-none tracking-tight" style={{ letterSpacing: '-0.02em' }}>
               Central de Ajuda
             </h1>
           </div>
-          <div className="hidden md:flex shrink-0 w-10 h-10 rounded-xl bg-[#14B8A6]/15 items-center justify-center">
-            <BookOpen size={18} color="#14B8A6" strokeWidth={2.2} />
-          </div>
         </div>
 
-        {/* Campo de busca */}
+        {/* Campo de busca — focus state troca pra teal pra reforcar contexto */}
         <div className="relative">
           <Search
             size={16}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40"
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40 z-10"
             strokeWidth={2}
           />
           <input
@@ -168,24 +209,26 @@ export function HelpScreen() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar dúvidas (ex: WhatsApp, rota, finalizar...)"
-            className="w-full box-border bg-white/[0.08] border-[1.5px] border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-white/40 outline-none font-sans min-h-[44px] focus:border-[#14B8A6]/50 focus:bg-white/[0.12]"
+            className="relative w-full box-border bg-white/[0.06] border-[1.5px] border-white/10 rounded-[14px] pl-10 pr-10 py-2.5 text-sm text-white placeholder:text-white/35 outline-none font-sans min-h-[46px] transition-[border-color,background-color] focus:border-[#14B8A6]/55 focus:bg-white/[0.09]"
           />
           {busca && (
             <button
               type="button"
               onClick={() => setBusca('')}
               aria-label="Limpar busca"
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/[0.08] border-0 flex items-center justify-center cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/15 border-0 flex items-center justify-center cursor-pointer hover:bg-white/25 transition-colors z-10"
             >
-              <X size={13} className="text-white/60" strokeWidth={2.5} />
+              <X size={13} className="text-white/80" strokeWidth={2.5} />
             </button>
           )}
         </div>
       </header>
 
       <div style={{ padding: `${isDesktop ? 24 : 16}px ${px}px ${isDesktop ? 36 : 80}px` }}>
-        {/* Chips de categoria */}
-        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-3 mb-1 hide-scrollbar">
+        {/* Chips de categoria — mesmo padrao dos chips de status em RouteScreen:
+            sr-no-scrollbar pra esconder a barra horizontal, sr-press pro feedback
+            tatil, ativo ganha glow teal. */}
+        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-3 mb-1 sr-no-scrollbar">
           {[{ id: 'todas', label: 'Todas', emoji: '✨' }, ...CATEGORIAS_FAQ].map((c) => {
             const ativa = categoria === c.id;
             const qtd = contagens[c.id] ?? 0;
@@ -194,20 +237,22 @@ export function HelpScreen() {
                 key={c.id}
                 type="button"
                 onClick={() => setCategoria(c.id)}
-                className="touch-scale shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[12px] font-bold cursor-pointer transition-colors min-h-[36px]"
+                aria-pressed={ativa}
+                className="sr-press shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold cursor-pointer transition-all min-h-[38px]"
                 style={{
-                  background: ativa ? '#14B8A6' : 'transparent',
-                  color: ativa ? '#0A2A28' : 'var(--ink-soft)',
+                  background: ativa ? '#14B8A6' : 'var(--field)',
+                  color: ativa ? '#fff' : 'var(--ink-soft)',
                   border: `1.5px solid ${ativa ? '#14B8A6' : 'var(--app-border)'}`,
+                  boxShadow: ativa ? '0 6px 18px rgba(20,184,166,0.35)' : 'none',
                 }}
               >
                 <span>{c.emoji}</span>
                 <span>{c.label}</span>
                 <span
-                  className="text-[10px] font-extrabold rounded-full px-1.5 py-[1px] min-w-[18px] text-center"
+                  className="text-[10px] font-extrabold rounded-full px-1.5 py-[1px] min-w-[18px] text-center leading-none flex items-center justify-center"
                   style={{
-                    background: ativa ? 'rgba(10,42,40,0.18)' : 'var(--field)',
-                    color: ativa ? '#0A2A28' : 'var(--ink-muted)',
+                    background: ativa ? 'rgba(255,255,255,0.25)' : 'rgba(20,184,166,0.12)',
+                    color: ativa ? '#fff' : '#14B8A6',
                   }}
                 >
                   {qtd}

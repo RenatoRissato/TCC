@@ -13,8 +13,8 @@ function CookieSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[22px] border-[1.5px] border-app-border bg-panel p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
-      <h2 className="m-0 mb-3 text-base font-black text-ink">{title}</h2>
+    <section className="sr-card-lift rounded-[22px] border-[1.5px] border-app-border bg-panel p-5 shadow-[0_2px_12px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_16px_rgba(0,0,0,0.45)]">
+      <h2 className="m-0 mb-3 text-base font-black text-ink tracking-tight">{title}</h2>
       <div className="space-y-2 text-sm leading-relaxed text-ink-soft">{children}</div>
     </section>
   );
@@ -29,26 +29,55 @@ export function CookiePolicyScreen() {
   return (
     <div className="min-h-full bg-surface transition-colors">
       <header
-        className="bg-[linear-gradient(160deg,#B7791F,#D97706)]"
-        style={{ padding: `${isDesktop ? 28 : 20}px ${px}px ${isDesktop ? 34 : 28}px` }}
+        className="relative overflow-hidden"
+        style={{
+          // Padrao consistente — gradient dark + halos amber (cor tematica
+          // da pagina de cookies, igual ao botao "Gerenciar cookies" abaixo).
+          background: 'linear-gradient(155deg, #0A0D12 0%, #161B22 55%, #1A1F26 100%)',
+          padding: `${isDesktop ? 32 : 22}px ${px}px ${isDesktop ? 36 : 30}px`,
+        }}
       >
-        <div className="flex items-center gap-3">
+        <div
+          aria-hidden="true"
+          className="absolute -top-24 -right-24 w-[380px] h-[380px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(217,119,6,0.20) 0%, transparent 65%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-20 -left-20 w-[300px] h-[300px] pointer-events-none rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(217,119,6,0.08) 0%, transparent 65%)' }}
+        />
+
+        <div className="relative flex items-center gap-3">
           <button
             type="button"
             onClick={() => (isLg ? navigate(-1) : openDrawer())}
-            className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-white/15 bg-white/10"
+            className="sr-press flex h-11 w-11 items-center justify-center rounded-[14px] border-[1.5px] border-white/10 bg-white/[0.06] hover:bg-white/[0.1] transition-colors"
             aria-label={isLg ? 'Voltar' : 'Abrir menu'}
           >
-            <ArrowLeft size={20} color="#fff" strokeWidth={2.4} />
+            <ArrowLeft size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
           </button>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
-            <Cookie size={24} color="#fff" strokeWidth={2.3} />
+
+          <div
+            className="shrink-0 flex h-12 w-12 items-center justify-center rounded-[15px]"
+            style={{
+              background: 'linear-gradient(135deg, #FBBF24 0%, #D97706 50%, #B7791F 100%)',
+              boxShadow: '0 6px 22px -6px rgba(217,119,6,0.65), inset 0 1px 0 rgba(255,255,255,0.3)',
+            }}
+          >
+            <Cookie size={22} color="#fff" strokeWidth={2.3} />
           </div>
-          <div>
-            <p className="m-0 text-[11px] font-bold uppercase tracking-[0.08em] text-white/65">
+
+          <div className="min-w-0">
+            <p className="m-0 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#FBBF24] leading-none">
               Consentimento
             </p>
-            <h1 className="m-0 text-2xl font-black leading-tight text-white">Política de Cookies</h1>
+            <h1
+              className="m-0 mt-1.5 text-[22px] font-black leading-none text-white tracking-tight"
+              style={{ letterSpacing: '-0.02em' }}
+            >
+              Política de Cookies
+            </h1>
           </div>
         </div>
       </header>
