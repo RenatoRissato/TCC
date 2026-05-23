@@ -270,6 +270,7 @@ export function DashboardScreen() {
     [routeConfigsVisiveis, rotaOtimizandoId],
   );
   const etapaOtimizacao = ETAPAS_OTIMIZACAO[etapaOtimizacaoIndex] ?? ETAPAS_OTIMIZACAO[0];
+  const mostrarProximaSaida = isMd;
 
   // Stats detalhados — quebra "indo" em 3 tipos (ida e volta / só ida / só
   // volta), mantém "não vai" e "pendente", e fecha com "total". 6 caixas no
@@ -459,11 +460,12 @@ export function DashboardScreen() {
           <div>
             {!isDesktop && <OccupancySummary summary={s} />}
 
-            {/* Desktop: card de proxima saida acima da lista de rotas.
+            {/* Tablet/notebook/desktop: card de proxima saida acima da lista de rotas.
+                Fica oculto em celular para preservar o layout compacto.
                 Renderiza so se houver rotas com horario_saida valido
                 (componente devolve null caso contrario). Click navega
                 pra tela de rotas com filtro pre-aplicado. */}
-            {isDesktop && (
+            {mostrarProximaSaida && (
               <NextDepartureCard
                 routes={routeConfigsVisiveis}
                 onClick={(r) => navigate(r.rotaId ? `/routes?rota=${r.rotaId}` : '/routes')}

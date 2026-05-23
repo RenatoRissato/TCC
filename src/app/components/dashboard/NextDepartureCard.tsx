@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Clock, Users } from 'lucide-react';
 import type { RouteConfig } from '../../types';
 
+const TIME_ZONE_BR = 'America/Sao_Paulo';
+
 interface NextDepartureCardProps {
   routes: RouteConfig[];
   onClick?: (route: RouteConfig) => void;
@@ -127,10 +129,21 @@ interface ProximaSaida {
  * Acha a rota futura mais proxima (no mesmo dia) baseado em RouteConfig.time
  * comparado com o horario atual. Retorna null se nao ha mais saidas hoje.
  */
-function calcularProximaSaida(routes: RouteConfig[]): ProximaSaida | null {
-  const agora = new Date();
-  const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+function minutosAgoraBrasil(date = new Date()): number {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE_BR,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) => partes.find((p) => p.type === type)?.value ?? '';
+  const hora = Number.parseInt(get('hour'), 10);
+  const minuto = Number.parseInt(get('minute'), 10);
+  return hora * 60 + minuto;
+}
 
+function calcularProximaSaida(routes: RouteConfig[]): ProximaSaida | null {
+  const agoraMin = minutosAgoraBrasil();
   const candidatos: ProximaSaida[] = [];
   for (const r of routes) {
     if (!r.time) continue;
