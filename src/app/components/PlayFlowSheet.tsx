@@ -34,6 +34,32 @@ const ROUTE_TYPE_ICON: Record<RouteType, typeof Sunrise> = {
   night: Moon,
 };
 
+function abrirMapsManual(url: string): void {
+  const novaJanela = window.open(url, '_blank');
+  if (novaJanela) {
+    try {
+      novaJanela.opener = null;
+      novaJanela.focus();
+      return;
+    } catch {
+      // Se o navegador restringir a nova aba, abrimos no contexto atual.
+    }
+  }
+
+  window.location.assign(url);
+}
+
+function mostrarFallbackMaps(url: string): void {
+  toast('Abra o trajeto manualmente', {
+    description: 'O navegador bloqueou a abertura automatica do Google Maps.',
+    duration: 12000,
+    action: {
+      label: 'Abrir Maps',
+      onClick: () => abrirMapsManual(url),
+    },
+  });
+}
+
 // Etapa 1 — Card de rota selecionável
 function CardRota({ rota, onSelect }: { rota: RouteConfig; onSelect: () => void }) {
   const Icon = ROUTE_TYPE_ICON[rota.type];
@@ -298,7 +324,11 @@ export function PlayFlowSheet() {
 
       const url = montarUrlGoogleMaps(origem, paradas);
       if (url) {
-        abrirEmNovaAba(janelaMaps, url);
+        const abriuMaps = abrirEmNovaAba(janelaMaps, url);
+        if (!abriuMaps) {
+          janelaMaps?.close();
+          mostrarFallbackMaps(url);
+        }
       } else {
         janelaMaps?.close();
         toast.error('Não foi possível montar o trajeto. Verifique os endereços cadastrados.');

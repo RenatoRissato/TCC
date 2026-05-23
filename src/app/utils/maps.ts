@@ -74,19 +74,32 @@ export function montarUrlGoogleMaps(
  * Quando precisamos chamar após `await`, abrimos uma janela vazia ANTES
  * (ainda síncrono) e setamos `.location` depois.
  */
-export function abrirEmNovaAba(janelaPreAberta: Window | null, url: string): void {
+export function abrirEmNovaAba(janelaPreAberta: Window | null, url: string): boolean {
   if (deveAbrirMapsNoMesmoContexto()) {
     window.location.assign(url);
-    return;
+    return true;
   }
 
   if (janelaPreAberta && !janelaPreAberta.closed) {
-    janelaPreAberta.location.replace(url);
-    janelaPreAberta.focus();
-    return;
+    try {
+      janelaPreAberta.location.replace(url);
+      janelaPreAberta.focus();
+      return true;
+    } catch {
+      try {
+        janelaPreAberta.close();
+      } catch {
+        // Alguns navegadores bloqueiam tambem o controle da aba pre-aberta.
+      }
+      return false;
+    }
   }
   // Fallback: tenta abrir mesmo assim (pode ser bloqueado).
   const novaJanela = window.open(url, '_blank');
+  if (!novaJanela) {
+    return false;
+  }
+
   if (novaJanela) {
     try {
       novaJanela.opener = null;
@@ -95,4 +108,6 @@ export function abrirEmNovaAba(janelaPreAberta: Window | null, url: string): voi
       // Ignora restrições específicas do navegador.
     }
   }
+
+  return true;
 }
