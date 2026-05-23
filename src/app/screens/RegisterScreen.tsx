@@ -31,6 +31,7 @@ interface FormErrors {
   vehicleBrand?: string;
   vehicleModel?: string;
   vehicleYear?: string;
+  legal?: string;
 }
 
 /* ─── Password strength bar ────────────────────────────────────────── */
@@ -512,6 +513,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
   const [success,     setSuccess]     = useState(false);
   const [needsConfirmEmail, setNeedsConfirmEmail] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   const set = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [field]: e.target.value }));
@@ -529,6 +531,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     if (!form.vehicleYear.trim()) e.vehicleYear = 'Ano e obrigatorio';
     if (form.password.length < 6)      e.password = 'Senha deve ter ao menos 6 caracteres';
     if (form.password !== form.confirm) e.confirm  = 'As senhas não coincidem';
+    if (!acceptedLegal) e.legal = 'Aceite os Termos de Uso e a Politica de Privacidade para continuar.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -713,18 +716,33 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
         } />
 
       {/* Terms */}
-      <div style={{ background: isDark ? 'rgba(255,193,7,0.08)' : 'rgba(255,193,7,0.08)', border: `1.5px solid rgba(255,193,7,${isDark ? '0.2' : '0.3'})`, borderRadius: 14, padding: '12px 14px', marginBottom: 26, display: 'flex', gap: 10 }}>
-        <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
-        <p style={{ fontSize: 12, color: isDark ? 'rgba(255,193,7,0.8)' : '#5D4E00', margin: 0, lineHeight: 1.6 }}>
-          Ao criar sua conta, você concorda com os{' '}
+      <div style={{ background: isDark ? 'rgba(255,193,7,0.08)' : 'rgba(255,193,7,0.08)', border: `1.5px solid ${errors.legal ? '#DC3545' : `rgba(255,193,7,${isDark ? '0.2' : '0.3'})`}`, borderRadius: 14, padding: '12px 14px', marginBottom: errors.legal ? 8 : 26, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <input
+          id="reg-legal-accept"
+          type="checkbox"
+          checked={acceptedLegal}
+          onChange={e => {
+            setAcceptedLegal(e.target.checked);
+            setErrors(er => ({ ...er, legal: undefined }));
+          }}
+          aria-describedby={errors.legal ? 'reg-legal-error' : undefined}
+          style={{ width: 18, height: 18, margin: '2px 0 0', flexShrink: 0, accentColor: '#FFC107', cursor: 'pointer' }}
+        />
+        <label htmlFor="reg-legal-accept" style={{ fontSize: 12, color: isDark ? 'rgba(255,193,7,0.86)' : '#5D4E00', margin: 0, lineHeight: 1.6, cursor: 'pointer' }}>
+          Li e aceito os{' '}
           <button type="button" style={{ background: 'none', border: 'none', color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>
             Termos de Uso
           </button>{' '}e a{' '}
           <button type="button" style={{ background: 'none', border: 'none', color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>
-            Política de Privacidade
+            Politica de Privacidade
           </button>.
-        </p>
+        </label>
       </div>
+      {errors.legal && (
+        <p id="reg-legal-error" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#DC3545', fontWeight: 600, margin: '0 0 18px' }}>
+          <AlertCircle size={12} strokeWidth={2.5} /> {errors.legal}
+        </p>
+      )}
 
       {/* Submit error */}
       {submitError && (
@@ -735,17 +753,17 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
       )}
 
       {/* Submit */}
-      <button type="submit" disabled={loading}
+      <button type="submit" disabled={loading || !acceptedLegal}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          background: loading ? 'rgba(255,193,7,0.7)' : '#FFC107', color: '#212529',
+          background: (loading || !acceptedLegal) ? 'rgba(255,193,7,0.55)' : '#FFC107', color: '#212529',
           border: 'none', borderRadius: 16, padding: '16px 24px',
           fontSize: 16, fontWeight: 800, fontFamily: 'Inter, sans-serif',
-          cursor: loading ? 'not-allowed' : 'pointer', minHeight: 56,
+          cursor: (loading || !acceptedLegal) ? 'not-allowed' : 'pointer', minHeight: 56,
           boxShadow: '0 4px 20px rgba(255,193,7,0.4)',
           transition: 'all 0.2s', letterSpacing: 0.2,
         }}
-        onMouseEnter={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(255,193,7,0.55)'; }}
+        onMouseEnter={e => { if (!loading && acceptedLegal) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(255,193,7,0.55)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(255,193,7,0.4)'; }}>
         {loading ? <><Spinner /> Criando conta...</> : <>Criar Conta <ArrowRight size={18} strokeWidth={2.5} /></>}
       </button>
