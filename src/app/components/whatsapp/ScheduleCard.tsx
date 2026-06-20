@@ -189,7 +189,7 @@ export function ScheduleCard({
           >
             {salvando
               ? <><Spinner size={17} />Salvando...</>
-              : <><Save size={17} strokeWidth={2.5} />Salvar Configuracoes</>}
+              : <><Save size={17} strokeWidth={2.5} />Salvar Configurações</>}
           </button>
           {desabilitado && (
             <p className="text-[11px] text-ink-muted text-center mt-2 m-0">
