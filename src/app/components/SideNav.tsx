@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router';
-import { Home, MapPin, MessageCircle, Settings, LogOut, SunMedium, Moon, ChevronRight, X } from 'lucide-react';
+import { Home, UsersRound, MessageCircle, Settings, LogOut, SunMedium, Moon, ChevronRight, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePassengers } from '../hooks/usePassengers';
@@ -17,7 +17,7 @@ export function SideNav({ onClose }: { onClose?: () => void } = {}) {
 
   const NAV_ITEMS = [
     { path: '/home',     label: 'Início',      sub: 'Visão geral',          Icon: Home,          badge: 0 },
-    { path: '/routes',   label: 'Rotas',        sub: 'Lista de passageiros', Icon: MapPin,        badge: counts.pending },
+    { path: '/routes',   label: 'Alunos',       sub: 'Lista de passageiros', Icon: UsersRound,    badge: counts.pending },
     { path: '/whatsapp', label: 'WhatsApp',     sub: 'Integração & Bot',     Icon: MessageCircle, badge: 0 },
     { path: '/settings', label: 'Config.',      sub: 'Perfil & dashboards',  Icon: Settings,      badge: 0 },
   ] as const;

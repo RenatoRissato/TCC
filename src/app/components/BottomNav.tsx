@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router';
-import { Home, MapPin, MessageCircle, Settings } from 'lucide-react';
+import { Home, UsersRound, MessageCircle, Settings } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { usePassengers } from '../hooks/usePassengers';
 import { FabPlay } from './FabPlay';
@@ -16,7 +16,7 @@ export function BottomNav() {
   // ícones fiquem equidistantes nas laterais.
   const NAV_LEFT = [
     { path: '/home',     label: 'Home',     Icon: Home },
-    { path: '/routes',   label: 'Rotas',    Icon: MapPin,        badge: counts.pending },
+    { path: '/routes',   label: 'Alunos',   Icon: UsersRound,    badge: counts.pending },
   ];
   const NAV_RIGHT = [
     { path: '/whatsapp', label: 'WhatsApp', Icon: MessageCircle },
