@@ -1,6 +1,30 @@
 ﻿# Backend SmartRoutes — Edge Functions
 
-Backend serverless do SmartRoutes em Supabase Edge Functions (Deno + TypeScript). Toda a lógica que toca a Evolution API roda aqui — credenciais nunca chegam ao frontend.
+![Deno](https://img.shields.io/badge/runtime-Deno-000000?logo=deno&logoColor=white)
+![Supabase](https://img.shields.io/badge/platform-Supabase-3FCF8E?logo=supabase&logoColor=white)
+![TypeScript](https://img.shields.io/badge/lang-TypeScript-3178C6?logo=typescript&logoColor=white)
+![Status](https://img.shields.io/badge/status-funcional-success)
+
+> Backend serverless do SmartRoutes em **Supabase Edge Functions** (Deno + TypeScript). Toda a lógica que toca a Evolution API roda aqui — **credenciais nunca chegam ao frontend**.
+
+📖 Veja também: [`README.md`](../README.md) (documentação geral do projeto)
+
+---
+
+## Sumário
+
+- [Estrutura](#estrutura)
+- [Papel de cada função](#papel-de-cada-função)
+- [Pré-requisitos](#pré-requisitos)
+- [Setup inicial](#setup-inicial)
+- [Desenvolvimento local](#desenvolvimento-local)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Como testar cada função](#como-testar-cada-função)
+- [Códigos de erro padronizados](#códigos-de-erro-padronizados)
+- [Checklist pós-deploy](#checklist-pós-deploy)
+- [Troubleshooting](#troubleshooting)
+
+---
 
 ## Estrutura
 
@@ -16,17 +40,39 @@ supabase/
     ├── _shared/
     │   ├── auth.ts          → getMotorista(req), criarClienteServico()
     │   ├── cors.ts          → corsHeaders + handlePreflight
-    │   ├── evolution.ts     → cliente HTTP Evolution API
-    │   ├── responses.ts     → helpers ok/erroCliente/erroServidor
-    │   └── viagem.ts        → processarIniciarViagem (reusado)
+    │   ├── evolution.ts     → cliente HTTP da Evolution API
+    │   ├── responses.ts     → helpers ok / erroCliente / erroServidor
+    │   └── viagem.ts        → processarIniciarViagem (reutilizado)
     ├── criar-perfil-motorista/
     ├── iniciar-viagem/
     ├── finalizar-viagem/
     ├── webhook-evolution/
     ├── enviar-mensagem/
     ├── reenviar-confirmacao/
+    ├── otimizar-sequencia-passageiros/
     └── automacao-diaria/
 ```
+
+**8 Edge Functions** ao todo — 6 acionadas pelo frontend autenticado, 1 acionada pelo cron job e 1 acionada pela Evolution API (webhook).
+
+---
+
+## Papel de cada função
+
+| Função | Acionada por | O que faz |
+|---|---|---|
+| `criar-perfil-motorista` | Frontend (1º login) | Cria o perfil do motorista após o cadastro inicial. Idempotente. |
+| `iniciar-viagem` | Frontend / cron | Cria a viagem do dia para uma rota e dispara mensagens de confirmação para cada passageiro ativo via Evolution API. |
+| `finalizar-viagem` | Frontend | Marca confirmações pendentes como ausentes, finaliza a viagem e popula o histórico via trigger. |
+| `webhook-evolution` | Evolution API | Recebe respostas dos responsáveis pelo WhatsApp, processa a confirmação (`1` = ida e volta, `2` = só ida, etc.) e atualiza o banco. |
+| `enviar-mensagem` | Frontend | Envia mensagem avulsa para um passageiro específico (ex: "Estou chegando em 5 minutos"). |
+| `reenviar-confirmacao` | Frontend | Reenvia a pergunta de confirmação para uma confirmação ainda pendente. |
+| `otimizar-sequencia-passageiros` | Frontend | Calcula a melhor sequência de paradas usando Google Routes API com fallback automático para OpenStreetMap/OSRM. |
+| `automacao-diaria` | Cron job (`pg_cron`) | Roda a cada 1 minuto. Quando o horário configurado pelo motorista bate, dispara `iniciar-viagem` automaticamente. Também reenvia mensagens para confirmações pendentes da viagem corrente. |
+
+> **Por que duas funções não usam JWT do Supabase Auth?** `webhook-evolution` e `automacao-diaria` validam suas próprias requisições via cabeçalhos `x-webhook-secret` e `x-cron-secret`, respectivamente. Isso permite que sistemas externos (Evolution API e o cron) as chamem sem precisar de um usuário autenticado.
+
+---
 
 ## Pré-requisitos
 
@@ -35,6 +81,8 @@ supabase/
 - Docker Desktop rodando (apenas para desenvolvimento local com `supabase start`)
 - Instância da Evolution API rodando (ex: Railway), com nome de instância criado e QR code escaneado
 - Supabase CLI: já instalado como devDependency (`npx supabase ...`)
+
+---
 
 ## Setup inicial
 
@@ -50,9 +98,9 @@ npx supabase login
 npx supabase link --project-ref SEU_PROJECT_REF
 ```
 
-`SEU_PROJECT_REF` está em `Settings > General` no dashboard do Supabase.
+`SEU_PROJECT_REF` está em **Settings → General** no dashboard do Supabase.
 
-### 3. Aplicar a migração SQL
+### 3. Aplicar as migrações SQL
 
 ```bash
 npx supabase db push
@@ -66,7 +114,38 @@ Copie o template e preencha com valores reais:
 
 ```bash
 cp supabase/.env.example supabase/.env
-# Edite supabase/.env com EVOLUTION_API_URL, EVOLUTION_API_KEY, GOOGLE_MAPS_API_KEY, ...
+# Edite supabase/.env com EVOLUTION_API_URL, EVOLUTION_API_KEY, GOOGLE_MAPS_API_KEY, etc.
+```
+
+Exemplo de `supabase/.env`:
+
+```env
+# --- Supabase ---
+# Em LOCAL (supabase start), o CLI injeta automaticamente.
+# Em PRODUÇÃO, NÃO definir manualmente — o runtime injeta.
+# SUPABASE_URL=
+# SUPABASE_ANON_KEY=
+# SUPABASE_SERVICE_ROLE_KEY=
+
+# --- Evolution API (WhatsApp) ---
+EVOLUTION_API_URL=https://sua-evolution-api.up.railway.app
+EVOLUTION_API_KEY=sua_chave_evolution
+EVOLUTION_INSTANCE_NAME=smartroute
+
+# --- Google Routes API (opcional) ---
+# Sem essa chave, o sistema usa fallback OpenStreetMap/OSRM
+GOOGLE_MAPS_API_KEY=sua_chave_google_routes
+
+# --- Segurança ---
+# Use strings aleatórias longas (>= 32 chars).
+# Geração sugerida: openssl rand -hex 32
+WEBHOOK_SECRET=string_aleatoria_de_32_caracteres_ou_mais
+CRON_SECRET=outra_string_aleatoria_de_32_caracteres_ou_mais
+
+# --- Frontend e diagnóstico ---
+APP_ORIGIN=https://seu-frontend.vercel.app
+DEBUG_LOGS=false
+DEBUG_ERRORS=false
 ```
 
 Envie para o projeto remoto:
@@ -75,7 +154,7 @@ Envie para o projeto remoto:
 npx supabase secrets set --env-file supabase/.env
 ```
 
-> As variáveis `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` são injetadas automaticamente — não precisa configurar.
+> As variáveis `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` são injetadas automaticamente pelo runtime — não precisa configurar.
 
 ### 5. Deploy de todas as funções
 
@@ -90,7 +169,7 @@ npx supabase functions deploy otimizar-sequencia-passageiros
 npx supabase functions deploy automacao-diaria --no-verify-jwt
 ```
 
-> `--no-verify-jwt` em `webhook-evolution` e `automacao-diaria` porque elas validam por header próprio (`x-webhook-secret` / `x-cron-secret`), não por JWT do Supabase Auth.
+> `--no-verify-jwt` em `webhook-evolution` e `automacao-diaria` porque elas validam por cabeçalho próprio (`x-webhook-secret` / `x-cron-secret`), não por JWT do Supabase Auth.
 
 ### 6. Configurar webhook na Evolution API
 
@@ -109,43 +188,30 @@ curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE_NAME" \
   }'
 ```
 
-### 7. Configurar cron job (a cada 1 minuto)
+### 7. Configurar o cron job
 
-O cron precisa rodar **uma vez por minuto** porque a Edge Function `automacao-diaria`
-faz comparação exata de `hora:minuto` em `America/Sao_Paulo` e também executa
-duas tarefas:
+A Edge Function `automacao-diaria` deve rodar **a cada 1 minuto**, porque faz comparação exata de `hora:minuto` em `America/Sao_Paulo` para:
 
-- dispara mensagens quando o horário configurado do motorista bate exatamente;
-- reaproveita a viagem do dia para reenviar apenas às confirmações pendentes,
-  sem converter pendentes em ausentes por horário.
+- disparar mensagens quando o horário configurado do motorista bate exatamente;
+- reaproveitar a viagem do dia para reenviar apenas às confirmações pendentes, sem converter pendentes em ausentes por horário.
 
-As confirmações valem para a viagem corrente. No dia seguinte, uma nova
-viagem recria todas as confirmações como `pendente`, reiniciando o ciclo
-naturalmente.
+As confirmações valem para a viagem corrente. No dia seguinte, uma nova viagem recria todas as confirmações como `pendente`, reiniciando o ciclo naturalmente.
 
-O projeto ainda mantém a migration com nome legado:
+> ⚠️ **Nota sobre o nome do arquivo de migration:** o projeto contém o arquivo `supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql`. Apesar do nome incluir "5min" (resquício histórico), **a configuração operacional atual do projeto é 1 minuto**. Não confie no nome do arquivo — confie no schedule abaixo.
 
-```text
-supabase/migrations/20260509010000_cron_automacao_diaria_5min.sql
-```
-
-Apesar do nome do arquivo, a recomendação operacional atual do projeto é
-agendar `automacao-diaria` **a cada 1 minuto** usando `pg_cron` + `pg_net`.
-Para nao versionar segredo, salve o `CRON_SECRET` no Supabase Vault antes de
-rodar as migrations:
+**Para não versionar segredo**, salve o `CRON_SECRET` no Supabase Vault antes de rodar as migrations:
 
 ```sql
 select vault.create_secret('SEU_CRON_SECRET', 'smartroutes_cron_secret');
 ```
 
-Se a migration legada já tiver sido aplicada sem o secret no Vault, rode uma vez
-o helper existente ou recrie manualmente o job com schedule de 1 minuto:
+Se a migration legada já tiver sido aplicada sem o secret no Vault, rode uma vez o helper existente:
 
 ```sql
 select public.configurar_cron_automacao_diaria_5min('SEU_CRON_SECRET');
 ```
 
-SQL equivalente manual:
+Ou recrie manualmente o job com schedule de 1 minuto:
 
 ```sql
 select cron.schedule(
@@ -164,10 +230,12 @@ select cron.schedule(
 );
 ```
 
+---
+
 ## Desenvolvimento local
 
 ```bash
-npx supabase start                                   # sobe Postgres, Auth, Studio etc.
+npx supabase start                                     # sobe Postgres, Auth, Studio etc.
 npx supabase functions serve --env-file supabase/.env  # roda as Edge Functions localmente
 ```
 
@@ -192,19 +260,13 @@ URL local das funções: `http://localhost:54321/functions/v1/<nome>`.
 | `DEBUG_LOGS` | `.env` | Habilita logs detalhados apenas para diagnóstico local |
 | `DEBUG_ERRORS` | `.env` | Retorna detalhes técnicos em erro 500 apenas para diagnóstico local |
 
----
-
-Privacidade da otimização: a Edge Function de otimização envia endereços de
-origem, destino e embarque para a Google Routes API quando
-`GOOGLE_MAPS_API_KEY` está configurada. Sem essa chave, o fallback consulta
-OpenStreetMap/Nominatim e OSRM. Em produção, informe isso nos termos de uso ou
-política de privacidade.
+> **Privacidade da otimização:** a Edge Function `otimizar-sequencia-passageiros` envia endereços de origem, destino e embarque para a Google Routes API quando `GOOGLE_MAPS_API_KEY` está configurada. Sem essa chave, o fallback consulta OpenStreetMap/Nominatim e OSRM. Em produção, informe isso nos termos de uso ou política de privacidade.
 
 ---
 
 ## Como testar cada função
 
-> Substitua `<PROJECT>` pela ref do projeto e `<JWT>` pelo token de um usuário autenticado (obtido no frontend via `supabase.auth.getSession()` ou no Studio em `Authentication > Users > Select user > JWT`).
+> Substitua `<PROJECT>` pela ref do projeto e `<JWT>` pelo token de um usuário autenticado (obtido no frontend via `supabase.auth.getSession()` ou no Studio em **Authentication → Users → Select user → JWT**).
 
 ### 1. `criar-perfil-motorista`
 
@@ -362,7 +424,32 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/reenviar-confirmacao" \
 
 Se a confirmação já tiver sido respondida: `409 CONFIRMACAO_JA_RESPONDIDA`.
 
-### 7. `automacao-diaria`
+### 7. `otimizar-sequencia-passageiros`
+
+Calcula a melhor sequência de paradas usando Google Routes API ou fallback OpenStreetMap/OSRM.
+
+```bash
+curl -X POST "https://<PROJECT>.supabase.co/functions/v1/otimizar-sequencia-passageiros" \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{ "rota_id": "uuid-da-rota" }'
+```
+
+**Resposta esperada:**
+```json
+{
+  "sucesso": true,
+  "provider": "google_routes",
+  "sequencia": [
+    { "passageiro_id": "uuid", "ordem": 1, "nome": "Ana" },
+    { "passageiro_id": "uuid", "ordem": 2, "nome": "João" }
+  ]
+}
+```
+
+> Quando `GOOGLE_MAPS_API_KEY` não está configurada, `provider` retorna `osrm_fallback`.
+
+### 8. `automacao-diaria`
 
 Cron job — também testável manualmente.
 
@@ -410,20 +497,56 @@ curl -X POST "https://<PROJECT>.supabase.co/functions/v1/automacao-diaria" \
 
 ## Checklist pós-deploy
 
-- [ ] Migração aplicada (`supabase db push`)
-- [ ] Secrets configurados (`supabase secrets list`)
-- [ ] 7 funções deployadas (`supabase functions list`)
+- [ ] Migração aplicada (`npx supabase db push`)
+- [ ] Secrets configurados (`npx supabase secrets list`)
+- [ ] **8 funções** deployadas (`npx supabase functions list`)
 - [ ] Webhook da Evolution API apontando para `webhook-evolution`
-- [ ] Cron job criado no SQL Editor
+- [ ] Cron job criado no SQL Editor (schedule **a cada 1 minuto**)
+- [ ] `CRON_SECRET` salvo no Supabase Vault
 - [ ] Realtime habilitado em `confirmacoes`, `viagens`, `instancias_whatsapp`
-- [ ] Frontend ligado aos dados reais também na tela WhatsApp e nas configurações ainda locais
+- [ ] Frontend ligado aos dados reais (tela WhatsApp e configurações)
+- [ ] Instância da Evolution API conectada (status `open`, QR Code escaneado)
 
-## Dicas de troubleshooting
+---
 
-- **`401 NAO_AUTORIZADO`** → JWT expirado. Faça login novamente no frontend.
-- **`MOTORISTA_NAO_ENCONTRADO` após cadastro** → Chame `criar-perfil-motorista` antes de qualquer outra função.
-- **Mensagens não chegam** → Verifique `evolutionVerificarConexao` e o status da instância no painel da Evolution API.
-- **Webhook não dispara** → Confira que `webhook_by_events: true` foi setado e que `events` inclui `MESSAGES_UPSERT`.
-- **Logs em produção:** `npx supabase functions logs <nome> --tail`
+## Troubleshooting
 
+| Sintoma | Possível causa | Como resolver |
+|---|---|---|
+| `401 NAO_AUTORIZADO` | JWT expirado | Faça login novamente no frontend |
+| `MOTORISTA_NAO_ENCONTRADO` após cadastro | `criar-perfil-motorista` não foi chamado | Chame essa função antes de qualquer outra |
+| Mensagens não chegam | Instância desconectada | Verifique `evolutionVerificarConexao` e o status da instância no painel da Evolution API |
+| Webhook não dispara | Configuração da Evolution incorreta | Confira que `webhook_by_events: true` foi setado e que `events` inclui `MESSAGES_UPSERT` |
+| Cron não executa | Vault sem o secret ou schedule errado | Verifique `select * from cron.job;` e confirme schedule `* * * * *` |
+| Erros 500 sem detalhe | Logs desabilitados | Em produção, use `npx supabase functions logs <nome> --tail` |
 
+### Comandos úteis
+
+```bash
+# Logs em tempo real de uma função
+npx supabase functions logs webhook-evolution --tail
+
+# Listar todas as funções deployadas
+npx supabase functions list
+
+# Listar secrets configurados
+npx supabase secrets list
+
+# Ver status do cron job
+psql "$DATABASE_URL" -c "select * from cron.job;"
+```
+
+---
+
+## Boas práticas adotadas
+
+- **Credenciais nunca expostas:** chaves da Evolution API e Google Routes API ficam apenas nas Edge Functions, nunca no frontend
+- **Row Level Security (RLS):** cada motorista só acessa seus próprios dados, mesmo se conseguir um JWT válido
+- **Service role isolada:** apenas funções que precisam bypassar RLS usam `criarClienteServico()` (ex: webhook que recebe sem JWT)
+- **Idempotência:** `criar-perfil-motorista` pode ser chamada várias vezes sem efeito colateral
+- **Códigos de erro padronizados:** todos os erros seguem a tabela acima, facilitando o tratamento no frontend
+- **Realtime para feedback imediato:** o frontend recebe atualizações via WebSocket sem precisar fazer polling
+
+---
+
+📖 **Documentação geral do projeto:** [`../README.md`](../README.md)
