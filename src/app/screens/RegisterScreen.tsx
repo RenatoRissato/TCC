@@ -531,7 +531,7 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
     if (!form.vehicleYear.trim()) e.vehicleYear = 'Ano e obrigatorio';
     if (form.password.length < 6)      e.password = 'Senha deve ter ao menos 6 caracteres';
     if (form.password !== form.confirm) e.confirm  = 'As senhas não coincidem';
-    if (!acceptedLegal) e.legal = 'Aceite os Termos de Uso e a Politica de Privacidade para continuar.';
+    if (!acceptedLegal) e.legal = 'Aceite os Termos de Uso e a Política de Privacidade para continuar.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -730,12 +730,24 @@ export function RegisterScreen({ onGoLogin }: RegisterScreenProps) {
         />
         <label htmlFor="reg-legal-accept" style={{ fontSize: 12, color: isDark ? 'rgba(255,193,7,0.86)' : '#5D4E00', margin: 0, lineHeight: 1.6, cursor: 'pointer' }}>
           Li e aceito os{' '}
-          <button type="button" style={{ background: 'none', border: 'none', color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>
+          <a
+            href="/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={event => event.stopPropagation()}
+            style={{ color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}
+          >
             Termos de Uso
-          </button>{' '}e a{' '}
-          <button type="button" style={{ background: 'none', border: 'none', color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>
-            Politica de Privacidade
-          </button>.
+          </a>{' '}e a{' '}
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={event => event.stopPropagation()}
+            style={{ color: isDark ? '#FFC107' : '#C56A00', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}
+          >
+            Política de Privacidade
+          </a>.
         </label>
       </div>
       {errors.legal && (

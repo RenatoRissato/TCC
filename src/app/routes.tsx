@@ -8,6 +8,7 @@ import { LiveTripScreen } from './screens/LiveTripScreen';
 import { HelpScreen } from './screens/HelpScreen';
 import { PrivacyPolicyScreen } from './screens/PrivacyPolicyScreen';
 import { CookiePolicyScreen } from './screens/CookiePolicyScreen';
+import { TermsOfUseScreen } from './screens/TermsOfUseScreen';
 
 export const router = createBrowserRouter([
   {
@@ -20,9 +21,17 @@ export const router = createBrowserRouter([
       { path: 'whatsapp',  Component: WhatsAppScreen },
       { path: 'settings',  Component: SettingsScreen },
       { path: 'help',      Component: HelpScreen },
+      { path: 'terms',     Component: TermsOfUseScreen },
       { path: 'privacy',   Component: PrivacyPolicyScreen },
       { path: 'cookies',   Component: CookiePolicyScreen },
       { path: 'viagem/:viagemId', Component: LiveTripScreen },
     ],
   },
+]);
+
+export const publicLegalRouter = createBrowserRouter([
+  { path: '/terms', Component: TermsOfUseScreen },
+  { path: '/privacy', Component: PrivacyPolicyScreen },
+  { path: '/cookies', Component: CookiePolicyScreen },
+  { path: '*', element: <Navigate to="/privacy" replace /> },
 ]);

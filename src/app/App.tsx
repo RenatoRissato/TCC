@@ -6,7 +6,7 @@ import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
 import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
 import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
-import { router } from './routes';
+import { publicLegalRouter, router } from './routes';
 
 type AuthView = 'login' | 'register' | 'forgot';
 
@@ -17,6 +17,11 @@ function isResetPath(): boolean {
   return typeof window !== 'undefined' && window.location.pathname === '/redefinir-senha';
 }
 
+function isPublicLegalPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return ['/terms', '/privacy', '/cookies'].includes(window.location.pathname);
+}
+
 function AuthGate() {
   const { isAuthenticated } = useAuth();
   const [view, setView] = useState<AuthView>('login');
@@ -25,6 +30,7 @@ function AuthGate() {
   // achar que o usuário está logado). Após o reset, a ResetPasswordScreen
   // faz hard reload em '/', então não precisamos de setState aqui.
   const resetando = isResetPath();
+  const publicLegalPath = isPublicLegalPath();
 
   useEffect(() => {
     if (!isAuthenticated && !resetando) setView('login');
@@ -32,6 +38,10 @@ function AuthGate() {
 
   if (resetando) {
     return <ResetPasswordScreen />;
+  }
+
+  if (!isAuthenticated && publicLegalPath) {
+    return <RouterProvider router={publicLegalRouter} />;
   }
 
   if (isAuthenticated) {
