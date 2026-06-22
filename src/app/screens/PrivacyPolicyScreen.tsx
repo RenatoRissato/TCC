@@ -26,7 +26,7 @@ export function PrivacyPolicyScreen() {
   const px = isDesktop ? 36 : isMd ? 24 : 16;
 
   return (
-    <div className="min-h-full bg-surface transition-colors">
+    <div className="h-[100dvh] overflow-y-auto bg-surface transition-colors">
       <header
         className="relative overflow-hidden"
         style={{
